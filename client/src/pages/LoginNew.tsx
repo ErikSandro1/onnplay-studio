@@ -17,7 +17,14 @@ export default function LoginNew() {
   // Redirect if already authenticated
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      navigate('/studio');
+      // Check if there's a saved redirect location
+      const redirectTo = sessionStorage.getItem('redirectAfterLogin');
+      if (redirectTo) {
+        sessionStorage.removeItem('redirectAfterLogin');
+        navigate(redirectTo);
+      } else {
+        navigate('/studio');
+      }
     }
   }, [authLoading, isAuthenticated, navigate]);
 
@@ -31,7 +38,15 @@ export default function LoginNew() {
       } else {
         await register(email, password, name);
       }
-      navigate('/studio');
+      
+      // Redirect to saved location or default to studio
+      const redirectTo = sessionStorage.getItem('redirectAfterLogin');
+      if (redirectTo) {
+        sessionStorage.removeItem('redirectAfterLogin');
+        navigate(redirectTo);
+      } else {
+        navigate('/studio');
+      }
     } catch (error) {
       // Error already handled in AuthContext with toast
     } finally {

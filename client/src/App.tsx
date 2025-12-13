@@ -14,6 +14,7 @@ import Settings from "./pages/Settings";
 import Login from "./pages/Login";
 import LoginNew from "./pages/LoginNew";
 import Pricing from "./pages/Pricing";
+import Landing from "./pages/Landing";
 
 /**
  * OnnPlay Studio - Main Application Router
@@ -35,22 +36,35 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/login-new" component={LoginNew} />
       <Route path="/pricing" component={Pricing} />
+      <Route path="/home" component={Landing} />
       
-      {/* Public routes - Studio accessible without authentication */}
-      <Route path="/" component={Home} />
+      {/* Protected routes - Require authentication */}
+      <Route path="/">
+        <ProtectedRoute>
+          <Home />
+        </ProtectedRoute>
+      </Route>
       
-      <Route path="/studio" component={Home} />
+      <Route path="/studio">
+        <ProtectedRoute>
+          <Home />
+        </ProtectedRoute>
+      </Route>
       
-      <Route path="/dashboard" component={Dashboard} />
+      <Route path="/dashboard">
+        <ProtectedRoute>
+          <Dashboard />
+        </ProtectedRoute>
+      </Route>
       
       <Route path="/analytics">
-        <ProtectedRoute requiredRole="admin">
+        <ProtectedRoute>
           <DashboardAnalytics />
         </ProtectedRoute>
       </Route>
       
       <Route path="/remote">
-        <ProtectedRoute requiredRole="operator">
+        <ProtectedRoute>
           <RemoteControl />
         </ProtectedRoute>
       </Route>
