@@ -6,8 +6,12 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { createAuthRoutes } from "./routes/auth";
 import { createPaymentRoutes } from "./routes/payments";
+import { createUsageRoutes } from "./routes/usage";
+import { createBroadcastRoutes } from "./routes/broadcast";
 import { AuthService } from "./services/AuthService";
 import { StripeService } from "./services/StripeService";
+import { UsageLimitService } from "./services/UsageLimitService";
+import { BroadcastTrackingService } from "./services/BroadcastTrackingService";
 import { createDatabase } from "./db/database";
 
 // Load environment variables
@@ -43,10 +47,14 @@ async function startServer() {
   // Initialize services
   const authService = new AuthService(db);
   const stripeService = new StripeService(db);
+  const usageLimitService = new UsageLimitService(db);
+  const broadcastService = new BroadcastTrackingService(db);
 
   // API routes
   app.use("/api/auth", createAuthRoutes(authService));
   app.use("/api/payments", createPaymentRoutes(stripeService, authService));
+  app.use("/api/usage", createUsageRoutes(usageLimitService, authService));
+  app.use("/api/broadcast", createBroadcastRoutes(broadcastService, authService));
 
   // Health check endpoint
   app.get("/api/health", (req, res) => {
@@ -71,12 +79,26 @@ async function startServer() {
   });
 
   const port = process.env.PORT || 3000;
-
-  server.listen(port, () => {
-    console.log(`🚀 Server running on http://localhost:${port}/`);
-    console.log(`📡 API available at http://localhost:${port}/api`);
-    console.log(`🎨 Frontend served from ${staticPath}`);
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 Server running on http://localhost:${PORT}/`);
+    console.log(`📡 API available at http://localhost:${PORT}/api`);
+    console.log(`🎨 Frontend served from ${publicPath}`);
   });
-}
 
-startServer().catch(console.error);
+  // Graceful shutdown
+  process.on('SIGTERM', async () => {
+    console.log('SIGTERM signal received: closing HTTP server');
+    await broadcastService.cleanup();
+    server.close(() => {
+      console.log('HTTP server closed');
+    });
+  });
+
+  process.on('SIGINT', async () => {
+    console.log('SIGINT signal received: closing HTTP server');
+    await broadcastService.cleanup();
+    server.close(() => {
+      console.log('HTTP server closed');
+      process.exit(0);
+    });
+  });rtServer().catch(console.error);

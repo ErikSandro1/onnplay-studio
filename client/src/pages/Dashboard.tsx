@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '../contexts/AuthContext';
+import { useUsageLimits } from '../hooks/useUsageLimits';
 import {
   Radio,
   User,
@@ -39,8 +40,8 @@ export default function Dashboard() {
   const { user, token, logout, isLoading: authLoading } = useAuth();
 
   const [subscription, setSubscription] = useState<Subscription | null>(null);
-  const [usage, setUsage] = useState<Usage | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { summary: usageSummary, isLoading: usageLoading } = useUsageLimits();
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
@@ -65,13 +66,7 @@ export default function Dashboard() {
         setSubscription(subData.subscription);
       }
 
-      // TODO: Fetch usage data when endpoint is ready
-      // For now, using mock data
-      setUsage({
-        streaming_minutes: 45,
-        recording_minutes: 30,
-        ai_commands_count: 127,
-      });
+      // Usage data is now fetched via useUsageLimits hook
     } catch (error) {
       console.error('Failed to fetch data:', error);
     } finally {
@@ -312,24 +307,21 @@ export default function Dashboard() {
                     <span className="text-sm text-gray-400">Transmissão</span>
                   </div>
                   <div className="text-3xl font-bold mb-1">
-                    {usage?.streaming_minutes || 0}
+                    {usageSummary?.usage.streamingMinutes || 0}
                     <span className="text-lg text-gray-400"> min</span>
                   </div>
-                  {user?.plan === 'free' && (
+                  {user?.plan === 'free' && usageSummary && (
                     <div className="mt-2">
                       <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-cyan-500"
                           style={{
-                            width: `${Math.min(
-                              ((usage?.streaming_minutes || 0) / 60) * 100,
-                              100
-                            )}%`,
+                            width: `${usageSummary.percentUsed.streaming}%`,
                           }}
                         ></div>
                       </div>
                       <p className="text-xs text-gray-500 mt-1">
-                        {60 - (usage?.streaming_minutes || 0)} min restantes
+                        {usageSummary.remaining.streamingMinutes} min restantes
                       </p>
                     </div>
                   )}
@@ -342,15 +334,19 @@ export default function Dashboard() {
                     <span className="text-sm text-gray-400">Gravação</span>
                   </div>
                   <div className="text-3xl font-bold mb-1">
-                    {usage?.recording_minutes || 0}
+                    {usageSummary?.usage.recordingMinutes || 0}
                     <span className="text-lg text-gray-400"> min</span>
                   </div>
                   {user?.plan === 'free' ? (
                     <p className="text-xs text-gray-500 mt-2">
                       Disponível no plano Pro
                     </p>
-                  ) : (
+                  ) : usageSummary?.limits.recordingMinutes === -1 ? (
                     <p className="text-xs text-green-500 mt-2">Ilimitado</p>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-2">
+                      {usageSummary?.remaining.recordingMinutes} min restantes
+                    </p>
                   )}
                 </div>
 
@@ -363,14 +359,14 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <div className="text-3xl font-bold mb-1">
-                    {usage?.ai_commands_count || 0}
+                    {usageSummary?.usage.aiCommandsCount || 0}
                   </div>
-                  {user?.plan === 'free' ? (
+                  {usageSummary?.limits.features.aiAssistant ? (
+                    <p className="text-xs text-orange-500 mt-2">Ilimitado</p>
+                  ) : (
                     <p className="text-xs text-gray-500 mt-2">
                       Disponível no plano Pro
                     </p>
-                  ) : (
-                    <p className="text-xs text-orange-500 mt-2">Ilimitado</p>
                   )}
                 </div>
               </div>
