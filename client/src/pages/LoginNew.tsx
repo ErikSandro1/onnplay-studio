@@ -70,7 +70,7 @@ export default function LoginNew() {
           {/* Logo */}
           <div className="flex items-center gap-4 mb-8">
             <img
-              src="/logo-onnplay-gold.png"
+              src="/logo-gold-transparent.png"
               alt="OnnPlay"
               className="h-16"
               style={{ filter: 'drop-shadow(0 0 20px rgba(255, 215, 0, 0.6))' }}
