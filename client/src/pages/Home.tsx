@@ -72,7 +72,7 @@ const Home: React.FC = () => {
             {/* Left Side: Monitors + Audio + Buttons */}
             <div className="flex-1 flex flex-col gap-6">
               {/* Video Monitors - LARGE */}
-              <div style={{ height: '500px', minHeight: '500px' }}>
+              <div style={{ height: '500px', minHeight: '500px', maxHeight: '500px', display: 'flex', flexDirection: 'column' }}>
                 <VideoMonitors />
               </div>
 
