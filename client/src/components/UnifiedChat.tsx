@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Youtube, Twitch, Facebook, X, Send, Filter, Pin, Trash2 } from 'lucide-react';
+import { MessageCircle, Youtube, Twitch, Facebook, X, Send, Filter, Pin, Trash2, Eye } from 'lucide-react';
+import { CommentList } from './CommentList';
+import { commentOverlayService } from '../services/CommentOverlayService';
+import type { Comment } from '../types/comments';
 
 interface ChatMessage {
   id: string;
@@ -55,6 +58,8 @@ export default function UnifiedChat({ isOpen, onClose }: UnifiedChatProps) {
   const [newMessage, setNewMessage] = useState('');
   const [filterPlatform, setFilterPlatform] = useState<string>('all');
   const [showModeration, setShowModeration] = useState(false);
+  const [useNewSystem, setUseNewSystem] = useState(true); // Toggle between old and new system
+  const [autoShow, setAutoShow] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -89,10 +94,30 @@ export default function UnifiedChat({ isOpen, onClose }: UnifiedChatProps) {
       };
 
       setMessages((prev) => [...prev, newMsg]);
+      
+      // Add to new comment system
+      if (useNewSystem) {
+        const comment: Comment = {
+          id: newMsg.id,
+          platform: newMsg.platform,
+          author: {
+            id: newMsg.id,
+            name: newMsg.username,
+            avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${newMsg.username}`,
+            badges: [],
+          },
+          message: newMsg.message,
+          timestamp: newMsg.timestamp.getTime(),
+          isPinned: false,
+          isStarred: false,
+          isRead: false,
+        };
+        commentOverlayService.addComment(comment);
+      }
     }, 8000);
 
     return () => clearInterval(interval);
-  }, [isOpen]);
+  }, [isOpen, useNewSystem]);
 
   const handleSendMessage = () => {
     if (!newMessage.trim()) return;
@@ -206,6 +231,22 @@ export default function UnifiedChat({ isOpen, onClose }: UnifiedChatProps) {
           </button>
           <div className="flex-1"></div>
           <button
+            onClick={() => {
+              const newAutoShow = !autoShow;
+              setAutoShow(newAutoShow);
+              commentOverlayService.setAutoShow(newAutoShow);
+            }}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${
+              autoShow
+                ? 'bg-cyan-600 text-white'
+                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+            }`}
+            title="Mostrar todos os comentários automaticamente na tela"
+          >
+            <Eye size={12} />
+            {autoShow ? 'Auto ON' : 'Auto OFF'}
+          </button>
+          <button
             onClick={() => setShowModeration(!showModeration)}
             className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
               showModeration
@@ -218,64 +259,73 @@ export default function UnifiedChat({ isOpen, onClose }: UnifiedChatProps) {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {filteredMessages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`p-3 rounded-lg transition-colors ${
-                msg.isPinned
-                  ? 'bg-orange-900/20 border border-orange-600/30'
-                  : msg.isHighlighted
-                  ? 'bg-green-900/20 border border-green-600/30'
-                  : 'bg-gray-800/50 hover:bg-gray-800'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    {getPlatformIcon(msg.platform)}
-                    <span className="text-sm font-semibold text-white">{msg.username}</span>
-                    {msg.badges?.map((badge, idx) => (
-                      <span
-                        key={idx}
-                        className="px-2 py-0.5 bg-gray-700 text-xs text-gray-300 rounded"
-                      >
-                        {badge}
-                      </span>
-                    ))}
-                    <span className="text-xs text-gray-500">
-                      {msg.timestamp.toLocaleTimeString('pt-BR', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
+        <div className="flex-1 overflow-y-auto p-4">
+          {useNewSystem ? (
+            <CommentList
+              filter={filterPlatform === 'all' ? undefined : { platforms: [filterPlatform as any] }}
+              showActions={showModeration}
+            />
+          ) : (
+            <div className="space-y-3">
+              {filteredMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`p-3 rounded-lg transition-colors ${
+                    msg.isPinned
+                      ? 'bg-orange-900/20 border border-orange-600/30'
+                      : msg.isHighlighted
+                      ? 'bg-green-900/20 border border-green-600/30'
+                      : 'bg-gray-800/50 hover:bg-gray-800'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        {getPlatformIcon(msg.platform)}
+                        <span className="text-sm font-semibold text-white">{msg.username}</span>
+                        {msg.badges?.map((badge, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2 py-0.5 bg-gray-700 text-xs text-gray-300 rounded"
+                          >
+                            {badge}
+                          </span>
+                        ))}
+                        <span className="text-xs text-gray-500">
+                          {msg.timestamp.toLocaleTimeString('pt-BR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-200">{msg.message}</p>
+                    </div>
+                    {showModeration && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handlePinMessage(msg.id)}
+                          className={`p-1 rounded hover:bg-gray-700 transition-colors ${
+                            msg.isPinned ? 'text-orange-500' : 'text-gray-400'
+                          }`}
+                          title="Fixar mensagem"
+                        >
+                          <Pin size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteMessage(msg.id)}
+                          className="p-1 rounded hover:bg-red-900/50 text-gray-400 hover:text-red-400 transition-colors"
+                          title="Deletar mensagem"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-sm text-gray-200">{msg.message}</p>
                 </div>
-                {showModeration && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handlePinMessage(msg.id)}
-                      className={`p-1 rounded hover:bg-gray-700 transition-colors ${
-                        msg.isPinned ? 'text-orange-500' : 'text-gray-400'
-                      }`}
-                      title="Fixar mensagem"
-                    >
-                      <Pin size={14} />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteMessage(msg.id)}
-                      className="p-1 rounded hover:bg-red-900/50 text-gray-400 hover:text-red-400 transition-colors"
-                      title="Deletar mensagem"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                )}
-              </div>
+              ))}
+              <div ref={messagesEndRef} />
             </div>
-          ))}
-          <div ref={messagesEndRef} />
+          )}
         </div>
 
         {/* Input */}
@@ -299,7 +349,7 @@ export default function UnifiedChat({ isOpen, onClose }: UnifiedChatProps) {
             </button>
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            💡 Dica: Use a moderação para fixar ou remover mensagens do chat
+            💡 Dica: Use "Auto ON" para mostrar todos os comentários automaticamente na tela
           </p>
         </div>
       </div>

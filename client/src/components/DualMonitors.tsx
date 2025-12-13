@@ -2,6 +2,7 @@ import React from 'react';
 import { Maximize2, Settings } from 'lucide-react';
 import VideoPreview from './VideoPreview';
 import { CameraId } from '../services/CameraControlService';
+import { CommentOverlay } from './CommentOverlay';
 
 interface DualMonitorsProps {
   isLive: boolean;
@@ -233,6 +234,11 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
             }}
           >
             1080p
+          </div>
+          
+          {/* Comment Overlay */}
+          <div className="absolute inset-0 pointer-events-none">
+            <CommentOverlay />
           </div>
           
           {/* Transition Indicator */}
