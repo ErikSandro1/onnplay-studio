@@ -114,6 +114,7 @@ export default function Home() {
           onAudioProcessor={() => setShowAudioProcessor(true)}
           onParticipantManager={() => setShowParticipantManager(true)}
         />
+        </div>
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto flex flex-col" style={{ background: '#0A0E1A' }}>
