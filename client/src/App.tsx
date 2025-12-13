@@ -30,18 +30,10 @@ function Router() {
       {/* Public routes */}
       <Route path="/login" component={Login} />
       
-      {/* Protected routes - require authentication */}
-      <Route path="/">
-        <ProtectedRoute>
-          <Home />
-        </ProtectedRoute>
-      </Route>
+      {/* Public routes - Studio accessible without authentication */}
+      <Route path="/" component={Home} />
       
-      <Route path="/studio">
-        <ProtectedRoute>
-          <Home />
-        </ProtectedRoute>
-      </Route>
+      <Route path="/studio" component={Home} />
       
       <Route path="/dashboard">
         <ProtectedRoute requiredRole="admin">
