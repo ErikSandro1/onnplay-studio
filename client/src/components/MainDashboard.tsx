@@ -1,12 +1,16 @@
 import { useState } from 'react';
-import { BarChart3, Settings, Clock, Zap } from 'lucide-react';
+import { BarChart3, Settings, Clock, Zap, ArrowLeft, X } from 'lucide-react';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import AdvancedMixer from './AdvancedMixer';
 import TransmissionHistory from './TransmissionHistory';
 
 type DashboardTab = 'analytics' | 'mixer' | 'history';
 
-export default function MainDashboard() {
+interface MainDashboardProps {
+  onClose?: () => void;
+}
+
+export default function MainDashboard({ onClose }: MainDashboardProps = {}) {
   const [activeTab, setActiveTab] = useState<DashboardTab>('analytics');
 
   return (
@@ -18,6 +22,14 @@ export default function MainDashboard() {
             <BarChart3 size={28} className="text-orange-500" />
             OnnPlay Studio Dashboard
           </h1>
+          <button
+            onClick={onClose}
+            className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-semibold"
+            title="Voltar ao Studio"
+          >
+            <ArrowLeft size={20} />
+            Voltar ao Studio
+          </button>
         </div>
 
         {/* Tab Navigation */}
