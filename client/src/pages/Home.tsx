@@ -4,7 +4,7 @@ import MainHeader from '../components/MainHeader';
 import RightSidebar, { TabId } from '../components/RightSidebar';
 import ParticipantsStrip from '../components/ParticipantsStrip';
 import ControlBar from '../components/ControlBar';
-import ProgramMonitor from '../components/ProgramMonitor';
+import DualMonitors from '../components/DualMonitors';
 
 // Tab Components
 import TransitionSystem from '../components/TransitionSystem';
@@ -166,12 +166,14 @@ const Home: React.FC = () => {
         <div className="flex-1 flex overflow-hidden">
           {/* Left: Program Monitor + Participants + Controls */}
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Program Monitor */}
-            <div className="flex-1 p-6 overflow-hidden">
-              <ProgramMonitor 
+            {/* Dual Monitors (PREVIEW + PROGRAM) */}
+            <div className="flex-1 p-4 overflow-hidden">
+              <DualMonitors 
                 isLive={isLive}
                 viewers={isLive ? 127 : 0}
                 duration={isLive ? '00:15:42' : '00:00:00'}
+                previewSource="CAM 1"
+                programSource="CAM 2"
               />
             </div>
             
