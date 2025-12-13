@@ -46,7 +46,7 @@ const Home: React.FC = () => {
             
             <button
               onClick={() => setIsLive(!isLive)}
-              className="w-full py-6 rounded-xl text-xl font-bold transition-all duration-200 hover:scale-105"
+              className="w-full py-4 rounded-xl text-lg font-bold transition-all duration-200 hover:scale-105"
               style={{
                 background: isLive ? '#DC2626' : '#FF6B00',
                 color: '#FFFFFF',
@@ -59,7 +59,7 @@ const Home: React.FC = () => {
             
             <button
               onClick={() => setIsRecording(!isRecording)}
-              className="w-full py-6 rounded-xl text-xl font-bold transition-all duration-200 hover:scale-105"
+              className="w-full py-4 rounded-xl text-lg font-bold transition-all duration-200 hover:scale-105"
               style={{
                 background: isRecording ? '#DC2626' : '#DC2626',
                 color: '#FFFFFF',
