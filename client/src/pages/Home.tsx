@@ -45,6 +45,8 @@ const HomeContent: React.FC = () => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [lastTransition, setLastTransition] = useState<string>('none');
   const [transitionTimestamp, setTransitionTimestamp] = useState<string>('');
+  const [previewCamera, setPreviewCamera] = useState<'cam1' | 'cam2' | 'cam3' | 'media' | 'screen'>('cam1');
+  const [programCamera, setProgramCamera] = useState<'cam1' | 'cam2' | 'cam3' | 'media' | 'screen'>('cam2');
   
   // Broadcast stats
   const [viewers, setViewers] = useState(0);
@@ -199,6 +201,19 @@ const HomeContent: React.FC = () => {
     setActiveTool(null);
   };
 
+  const handleCameraChange = (camera: 'cam1' | 'cam2' | 'cam3' | 'media' | 'screen', target: 'program' | 'preview') => {
+    if (target === 'program') {
+      setProgramCamera(camera);
+    } else {
+      setPreviewCamera(camera);
+    }
+  };
+
+  const handleLayoutChange = (layout: 'single' | 'pip' | 'split' | 'grid') => {
+    console.log('Layout changed to:', layout);
+    // Will be connected to LayoutManager later
+  };
+
   const handleTransition = async (type: 'mix' | 'wipe' | 'cut' | 'auto') => {
     
     if (isTransitioning) {
@@ -247,7 +262,7 @@ const HomeContent: React.FC = () => {
       case 'audio':
         return <AdvancedAudioMixer isOpen={true} onClose={handleCloseTool} />;
       case 'camera':
-        return <CameraControl isOpen={true} onClose={handleCloseTool} />;
+        return <CameraControl onCameraChange={handleCameraChange} onLayoutChange={handleLayoutChange} />;
       case 'destinations':
         return <StreamingConfig isOpen={true} onClose={handleCloseTool} />;
       case 'recording':
@@ -288,6 +303,8 @@ const HomeContent: React.FC = () => {
                 duration={duration}
                 lastTransition={lastTransition}
                 transitionTimestamp={transitionTimestamp}
+                previewCamera={previewCamera}
+                programCamera={programCamera}
                 isTransitioning={isTransitioning}
               />
             </div>

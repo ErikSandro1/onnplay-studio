@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Video, Monitor, Grid3x3, Maximize2, Settings } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Video, Monitor, Grid3x3, Maximize2, Settings, ZoomIn, Move, RotateCw, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import { cameraControlService, CameraId, CameraSettings } from '../services/CameraControlService';
 
 type CameraSource = 'cam1' | 'cam2' | 'cam3' | 'media' | 'screen';
 type LayoutType = 'single' | 'pip' | 'split' | 'grid';
@@ -31,6 +32,22 @@ export default function CameraControl({ onCameraChange, onLayoutChange }: Camera
   const [programCamera, setProgramCamera] = useState<CameraSource>('cam1');
   const [previewCamera, setPreviewCamera] = useState<CameraSource>('cam2');
   const [currentLayout, setCurrentLayout] = useState<LayoutType>('single');
+  const [selectedCameraForZoom, setSelectedCameraForZoom] = useState<CameraSource>('cam1');
+  const [cameraSettings, setCameraSettings] = useState<Record<CameraSource, CameraSettings>>({
+    cam1: { zoom: 1.0, panX: 0, panY: 0, rotation: 0 },
+    cam2: { zoom: 1.0, panX: 0, panY: 0, rotation: 0 },
+    cam3: { zoom: 1.0, panX: 0, panY: 0, rotation: 0 },
+    media: { zoom: 1.0, panX: 0, panY: 0, rotation: 0 },
+    screen: { zoom: 1.0, panX: 0, panY: 0, rotation: 0 },
+  });
+
+  useEffect(() => {
+    const unsubscribe = cameraControlService.subscribe((state) => {
+      setCameraSettings(state as Record<CameraSource, CameraSettings>);
+    });
+
+    return unsubscribe;
+  }, []);
 
   const layouts = [
     {
@@ -109,6 +126,31 @@ export default function CameraControl({ onCameraChange, onLayoutChange }: Camera
     const camera = cameras.find((c) => c.id === cameraId);
     toast.info(`${camera?.label} ${camera?.isActive ? 'desativada' : 'ativada'}`);
   };
+
+  const handleZoomChange = (value: number) => {
+    cameraControlService.setZoom(selectedCameraForZoom as CameraId, value);
+  };
+
+  const handlePanXChange = (value: number) => {
+    cameraControlService.setPanX(selectedCameraForZoom as CameraId, value);
+  };
+
+  const handlePanYChange = (value: number) => {
+    cameraControlService.setPanY(selectedCameraForZoom as CameraId, value);
+  };
+
+  const handleRotationChange = (value: number) => {
+    cameraControlService.setRotation(selectedCameraForZoom as CameraId, value);
+  };
+
+  const handleResetCamera = () => {
+    cameraControlService.resetCamera(selectedCameraForZoom as CameraId);
+    toast.success(`${selectedCameraForZoom.toUpperCase()} resetada`, {
+      description: 'Zoom, pan e rotação voltaram ao padrão',
+    });
+  };
+
+  const currentSettings = cameraSettings[selectedCameraForZoom];
 
   return (
     <div className="space-y-4">
@@ -206,6 +248,143 @@ export default function CameraControl({ onCameraChange, onLayoutChange }: Camera
               </button>
             );
           })}
+        </div>
+      </div>
+
+      {/* Camera Zoom & Pan Controls */}
+      <div className="bg-gray-800 rounded-lg p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <ZoomIn size={16} className="text-orange-500" />
+            <span className="text-sm font-semibold text-white">Controles de Câmera</span>
+          </div>
+          <button
+            onClick={handleResetCamera}
+            className="text-xs text-orange-500 hover:text-orange-400 flex items-center gap-1"
+          >
+            <RefreshCw size={12} />
+            Reset
+          </button>
+        </div>
+
+        {/* Camera Selector */}
+        <div className="mb-4">
+          <label className="text-xs text-gray-400 mb-2 block">Selecionar Câmera</label>
+          <div className="grid grid-cols-5 gap-2">
+            {cameras.filter(c => c.isActive).map((camera) => (
+              <button
+                key={`zoom-${camera.id}`}
+                onClick={() => setSelectedCameraForZoom(camera.id)}
+                className={`${
+                  selectedCameraForZoom === camera.id
+                    ? 'bg-orange-600 ring-2 ring-orange-400'
+                    : 'bg-gray-700 hover:bg-gray-600'
+                } text-white font-semibold py-2 px-2 rounded transition-all text-xs`}
+              >
+                {camera.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Zoom Control */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs text-gray-400 flex items-center gap-1">
+              <ZoomIn size={12} />
+              Zoom
+            </label>
+            <span className="text-xs text-white font-mono">{currentSettings.zoom.toFixed(2)}x</span>
+          </div>
+          <input
+            type="range"
+            min="1"
+            max="3"
+            step="0.1"
+            value={currentSettings.zoom}
+            onChange={(e) => handleZoomChange(parseFloat(e.target.value))}
+            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
+          />
+          <div className="flex justify-between text-xs text-gray-500 mt-1">
+            <span>1x</span>
+            <span>2x</span>
+            <span>3x</span>
+          </div>
+        </div>
+
+        {/* Pan X Control */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs text-gray-400 flex items-center gap-1">
+              <Move size={12} />
+              Pan Horizontal
+            </label>
+            <span className="text-xs text-white font-mono">{currentSettings.panX}</span>
+          </div>
+          <input
+            type="range"
+            min="-100"
+            max="100"
+            step="5"
+            value={currentSettings.panX}
+            onChange={(e) => handlePanXChange(parseInt(e.target.value))}
+            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
+          />
+          <div className="flex justify-between text-xs text-gray-500 mt-1">
+            <span>← Esquerda</span>
+            <span>Centro</span>
+            <span>Direita →</span>
+          </div>
+        </div>
+
+        {/* Pan Y Control */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs text-gray-400 flex items-center gap-1">
+              <Move size={12} className="rotate-90" />
+              Pan Vertical
+            </label>
+            <span className="text-xs text-white font-mono">{currentSettings.panY}</span>
+          </div>
+          <input
+            type="range"
+            min="-100"
+            max="100"
+            step="5"
+            value={currentSettings.panY}
+            onChange={(e) => handlePanYChange(parseInt(e.target.value))}
+            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
+          />
+          <div className="flex justify-between text-xs text-gray-500 mt-1">
+            <span>↑ Cima</span>
+            <span>Centro</span>
+            <span>Baixo ↓</span>
+          </div>
+        </div>
+
+        {/* Rotation Control */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs text-gray-400 flex items-center gap-1">
+              <RotateCw size={12} />
+              Rotação
+            </label>
+            <span className="text-xs text-white font-mono">{currentSettings.rotation}°</span>
+          </div>
+          <input
+            type="range"
+            min="-45"
+            max="45"
+            step="5"
+            value={currentSettings.rotation}
+            onChange={(e) => handleRotationChange(parseInt(e.target.value))}
+            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
+          />
+          <div className="flex justify-between text-xs text-gray-500 mt-1">
+            <span>-45°</span>
+            <span>0°</span>
+            <span>+45°</span>
+          </div>
         </div>
       </div>
 
