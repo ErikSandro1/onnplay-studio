@@ -13,12 +13,13 @@ export default function Landing() {
           <div className="flex items-center justify-between">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center">
-                <Radio className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-white">OnnPlay Studio</h1>
-              </div>
+              <img
+                src="/logo-onnplay.png"
+                alt="OnnPlay"
+                className="h-10"
+                style={{ filter: 'drop-shadow(0 0 10px rgba(255, 107, 0, 0.5))' }}
+              />
+              <h1 className="text-xl font-bold text-white">OnnPlay Studio</h1>
             </div>
 
             {/* Nav */}
@@ -227,14 +228,62 @@ export default function Landing() {
 
       {/* Footer */}
       <footer className="border-t border-gray-800 bg-gray-950">
-        <div className="container mx-auto px-6 py-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center">
-                <Radio className="w-4 h-4 text-white" />
+        <div className="container mx-auto px-6 py-12">
+          <div className="grid md:grid-cols-3 gap-8 mb-8">
+            {/* Logo & Description */}
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <img
+                  src="/logo-onnplay.png"
+                  alt="OnnPlay"
+                  className="h-8"
+                  style={{ filter: 'drop-shadow(0 0 10px rgba(255, 107, 0, 0.5))' }}
+                />
+                <span className="text-white font-semibold">OnnPlay Studio</span>
               </div>
-              <span className="text-white font-semibold">OnnPlay Studio</span>
+              <p className="text-gray-500 text-sm">
+                Plataforma profissional de transmissão ao vivo com IA.
+              </p>
             </div>
+            
+            {/* Quick Links */}
+            <div>
+              <h3 className="text-white font-semibold mb-4">Links Rápidos</h3>
+              <ul className="space-y-2 text-sm">
+                <li>
+                  <button onClick={() => navigate('/pricing')} className="text-gray-500 hover:text-orange-500 transition-colors">
+                    Preços
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => navigate('/login-new')} className="text-gray-500 hover:text-orange-500 transition-colors">
+                    Login
+                  </button>
+                </li>
+                <li>
+                  <a href="#" className="text-gray-500 hover:text-orange-500 transition-colors">
+                    Documentação
+                  </a>
+                </li>
+              </ul>
+            </div>
+            
+            {/* Support */}
+            <div>
+              <h3 className="text-white font-semibold mb-4">Suporte</h3>
+              <p className="text-gray-500 text-sm mb-2">Precisa de ajuda?</p>
+              <a
+                href="mailto:info@onnplay.com"
+                className="text-orange-500 hover:text-orange-400 text-sm font-medium transition-colors inline-block mb-2"
+              >
+                📧 info@onnplay.com
+              </a>
+              <p className="text-gray-600 text-xs">Suporte via IA disponível 24/7</p>
+            </div>
+          </div>
+          
+          {/* Copyright */}
+          <div className="pt-8 border-t border-gray-800 text-center">
             <p className="text-gray-500 text-sm">
               © 2024 OnnPlay Studio. Todos os direitos reservados.
             </p>

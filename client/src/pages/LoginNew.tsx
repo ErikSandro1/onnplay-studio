@@ -69,9 +69,12 @@ export default function LoginNew() {
         <div className="max-w-lg">
           {/* Logo */}
           <div className="flex items-center gap-4 mb-8">
-            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center">
-              <Radio className="w-8 h-8 text-white" />
-            </div>
+            <img
+              src="/logo-onnplay.png"
+              alt="OnnPlay"
+              className="h-16"
+              style={{ filter: 'drop-shadow(0 0 10px rgba(255, 107, 0, 0.5))' }}
+            />
             <div>
               <h1 className="text-3xl font-bold text-white">OnnPlay</h1>
               <p className="text-orange-500 font-semibold">STUDIO PRO</p>
@@ -323,6 +326,18 @@ export default function LoginNew() {
                 Política de Privacidade
               </a>
             </p>
+            
+            {/* Support */}
+            <div className="text-center mt-6 pt-6 border-t border-gray-800">
+              <p className="text-gray-500 text-sm mb-2">Precisa de ajuda?</p>
+              <a
+                href="mailto:info@onnplay.com"
+                className="text-orange-500 hover:text-orange-400 text-sm font-medium transition-colors"
+              >
+                📧 info@onnplay.com
+              </a>
+              <p className="text-gray-600 text-xs mt-2">Suporte via IA disponível 24/7</p>
+            </div>
           </div>
 
           {/* View Pricing */}
