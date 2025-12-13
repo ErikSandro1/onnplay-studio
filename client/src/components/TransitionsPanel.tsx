@@ -23,20 +23,20 @@ const TransitionsPanel: React.FC<TransitionsPanelProps> = ({ onTransitionSelect 
 
   return (
     <div
-      className="p-4 rounded-xl"
+      className="h-full p-4 rounded-xl flex flex-col"
       style={{
         background: '#141B2E',
         border: '2px solid #1E2842',
       }}
     >
       <h3
-        className="text-sm font-bold tracking-wide mb-4"
+        className="text-base font-bold tracking-wide mb-4"
         style={{ color: '#B8C5D6' }}
       >
         TRANSITIONS
       </h3>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 flex-1">
         {transitions.map((transition) => {
           const isActive = activeTransition === transition.type;
 
@@ -44,7 +44,7 @@ const TransitionsPanel: React.FC<TransitionsPanelProps> = ({ onTransitionSelect 
             <button
               key={transition.type}
               onClick={() => handleTransitionClick(transition.type)}
-              className="px-6 py-4 rounded-lg font-bold text-lg transition-all duration-200 hover:scale-105"
+              className="h-full px-6 py-6 rounded-lg font-bold text-xl transition-all duration-200 hover:scale-105 flex items-center justify-center"
               style={{
                 background: isActive ? '#FF6B00' : '#1E2842',
                 color: isActive ? '#FFFFFF' : '#B8C5D6',

@@ -117,59 +117,43 @@ export default function Home() {
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto flex flex-col" style={{ background: '#0A0E1A' }}>
-          {/* Top Section: Video Monitors - NEW DESIGN */}
-          <VideoMonitors />
+        <div className="flex-1 overflow-hidden flex flex-col" style={{ background: '#0A0E1A' }}>
+          {/* Main Content Area - Mockup Layout */}
+          <div className="flex-1 flex overflow-hidden">
+            {/* Left: Monitors + Audio Controls */}
+            <div className="flex-1 flex flex-col p-6 gap-4">
+              {/* Monitors Section - 60% height */}
+              <div className="flex-[6]">
+                <VideoMonitors />
+              </div>
 
-          {/* Controls Section - NEW DESIGN */}
-          <div className="px-6 pb-6">
-            <div className="grid grid-cols-3 gap-6">
-              {/* Left Column: Sources */}
-              <div>
+              {/* Audio Controls Section - 20% height */}
+              <div className="flex-[2]">
+                <AudioControlsPanel />
+              </div>
+
+              {/* Record/Stream + Status Bar - 20% height */}
+              <div className="flex-[2] flex flex-col gap-4">
+                <RecordStreamButtons />
+                <BottomStatusBar isLive={isLive} isRecording={isRecording} />
+              </div>
+            </div>
+
+            {/* Right: Sources + Transitions Column */}
+            <div className="w-80 flex flex-col p-6 gap-6">
+              {/* Sources Panel */}
+              <div className="flex-1">
                 <SourcesPanel />
               </div>
 
-              {/* Center Column: Transitions */}
-              <div>
+              {/* Transitions Panel */}
+              <div className="flex-1">
                 <TransitionsPanel />
               </div>
-
-              {/* Right Column: Audio Controls */}
-              <div>
-                <AudioControlsPanel />
-              </div>
-            </div>
-
-            {/* Record & Stream Buttons */}
-            <div className="mt-6">
-              <RecordStreamButtons />
             </div>
           </div>
 
-          {/* Daily.co Video Embed Section - MOVED DOWN */}
-          <div className="flex-shrink-0 h-80 px-4 pb-4">
-            <div className="h-full rounded-lg overflow-hidden border border-gray-700">
-              <DailyVideoEmbed
-                roomName="OnnPlay Studio Pro Live"
-                roomUrl="https://onnplay.daily.co/studio-pro"
-                onParticipantsChange={setParticipantCount}
-                onParticipants={() => setShowParticipantsPanel(true)}
-                onSettings={() => setShowAdvancedSettings(true)}
-              />
-            </div>
-          </div>
-
-          {/* Scene Gallery */}
-          <div className="flex-shrink-0 h-40 px-4 pb-4">
-            <SceneGallery />
-          </div>
-
-          {/* Bottom Padding */}
-          <div className="flex-shrink-0 h-4"></div>
         </div>
-
-        {/* Status Bar - Fixed at bottom */}
-        <BottomStatusBar isLive={isLive} isRecording={isRecording} />
       </div>
 
       {/* Modals */}

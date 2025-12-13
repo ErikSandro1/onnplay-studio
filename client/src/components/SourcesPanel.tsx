@@ -31,30 +31,30 @@ const SourcesPanel: React.FC<SourcesPanelProps> = ({ onSourceSelect }) => {
   const getIcon = (type: Source['type']) => {
     switch (type) {
       case 'camera':
-        return <Video size={24} />;
+        return <Video size={32} />;
       case 'media':
-        return <Image size={24} />;
+        return <Image size={32} />;
       case 'screen':
-        return <Monitor size={24} />;
+        return <Monitor size={32} />;
     }
   };
 
   return (
     <div
-      className="p-4 rounded-xl"
+      className="h-full p-4 rounded-xl flex flex-col"
       style={{
         background: '#141B2E',
         border: '2px solid #1E2842',
       }}
     >
       <h3
-        className="text-sm font-bold tracking-wide mb-4"
+        className="text-base font-bold tracking-wide mb-4"
         style={{ color: '#B8C5D6' }}
       >
         SOURCES
       </h3>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 flex-1">
         {sources.map((source) => {
           const isSelected = selectedSource === source.id;
           const Icon = getIcon(source.type);

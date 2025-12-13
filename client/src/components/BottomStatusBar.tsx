@@ -37,16 +37,13 @@ const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
 
   return (
     <div
-      className="px-8 py-4 flex items-center justify-between"
+      className="px-8 py-2 flex items-center justify-start gap-8"
       style={{
         background: '#0A0E1A',
         borderTop: '2px solid #1E2842',
       }}
     >
-      {/* Left Side - Empty or can add more info */}
-      <div className="flex-1" />
-
-      {/* Center - Status Indicators */}
+      {/* Status Indicators */}
       <div className="flex items-center gap-8">
         {/* LIVE Indicator */}
         <div className="flex items-center gap-3">
@@ -101,9 +98,6 @@ const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
           </span>
         </div>
       </div>
-
-      {/* Right Side - Empty or can add more info */}
-      <div className="flex-1" />
     </div>
   );
 };

@@ -15,7 +15,7 @@ const RecordStreamButtons: React.FC = () => {
   };
 
   return (
-    <div className="flex items-center justify-center gap-8">
+    <div className="flex items-center justify-start gap-8 h-full">
       {/* RECORD Button - Circular */}
       <div className="flex flex-col items-center gap-3">
         <button
