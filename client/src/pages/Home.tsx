@@ -11,7 +11,10 @@ import VideoMonitors from '@/components/VideoMonitors';
 import SourcesPanel from '@/components/SourcesPanel';
 import TransitionsPanel from '@/components/TransitionsPanel';
 import AudioControls from '@/components/AudioControls';
+import AudioControlsPanel from '@/components/AudioControlsPanel';
 import RecordStreamButtons from '@/components/RecordStreamButtons';
+import MainHeader from '@/components/MainHeader';
+import BottomStatusBar from '@/components/BottomStatusBar';
 import RecordingManager from '@/components/RecordingManager';
 import StreamingManager from '@/components/StreamingManager';
 import AdvancedSettings from '@/components/AdvancedSettings';
@@ -47,6 +50,8 @@ export default function Home() {
   const [, navigate] = useLocation();
   const [activeSection, setActiveSection] = useState('video');
   const [isLive, setIsLive] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(true);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [showMainDashboard, setShowMainDashboard] = useState(false);
   const [showStreamingConfig, setShowStreamingConfig] = useState(false);
@@ -76,14 +81,18 @@ export default function Home() {
   useKeyboardShortcuts({});
 
   return (
-    <div className="h-screen w-screen bg-gray-950 text-white flex overflow-hidden">
+    <div className="h-screen w-screen text-white flex overflow-hidden" style={{ background: '#0A0E1A' }}>
       {/* Sidebar */}
-      <Sidebar activeSection={activeSection} onSectionChange={setActiveSection} />
+      {showSidebar && <Sidebar activeSection={activeSection} onSectionChange={setActiveSection} />}
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header Toolbar */}
-        <StudioHeader
+        {/* Main Header */}
+        <MainHeader onMenuClick={() => setShowSidebar(!showSidebar)} />
+
+        {/* Header Toolbar - Hidden, keeping for PRO features */}
+        <div className="hidden">
+          <StudioHeader
           isLive={isLive}
           participantCount={participantCount}
           onNavigateHome={() => navigate('/')}
@@ -126,7 +135,7 @@ export default function Home() {
 
               {/* Right Column: Audio Controls */}
               <div>
-                <AudioControls />
+                <AudioControlsPanel />
               </div>
             </div>
 
@@ -159,7 +168,7 @@ export default function Home() {
         </div>
 
         {/* Status Bar - Fixed at bottom */}
-        <StatusBar />
+        <BottomStatusBar isLive={isLive} isRecording={isRecording} />
       </div>
 
       {/* Modals */}

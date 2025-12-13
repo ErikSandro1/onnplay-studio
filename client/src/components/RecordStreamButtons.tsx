@@ -1,11 +1,8 @@
 import React, { useState } from 'react';
-import { Circle, Radio } from 'lucide-react';
 
 const RecordStreamButtons: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [recordTime, setRecordTime] = useState('00:00:00');
-  const [streamTime, setStreamTime] = useState('00:00:00');
 
   const handleRecordToggle = () => {
     setIsRecording(!isRecording);
@@ -18,64 +15,64 @@ const RecordStreamButtons: React.FC = () => {
   };
 
   return (
-    <div className="flex items-center gap-4">
-      {/* RECORD Button */}
-      <div className="flex-1">
+    <div className="flex items-center justify-center gap-8">
+      {/* RECORD Button - Circular */}
+      <div className="flex flex-col items-center gap-3">
         <button
           onClick={handleRecordToggle}
-          className="w-full px-8 py-6 rounded-xl font-bold text-xl transition-all duration-200 hover:scale-105 flex items-center justify-center gap-3"
+          className="w-32 h-32 rounded-full transition-all duration-200 hover:scale-110 flex items-center justify-center"
           style={{
-            background: isRecording
-              ? 'linear-gradient(135deg, #FF3366 0%, #FF6B00 100%)'
-              : 'linear-gradient(135deg, #FF6B00 0%, #FF8833 100%)',
-            color: '#FFFFFF',
+            background: '#FF6B00',
             boxShadow: isRecording
-              ? '0 0 30px rgba(255, 51, 102, 0.6)'
-              : '0 0 30px rgba(255, 107, 0, 0.4)',
-            border: isRecording ? '2px solid #FF3366' : '2px solid #FF8833',
+              ? '0 0 40px rgba(255, 107, 0, 0.8)'
+              : '0 0 20px rgba(255, 107, 0, 0.4)',
+            border: '4px solid #FF8833',
           }}
         >
-          <Circle
-            size={24}
-            fill={isRecording ? '#FFFFFF' : 'transparent'}
-            className={isRecording ? 'animate-pulse' : ''}
+          <div
+            className={`w-16 h-16 rounded-full ${
+              isRecording ? 'rounded-md w-12 h-12' : ''
+            } transition-all duration-200`}
+            style={{
+              background: '#FFFFFF',
+            }}
           />
-          <div className="flex flex-col items-start">
-            <span>{isRecording ? 'STOP RECORDING' : 'START RECORD'}</span>
-            {isRecording && (
-              <span className="text-sm font-normal opacity-90">{recordTime}</span>
-            )}
-          </div>
         </button>
+        <span
+          className="text-lg font-bold tracking-wide"
+          style={{ color: '#FF6B00' }}
+        >
+          RECORD
+        </span>
       </div>
 
-      {/* STREAM Button */}
-      <div className="flex-1">
+      {/* STREAM Button - Circular */}
+      <div className="flex flex-col items-center gap-3">
         <button
           onClick={handleStreamToggle}
-          className="w-full px-8 py-6 rounded-xl font-bold text-xl transition-all duration-200 hover:scale-105 flex items-center justify-center gap-3"
+          className="w-32 h-32 rounded-full transition-all duration-200 hover:scale-110 flex items-center justify-center"
           style={{
-            background: isStreaming
-              ? 'linear-gradient(135deg, #FF3366 0%, #FF0055 100%)'
-              : 'linear-gradient(135deg, #00D9FF 0%, #0099FF 100%)',
-            color: '#FFFFFF',
+            background: '#00D9FF',
             boxShadow: isStreaming
-              ? '0 0 30px rgba(255, 51, 102, 0.6)'
-              : '0 0 30px rgba(0, 217, 255, 0.4)',
-            border: isStreaming ? '2px solid #FF3366' : '2px solid #00D9FF',
+              ? '0 0 40px rgba(0, 217, 255, 0.8)'
+              : '0 0 20px rgba(0, 217, 255, 0.4)',
+            border: '4px solid #00AAFF',
           }}
         >
-          <Radio
-            size={24}
-            className={isStreaming ? 'animate-pulse' : ''}
+          <div
+            className="w-16 h-16 rounded-full animate-pulse"
+            style={{
+              background: '#FFFFFF',
+              opacity: isStreaming ? 1 : 0.7,
+            }}
           />
-          <div className="flex flex-col items-start">
-            <span>{isStreaming ? 'STOP STREAM' : 'GO LIVE'}</span>
-            {isStreaming && (
-              <span className="text-sm font-normal opacity-90">{streamTime}</span>
-            )}
-          </div>
         </button>
+        <span
+          className="text-lg font-bold tracking-wide"
+          style={{ color: '#00D9FF' }}
+        >
+          STREAM
+        </span>
       </div>
     </div>
   );
