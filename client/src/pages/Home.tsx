@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import MainHeader from '../components/MainHeader';
-import RightSidebar, { TabId } from '../components/RightSidebar';
+import BroadcastPanel from '../components/BroadcastPanel';
+import ToolsMenu, { ToolId } from '../components/ToolsMenu';
 import ParticipantsStrip from '../components/ParticipantsStrip';
 import ControlBar from '../components/ControlBar';
 import DualMonitors from '../components/DualMonitors';
 
-// Tab Components
+// Tool Components (opened as modals)
 import TransitionSystem from '../components/TransitionSystem';
 import ParticipantManager from '../components/ParticipantManager';
 import AdvancedAudioMixer from '../components/AdvancedAudioMixer';
@@ -19,7 +20,7 @@ import AdvancedSettings from '../components/AdvancedSettings';
 
 const Home: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState<TabId>('broadcast');
+  const [activeTool, setActiveTool] = useState<ToolId | null>(null);
   
   // Control states
   const [isMuted, setIsMuted] = useState(false);
@@ -28,6 +29,11 @@ const Home: React.FC = () => {
   const [isLive, setIsLive] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   
+  // Broadcast stats
+  const [viewers, setViewers] = useState(0);
+  const [duration, setDuration] = useState('00:00:00');
+  const [bitrate, setBitrate] = useState('0 Kbps');
+  
   // Mock participants data
   const [participants] = useState([
     { id: '1', name: 'You', isMuted: false, isCameraOff: false, isSpeaking: false },
@@ -35,115 +41,79 @@ const Home: React.FC = () => {
     { id: '3', name: 'Guest 2', isMuted: true, isCameraOff: false, isSpeaking: false },
   ]);
 
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'broadcast':
-        return (
-          <div className="space-y-4">
-            <h3 className="text-xl font-bold mb-4" style={{ color: '#FFFFFF' }}>
-              Broadcast Controls
-            </h3>
-            
-            <button
-              onClick={() => setIsLive(!isLive)}
-              className="w-full py-4 rounded-xl text-lg font-bold transition-all duration-200 hover:scale-105"
-              style={{
-                background: isLive ? '#DC2626' : '#FF6B00',
-                color: '#FFFFFF',
-                border: isLive ? '2px solid #DC2626' : '2px solid #FF6B00',
-                boxShadow: isLive ? '0 0 30px rgba(220, 38, 38, 0.5)' : '0 0 30px rgba(255, 107, 0, 0.5)'
-              }}
-            >
-              {isLive ? '🔴 END BROADCAST' : '▶️ GO LIVE'}
-            </button>
-            
-            <button
-              onClick={() => setIsRecording(!isRecording)}
-              className="w-full py-4 rounded-xl text-lg font-bold transition-all duration-200 hover:scale-105"
-              style={{
-                background: isRecording ? '#DC2626' : '#DC2626',
-                color: '#FFFFFF',
-                border: '2px solid #DC2626'
-              }}
-            >
-              {isRecording ? '⏹️ STOP RECORDING' : '⏺️ START RECORDING'}
-            </button>
-            
-            <div className="grid grid-cols-2 gap-4 mt-6">
-              <div 
-                className="p-4 rounded-lg"
-                style={{ background: '#1E2842' }}
-              >
-                <div className="text-xs font-semibold mb-2" style={{ color: '#7A8BA3' }}>
-                  STATUS
-                </div>
-                <div className="text-lg font-bold" style={{ color: isLive ? '#FF6B00' : '#7A8BA3' }}>
-                  {isLive ? 'LIVE' : 'OFF AIR'}
-                </div>
-              </div>
-              
-              <div 
-                className="p-4 rounded-lg"
-                style={{ background: '#1E2842' }}
-              >
-                <div className="text-xs font-semibold mb-2" style={{ color: '#7A8BA3' }}>
-                  BITRATE
-                </div>
-                <div className="text-lg font-bold" style={{ color: '#00D9FF' }}>
-                  {isLive ? '6000 Kbps' : '0 Kbps'}
-                </div>
-              </div>
-            </div>
-          </div>
+  // Update duration timer
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    
+    if (isLive || isRecording) {
+      let seconds = 0;
+      interval = setInterval(() => {
+        seconds++;
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+        setDuration(
+          `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
         );
-      
+      }, 1000);
+    } else {
+      setDuration('00:00:00');
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isLive, isRecording]);
+
+  // Update viewers (mock)
+  useEffect(() => {
+    if (isLive) {
+      setViewers(Math.floor(Math.random() * 200) + 50);
+      setBitrate('6000 Kbps');
+    } else {
+      setViewers(0);
+      setBitrate('0 Kbps');
+    }
+  }, [isLive]);
+
+  const handleGoLive = () => {
+    setIsLive(!isLive);
+  };
+
+  const handleStartRecording = () => {
+    setIsRecording(!isRecording);
+  };
+
+  const handleSelectTool = (toolId: ToolId) => {
+    setActiveTool(toolId);
+  };
+
+  const handleCloseTool = () => {
+    setActiveTool(null);
+  };
+
+  const renderToolModal = () => {
+    switch (activeTool) {
       case 'transitions':
-        return <TransitionSystem isOpen={true} onClose={() => {}} />;
-      
+        return <TransitionSystem isOpen={true} onClose={handleCloseTool} />;
       case 'brand':
-        return <OverlayManager isOpen={true} onClose={() => {}} />;
-      
+        return <OverlayManager isOpen={true} onClose={handleCloseTool} />;
       case 'people':
-        return <ParticipantManager isOpen={true} onClose={() => {}} maxParticipants={20} />;
-      
+        return <ParticipantManager isOpen={true} onClose={handleCloseTool} />;
       case 'audio':
-        return <AdvancedAudioMixer isOpen={true} onClose={() => {}} />;
-      
+        return <AdvancedAudioMixer isOpen={true} onClose={handleCloseTool} />;
       case 'camera':
-        return <CameraControl isOpen={true} onClose={() => {}} />;
-      
+        return <CameraControl isOpen={true} onClose={handleCloseTool} />;
       case 'destinations':
-        return <StreamingConfig isOpen={true} onClose={() => {}} />;
-      
+        return <StreamingConfig isOpen={true} onClose={handleCloseTool} />;
       case 'recording':
-        return <RecordingSettings isOpen={true} onClose={() => {}} />;
-      
-      case 'analytics':
-        return (
-          <div className="space-y-4">
-            <h3 className="text-xl font-bold mb-4" style={{ color: '#FFFFFF' }}>
-              Analytics
-            </h3>
-            <div className="text-center py-12" style={{ color: '#7A8BA3' }}>
-              <div className="text-6xl mb-4">📊</div>
-              <div className="text-lg">Analytics coming soon...</div>
-              <div className="text-sm mt-2">Viewers, engagement, bitrate graphs</div>
-            </div>
-          </div>
-        );
-      
+        return <RecordingSettings isOpen={true} onClose={handleCloseTool} />;
       case 'chat':
-        return <UnifiedChat isOpen={true} onClose={() => {}} />;
-      
+        return <UnifiedChat isOpen={true} onClose={handleCloseTool} />;
       case 'settings':
-        return <AdvancedSettings isOpen={true} onClose={() => {}} />;
-      
+        return <AdvancedSettings isOpen={true} onClose={handleCloseTool} />;
       default:
-        return (
-          <div className="text-center py-12" style={{ color: '#7A8BA3' }}>
-            Select a tab to get started
-          </div>
-        );
+        return null;
     }
   };
 
@@ -152,61 +122,93 @@ const Home: React.FC = () => {
       className="flex h-screen overflow-hidden"
       style={{ background: '#0A0E1A' }}
     >
-      {/* Sidebar */}
+      {/* Left Sidebar */}
       {sidebarOpen && <Sidebar />}
-      
+
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col">
         {/* Header */}
         <MainHeader 
-          onMenuClick={() => setSidebarOpen(!sidebarOpen)} 
+          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         />
-        
-        {/* Content Area */}
+
+        {/* Main Area */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Left: Program Monitor + Participants + Controls */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Dual Monitors (PREVIEW + PROGRAM) */}
-            <div className="flex-1 p-4 overflow-hidden">
-              <DualMonitors 
-                isLive={isLive}
-                viewers={isLive ? 127 : 0}
-                duration={isLive ? '00:15:42' : '00:00:00'}
-                previewSource="CAM 1"
-                programSource="CAM 2"
+          {/* Center: Monitors + Participants + Controls */}
+          <div className="flex-1 flex flex-col p-4 gap-4">
+            {/* Monitors */}
+            <div className="flex-1 min-h-0">
+              <DualMonitors />
+            </div>
+
+            {/* Participants Strip */}
+            <div style={{ height: '140px' }}>
+              <ParticipantsStrip participants={participants} />
+            </div>
+
+            {/* Control Bar */}
+            <div>
+              <ControlBar
+                isMuted={isMuted}
+                isCameraOff={isCameraOff}
+                isScreenSharing={isScreenSharing}
+                onToggleMute={() => setIsMuted(!isMuted)}
+                onToggleCamera={() => setIsCameraOff(!isCameraOff)}
+                onToggleScreenShare={() => setIsScreenSharing(!isScreenSharing)}
+                onInvite={() => alert('Invite feature coming soon!')}
+                onLeave={() => {
+                  if (confirm('Are you sure you want to leave the studio?')) {
+                    window.location.href = '/';
+                  }
+                }}
               />
             </div>
-            
-            {/* Participants Strip */}
-            <ParticipantsStrip
-              participants={participants}
-              onToggleMute={(id) => console.log('Toggle mute:', id)}
-              onToggleCamera={(id) => console.log('Toggle camera:', id)}
-              onParticipantClick={(id) => console.log('Participant clicked:', id)}
-            />
-            
-            {/* Control Bar */}
-            <ControlBar
-              isMuted={isMuted}
-              isCameraOff={isCameraOff}
-              isScreenSharing={isScreenSharing}
-              onToggleMute={() => setIsMuted(!isMuted)}
-              onToggleCamera={() => setIsCameraOff(!isCameraOff)}
-              onToggleScreenShare={() => setIsScreenSharing(!isScreenSharing)}
-              onInvite={() => setActiveTab('people')}
-              onLeave={() => console.log('Leave clicked')}
-            />
           </div>
-          
-          {/* Right: Sidebar with Tabs */}
-          <RightSidebar
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
+
+          {/* Right Panel: Broadcast Stats + Tools Menu */}
+          <div 
+            className="flex flex-col"
+            style={{ 
+              width: '400px',
+              background: '#0F1419',
+              borderLeft: '1px solid #1E2842'
+            }}
           >
-            {renderTabContent()}
-          </RightSidebar>
+            {/* Header with Tools Menu */}
+            <div 
+              className="flex items-center justify-between px-4 py-3"
+              style={{ 
+                borderBottom: '1px solid #1E2842',
+                background: '#0A0E1A'
+              }}
+            >
+              <h3 
+                className="text-lg font-bold"
+                style={{ color: '#FFFFFF' }}
+              >
+                Broadcast
+              </h3>
+              <ToolsMenu onSelectTool={handleSelectTool} />
+            </div>
+
+            {/* Broadcast Panel */}
+            <div className="flex-1 overflow-y-auto">
+              <BroadcastPanel
+                isLive={isLive}
+                isRecording={isRecording}
+                viewers={viewers}
+                duration={duration}
+                bitrate={bitrate}
+                onGoLive={handleGoLive}
+                onStartRecording={handleStartRecording}
+              />
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Tool Modals */}
+      {renderToolModal()}
     </div>
   );
 };
