@@ -148,6 +148,7 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
         
         {/* Monitor */}
         <div 
+          data-monitor="program"
           className="flex-1 rounded-lg overflow-hidden relative"
           style={{
             background: '#141B2E',

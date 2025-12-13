@@ -29,10 +29,11 @@ import { streamingService } from '../services/StreamingService';
 import { recordingService } from '../services/RecordingService';
 import { aiAssistantService } from '../services/AIAssistantService';
 import { cameraControlService } from '../services/CameraControlService';
+import { rtmpStreamService } from '../services/RTMPStreamService';
 
 // Context
-import { DailyProvider, useDailyContext } from '../contexts/DailyContext';
-
+import { DailyPrimport { useDailyContext } from '../contexts/DailyContext';
+import { useEffect } from 'react';
 const HomeContent: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
@@ -41,6 +42,14 @@ const HomeContent: React.FC = () => {
   
   // Daily.co context
   const dailyContext = useDailyContext();
+  
+  // Subscribe to RTMP stream stats
+  useEffect(() => {
+    const unsubscribe = rtmpStreamService.subscribe((stats) => {
+      setBitrate(`${stats.bitrate} Kbps`);
+    });
+    return unsubscribe;
+  }, []);
   
   // Control states
   const [isMuted, setIsMuted] = useState(false);
@@ -145,16 +154,19 @@ const HomeContent: React.FC = () => {
   const handleGoLive = async () => {
     try {
       if (isLive) {
-        await streamingService.stopAllStreams();
+        await rtmpStreamService.stopStreaming();
+        setIsLive(false);
       } else {
         // Check if destinations are configured
-        const destinations = streamingService.getAllDestinations();
-        if (destinations.length === 0) {
+        const destinations = rtmpStreamService.getDestinations();
+        const enabled = destinations.filter(d => d.enabled);
+        if (enabled.length === 0) {
           alert('Please configure streaming destinations first (Tools → Destinations)');
           setActiveTool('destinations');
           return;
         }
-        await streamingService.startAllStreams();
+        await rtmpStreamService.startStreaming();
+        setIsLive(true);
       }
     } catch (err) {
       console.error('Failed to toggle streaming:', err);
