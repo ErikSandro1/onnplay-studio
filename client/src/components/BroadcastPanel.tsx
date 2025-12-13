@@ -21,9 +21,9 @@ const BroadcastPanel: React.FC<BroadcastPanelProps> = ({
   onStartRecording,
 }) => {
   return (
-    <div className="flex flex-col h-full p-4 gap-4">
+    <div className="flex flex-col h-full p-4 gap-3">
       {/* Stats Section */}
-      <div className="space-y-3">
+      <div className="space-y-2">
         {/* LIVE Status */}
         <div 
           className="p-4 rounded-xl"
@@ -113,10 +113,10 @@ const BroadcastPanel: React.FC<BroadcastPanelProps> = ({
       </div>
 
       {/* Action Buttons */}
-      <div className="flex-1 flex flex-col justify-end gap-3">
+      <div className="mt-auto pt-3 space-y-2">
         <button
           onClick={onGoLive}
-          className="w-full py-5 rounded-xl text-lg font-bold transition-all duration-200 hover:scale-105"
+          className="w-full py-3 rounded-xl text-base font-bold transition-all duration-200 hover:scale-105"
           style={{
             background: isLive ? '#DC2626' : '#FF6B00',
             color: '#FFFFFF',
@@ -131,7 +131,7 @@ const BroadcastPanel: React.FC<BroadcastPanelProps> = ({
         
         <button
           onClick={onStartRecording}
-          className="w-full py-5 rounded-xl text-lg font-bold transition-all duration-200 hover:scale-105"
+          className="w-full py-3 rounded-xl text-base font-bold transition-all duration-200 hover:scale-105"
           style={{
             background: isRecording ? '#DC2626' : '#DC2626',
             color: '#FFFFFF',
