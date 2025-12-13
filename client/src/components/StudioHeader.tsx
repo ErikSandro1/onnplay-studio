@@ -17,6 +17,12 @@ interface StudioHeaderProps {
   onUnifiedChat?: () => void;
   onOverlayManager?: () => void;
   onAdvancedAudioMixer?: () => void;
+  onTransitionSystem?: () => void;
+  onCameraControl?: () => void;
+  onRecordingSettings?: () => void;
+  onStreamingSettings?: () => void;
+  onAudioProcessor?: () => void;
+  onParticipantManager?: () => void;
 }
 
 export default function StudioHeader({
@@ -34,6 +40,12 @@ export default function StudioHeader({
   onUnifiedChat,
   onOverlayManager,
   onAdvancedAudioMixer,
+  onTransitionSystem,
+  onCameraControl,
+  onRecordingSettings,
+  onStreamingSettings,
+  onAudioProcessor,
+  onParticipantManager,
 }: StudioHeaderProps) {
   return (
     <div className="h-14 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-4 flex-shrink-0">
@@ -66,11 +78,16 @@ export default function StudioHeader({
           {onUnifiedChat && <ActionButton icon={MessageCircle} onClick={onUnifiedChat} title="Chat Unificado" badge="PRO" badgeColor="bg-orange-600" />}
           {onOverlayManager && <ActionButton icon={Layers} onClick={onOverlayManager} title="Overlays" badge="PRO" badgeColor="bg-orange-600" />}
           {onAdvancedAudioMixer && <ActionButton icon={Volume2} onClick={onAdvancedAudioMixer} title="Mixer Avançado" badge="PRO" badgeColor="bg-orange-600" />}
+          {onTransitionSystem && <ActionButton icon={Zap} onClick={onTransitionSystem} title="Transições" badge="PRO" badgeColor="bg-orange-600" />}
+          {onCameraControl && <ActionButton icon={Video} onClick={onCameraControl} title="Câmeras" badge="PRO" badgeColor="bg-orange-600" />}
+          {onParticipantManager && <ActionButton icon={UsersIcon} onClick={onParticipantManager} title="Participantes (20)" badge="PRO" badgeColor="bg-orange-600" />}
         </div>
 
         {/* System Group */}
         <div className="flex items-center gap-1 bg-gray-800/50 p-1 rounded-lg border border-gray-800 ml-2">
-          <ActionButton icon={Zap} onClick={onStreamingConfig} title="Stream Config" />
+          {onRecordingSettings && <ActionButton icon={Video} onClick={onRecordingSettings} title="Config. Gravação" />}
+          {onStreamingSettings && <ActionButton icon={Zap} onClick={onStreamingSettings} title="Config. Streaming" />}
+          {onAudioProcessor && <ActionButton icon={Volume2} onClick={onAudioProcessor} title="Proc. Áudio" />}
           <ActionButton icon={BarChart3} onClick={onDashboard} title="Analytics" />
           <ActionButton icon={Settings} onClick={onSettings} title="Configurações" />
         </div>
