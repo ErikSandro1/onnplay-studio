@@ -63,9 +63,9 @@ export default function LoginNew() {
   }
 
   return (
-    <div className="h-screen w-screen bg-gray-950 flex">
+    <div className="h-screen w-screen flex" style={{ background: '#0A0E1A' }}>
       {/* Left Side - Branding */}
-      <div className="hidden lg:flex flex-1 bg-gradient-to-br from-gray-900 via-gray-950 to-black items-center justify-center p-12">
+      <div className="hidden lg:flex flex-1 items-center justify-center p-12" style={{ background: 'linear-gradient(to bottom right, #0A0E1A, #1E2842, #0A0E1A)' }}>
         <div className="max-w-lg">
           {/* Logo */}
           <div className="flex items-center gap-4 mb-8">
@@ -77,7 +77,7 @@ export default function LoginNew() {
             />
             <div>
               <h1 className="text-3xl font-bold text-white">OnnPlay</h1>
-              <p className="text-orange-500 font-semibold">STUDIO PRO</p>
+              <p className="text-orange-500 font-semibold text-sm">STUDIO PRO</p>
             </div>
           </div>
 
