@@ -1,215 +1,210 @@
 import React, { useState } from 'react';
 import Sidebar from '../components/Sidebar';
 import MainHeader from '../components/MainHeader';
-import VideoMonitors from '../components/VideoMonitors';
-import SourcesPanel from '../components/SourcesPanel';
-import TransitionsPanel from '../components/TransitionsPanel';
-import AudioControlsPanel from '../components/AudioControlsPanel';
-import RecordStreamButtons from '../components/RecordStreamButtons';
-import BottomStatusBar from '../components/BottomStatusBar';
+import RightSidebar, { TabId } from '../components/RightSidebar';
+import ParticipantsStrip from '../components/ParticipantsStrip';
+import ControlBar from '../components/ControlBar';
+import ProgramMonitor from '../components/ProgramMonitor';
 
-// PRO Components
-import AdvancedSettings from '../components/AdvancedSettings';
-import MainDashboard from '../components/MainDashboard';
-import StreamingConfig from '../components/StreamingConfig';
-import InvitePanel from '../components/InvitePanel';
-import ParticipantsPanel from '../components/ParticipantsPanel';
-import LiveChat from '../components/LiveChat';
-import ReactionsPanel from '../components/ReactionsPanel';
-import RecordingVideocall from '../components/RecordingVideocall';
-import UnifiedChat from '../components/UnifiedChat';
-import OverlayManager from '../components/OverlayManager';
-import AdvancedAudioMixer from '../components/AdvancedAudioMixer';
+// Tab Components
 import TransitionSystem from '../components/TransitionSystem';
-import CameraControl from '../components/CameraControl';
-import RecordingSettings from '../components/RecordingSettings';
-import StreamingSettings from '../components/StreamingSettings';
-import AudioProcessor from '../components/AudioProcessor';
 import ParticipantManager from '../components/ParticipantManager';
-import NotificationCenter from '../components/NotificationCenter';
+import AdvancedAudioMixer from '../components/AdvancedAudioMixer';
+import CameraControl from '../components/CameraControl';
+import OverlayManager from '../components/OverlayManager';
+import StreamingConfig from '../components/StreamingConfig';
+import RecordingSettings from '../components/RecordingSettings';
+import UnifiedChat from '../components/UnifiedChat';
+import AdvancedSettings from '../components/AdvancedSettings';
 
 const Home: React.FC = () => {
-  const [showSidebar, setShowSidebar] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState<TabId>('broadcast');
+  
+  // Control states
+  const [isMuted, setIsMuted] = useState(false);
+  const [isCameraOff, setIsCameraOff] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  
+  // Mock participants data
+  const [participants] = useState([
+    { id: '1', name: 'You', isMuted: false, isCameraOff: false, isSpeaking: false },
+    { id: '2', name: 'Guest 1', isMuted: false, isCameraOff: false, isSpeaking: false },
+    { id: '3', name: 'Guest 2', isMuted: true, isCameraOff: false, isSpeaking: false },
+  ]);
 
-  // PRO Modals States
-  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
-  const [showMainDashboard, setShowMainDashboard] = useState(false);
-  const [showStreamingConfig, setShowStreamingConfig] = useState(false);
-  const [showInvitePanel, setShowInvitePanel] = useState(false);
-  const [showParticipantsPanel, setShowParticipantsPanel] = useState(false);
-  const [showLiveChat, setShowLiveChat] = useState(false);
-  const [showReactions, setShowReactions] = useState(false);
-  const [showRecordingVideocall, setShowRecordingVideocall] = useState(false);
-  const [showUnifiedChat, setShowUnifiedChat] = useState(false);
-  const [showOverlayManager, setShowOverlayManager] = useState(false);
-  const [showAdvancedAudioMixer, setShowAdvancedAudioMixer] = useState(false);
-  const [showTransitionSystem, setShowTransitionSystem] = useState(false);
-  const [showCameraControl, setShowCameraControl] = useState(false);
-  const [showRecordingSettings, setShowRecordingSettings] = useState(false);
-  const [showStreamingSettings, setShowStreamingSettings] = useState(false);
-  const [showAudioProcessor, setShowAudioProcessor] = useState(false);
-  const [showParticipantManager, setShowParticipantManager] = useState(false);
-
-  return (
-    <div className="flex h-screen overflow-hidden" style={{ background: '#0A0E1A' }}>
-      {/* Sidebar */}
-      {showSidebar && (
-        <div className="flex-shrink-0">
-          <Sidebar />
-        </div>
-      )}
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <MainHeader onMenuClick={() => setShowSidebar(!showSidebar)} />
-
-        {/* Content Area */}
-        <div className="flex-1 overflow-y-auto" style={{ background: '#0A0E1A' }}>
-          <div className="flex p-6 gap-6" style={{ minHeight: '100%' }}>
-            {/* Left Side: Monitors + Audio + Buttons */}
-            <div className="flex-1 flex flex-col gap-6">
-              {/* Video Monitors - LARGE */}
-              <div style={{ height: '500px', minHeight: '500px', maxHeight: '500px', display: 'flex', flexDirection: 'column' }}>
-                <VideoMonitors />
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'broadcast':
+        return (
+          <div className="space-y-4">
+            <h3 className="text-xl font-bold mb-4" style={{ color: '#FFFFFF' }}>
+              Broadcast Controls
+            </h3>
+            
+            <button
+              onClick={() => setIsLive(!isLive)}
+              className="w-full py-6 rounded-xl text-xl font-bold transition-all duration-200 hover:scale-105"
+              style={{
+                background: isLive ? '#DC2626' : '#FF6B00',
+                color: '#FFFFFF',
+                border: isLive ? '2px solid #DC2626' : '2px solid #FF6B00',
+                boxShadow: isLive ? '0 0 30px rgba(220, 38, 38, 0.5)' : '0 0 30px rgba(255, 107, 0, 0.5)'
+              }}
+            >
+              {isLive ? '🔴 END BROADCAST' : '▶️ GO LIVE'}
+            </button>
+            
+            <button
+              onClick={() => setIsRecording(!isRecording)}
+              className="w-full py-6 rounded-xl text-xl font-bold transition-all duration-200 hover:scale-105"
+              style={{
+                background: isRecording ? '#DC2626' : '#DC2626',
+                color: '#FFFFFF',
+                border: '2px solid #DC2626'
+              }}
+            >
+              {isRecording ? '⏹️ STOP RECORDING' : '⏺️ START RECORDING'}
+            </button>
+            
+            <div className="grid grid-cols-2 gap-4 mt-6">
+              <div 
+                className="p-4 rounded-lg"
+                style={{ background: '#1E2842' }}
+              >
+                <div className="text-xs font-semibold mb-2" style={{ color: '#7A8BA3' }}>
+                  STATUS
+                </div>
+                <div className="text-lg font-bold" style={{ color: isLive ? '#FF6B00' : '#7A8BA3' }}>
+                  {isLive ? 'LIVE' : 'OFF AIR'}
+                </div>
               </div>
-
-              {/* Audio Controls */}
-              <div style={{ height: '120px' }}>
-                <AudioControlsPanel />
-              </div>
-
-              {/* Record/Stream Buttons */}
-              <div style={{ height: '140px' }}>
-                <RecordStreamButtons />
-              </div>
-
-              {/* Status Bar */}
-              <div>
-                <BottomStatusBar isLive={isLive} isRecording={isRecording} />
-              </div>
-            </div>
-
-            {/* Right Side: Sources + Transitions */}
-            <div className="flex flex-col gap-6" style={{ width: '320px', flexShrink: 0 }}>
-              {/* Sources Panel */}
-              <div style={{ height: '400px' }}>
-                <SourcesPanel />
-              </div>
-
-              {/* Transitions Panel */}
-              <div style={{ height: '350px' }}>
-                <TransitionsPanel onTransitionSelect={(type) => {
-                  // Abre o TransitionSystem quando clicar em uma transição
-                  setShowTransitionSystem(true);
-                }} />
+              
+              <div 
+                className="p-4 rounded-lg"
+                style={{ background: '#1E2842' }}
+              >
+                <div className="text-xs font-semibold mb-2" style={{ color: '#7A8BA3' }}>
+                  BITRATE
+                </div>
+                <div className="text-lg font-bold" style={{ color: '#00D9FF' }}>
+                  {isLive ? '6000 Kbps' : '0 Kbps'}
+                </div>
               </div>
             </div>
           </div>
+        );
+      
+      case 'transitions':
+        return <TransitionSystem isOpen={true} onClose={() => {}} />;
+      
+      case 'brand':
+        return <OverlayManager isOpen={true} onClose={() => {}} />;
+      
+      case 'people':
+        return <ParticipantManager isOpen={true} onClose={() => {}} maxParticipants={20} />;
+      
+      case 'audio':
+        return <AdvancedAudioMixer isOpen={true} onClose={() => {}} />;
+      
+      case 'camera':
+        return <CameraControl isOpen={true} onClose={() => {}} />;
+      
+      case 'destinations':
+        return <StreamingConfig isOpen={true} onClose={() => {}} />;
+      
+      case 'recording':
+        return <RecordingSettings isOpen={true} onClose={() => {}} />;
+      
+      case 'analytics':
+        return (
+          <div className="space-y-4">
+            <h3 className="text-xl font-bold mb-4" style={{ color: '#FFFFFF' }}>
+              Analytics
+            </h3>
+            <div className="text-center py-12" style={{ color: '#7A8BA3' }}>
+              <div className="text-6xl mb-4">📊</div>
+              <div className="text-lg">Analytics coming soon...</div>
+              <div className="text-sm mt-2">Viewers, engagement, bitrate graphs</div>
+            </div>
+          </div>
+        );
+      
+      case 'chat':
+        return <UnifiedChat isOpen={true} onClose={() => {}} />;
+      
+      case 'settings':
+        return <AdvancedSettings isOpen={true} onClose={() => {}} />;
+      
+      default:
+        return (
+          <div className="text-center py-12" style={{ color: '#7A8BA3' }}>
+            Select a tab to get started
+          </div>
+        );
+    }
+  };
+
+  return (
+    <div 
+      className="flex h-screen overflow-hidden"
+      style={{ background: '#0A0E1A' }}
+    >
+      {/* Sidebar */}
+      {sidebarOpen && <Sidebar />}
+      
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Header */}
+        <MainHeader 
+          onMenuClick={() => setSidebarOpen(!sidebarOpen)} 
+        />
+        
+        {/* Content Area */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left: Program Monitor + Participants + Controls */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Program Monitor */}
+            <div className="flex-1 p-6 overflow-hidden">
+              <ProgramMonitor 
+                isLive={isLive}
+                viewers={isLive ? 127 : 0}
+                duration={isLive ? '00:15:42' : '00:00:00'}
+              />
+            </div>
+            
+            {/* Participants Strip */}
+            <ParticipantsStrip
+              participants={participants}
+              onToggleMute={(id) => console.log('Toggle mute:', id)}
+              onToggleCamera={(id) => console.log('Toggle camera:', id)}
+              onParticipantClick={(id) => console.log('Participant clicked:', id)}
+            />
+            
+            {/* Control Bar */}
+            <ControlBar
+              isMuted={isMuted}
+              isCameraOff={isCameraOff}
+              isScreenSharing={isScreenSharing}
+              onToggleMute={() => setIsMuted(!isMuted)}
+              onToggleCamera={() => setIsCameraOff(!isCameraOff)}
+              onToggleScreenShare={() => setIsScreenSharing(!isScreenSharing)}
+              onInvite={() => setActiveTab('people')}
+              onLeave={() => console.log('Leave clicked')}
+            />
+          </div>
+          
+          {/* Right: Sidebar with Tabs */}
+          <RightSidebar
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+          >
+            {renderTabContent()}
+          </RightSidebar>
         </div>
       </div>
-
-      {/* PRO MODALS */}
-      {showMainDashboard && (
-        <div className="fixed inset-0 z-50">
-          <MainDashboard />
-        </div>
-      )}
-
-      {showAdvancedSettings && (
-        <div className="fixed inset-0 z-50">
-          <AdvancedSettings isOpen={true} onClose={() => setShowAdvancedSettings(false)} />
-        </div>
-      )}
-
-      <StreamingConfig
-        isOpen={showStreamingConfig}
-        onClose={() => setShowStreamingConfig(false)}
-      />
-
-      <InvitePanel
-        isOpen={showInvitePanel}
-        onClose={() => setShowInvitePanel(false)}
-        roomName="OnnPlay Studio Pro Live"
-        roomUrl="https://onnplay.daily.co/studio-pro"
-      />
-
-      <ParticipantsPanel
-        isOpen={showParticipantsPanel}
-        onClose={() => setShowParticipantsPanel(false)}
-        onParticipantRemove={(id) => {
-          console.log('Participante removido:', id);
-        }}
-      />
-
-      <LiveChat
-        isOpen={showLiveChat}
-        onClose={() => setShowLiveChat(false)}
-        userName="Você"
-        userRole="host"
-      />
-
-      <ReactionsPanel
-        isOpen={showReactions}
-        onClose={() => setShowReactions(false)}
-      />
-
-      <RecordingVideocall
-        isOpen={showRecordingVideocall}
-        onClose={() => setShowRecordingVideocall(false)}
-        isLive={isLive}
-      />
-
-      <UnifiedChat
-        isOpen={showUnifiedChat}
-        onClose={() => setShowUnifiedChat(false)}
-      />
-
-      <OverlayManager
-        isOpen={showOverlayManager}
-        onClose={() => setShowOverlayManager(false)}
-      />
-
-      <AdvancedAudioMixer
-        isOpen={showAdvancedAudioMixer}
-        onClose={() => setShowAdvancedAudioMixer(false)}
-      />
-
-      <TransitionSystem
-        isOpen={showTransitionSystem}
-        onClose={() => setShowTransitionSystem(false)}
-      />
-
-      <CameraControl
-        isOpen={showCameraControl}
-        onClose={() => setShowCameraControl(false)}
-      />
-
-      <RecordingSettings
-        isOpen={showRecordingSettings}
-        onClose={() => setShowRecordingSettings(false)}
-      />
-
-      <StreamingSettings
-        isOpen={showStreamingSettings}
-        onClose={() => setShowStreamingSettings(false)}
-      />
-
-      <AudioProcessor
-        isOpen={showAudioProcessor}
-        onClose={() => setShowAudioProcessor(false)}
-      />
-
-      <ParticipantManager
-        isOpen={showParticipantManager}
-        onClose={() => setShowParticipantManager(false)}
-        maxParticipants={20}
-      />
-
-      {/* Notification Center */}
-      <NotificationCenter />
     </div>
   );
 };
