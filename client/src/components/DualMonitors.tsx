@@ -58,26 +58,49 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
             boxShadow: '0 0 20px rgba(0, 217, 255, 0.2)',
           }}
         >
+          {/* Gradient Background */}
+          <div 
+            className="absolute inset-0"
+            style={{
+              background: 'radial-gradient(circle at center, rgba(0, 217, 255, 0.1) 0%, rgba(20, 27, 46, 0.8) 70%)',
+            }}
+          />
+          
+          {/* Animated Circles */}
+          <div 
+            className="absolute inset-0 opacity-20"
+            style={{
+              background: 'radial-gradient(circle at 30% 40%, rgba(0, 217, 255, 0.3) 0%, transparent 50%), radial-gradient(circle at 70% 60%, rgba(0, 217, 255, 0.2) 0%, transparent 50%)',
+              animation: 'pulse 4s ease-in-out infinite',
+            }}
+          />
+          
           {/* Placeholder Content */}
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
               <div 
-                className="text-6xl font-bold mb-2"
-                style={{ color: '#00D9FF' }}
+                className="text-7xl font-bold mb-4 animate-pulse"
+                style={{ color: '#00D9FF', filter: 'drop-shadow(0 0 10px rgba(0, 217, 255, 0.5))' }}
               >
                 🎬
               </div>
               <div 
-                className="text-lg font-semibold"
-                style={{ color: '#00D9FF' }}
+                className="text-2xl font-bold mb-2"
+                style={{ color: '#00D9FF', textShadow: '0 0 10px rgba(0, 217, 255, 0.5)' }}
               >
                 NEXT UP
               </div>
               <div 
-                className="text-sm mt-1"
+                className="text-base mt-2 font-medium"
                 style={{ color: '#7A8BA3' }}
               >
                 Select source and transition
+              </div>
+              <div 
+                className="mt-4 text-xs"
+                style={{ color: '#4A5568' }}
+              >
+                Ready for TAKE
               </div>
             </div>
           </div>
@@ -165,27 +188,54 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
             boxShadow: '0 0 20px rgba(255, 107, 0, 0.3)',
           }}
         >
+          {/* Gradient Background */}
+          <div 
+            className="absolute inset-0"
+            style={{
+              background: isLive 
+                ? 'radial-gradient(circle at center, rgba(255, 107, 0, 0.15) 0%, rgba(20, 27, 46, 0.8) 70%)'
+                : 'radial-gradient(circle at center, rgba(255, 107, 0, 0.08) 0%, rgba(20, 27, 46, 0.9) 70%)',
+            }}
+          />
+          
+          {/* Animated Circles */}
+          <div 
+            className="absolute inset-0 opacity-20"
+            style={{
+              background: 'radial-gradient(circle at 40% 30%, rgba(255, 107, 0, 0.3) 0%, transparent 50%), radial-gradient(circle at 60% 70%, rgba(255, 107, 0, 0.2) 0%, transparent 50%)',
+              animation: isLive ? 'pulse 3s ease-in-out infinite' : 'pulse 6s ease-in-out infinite',
+            }}
+          />
+          
           {/* Placeholder Content */}
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
               <div 
-                className="text-6xl font-bold mb-2"
-                style={{ color: '#FF6B00' }}
+                className={`text-7xl font-bold mb-4 ${isLive ? 'animate-pulse' : ''}`}
+                style={{ color: '#FF6B00', filter: 'drop-shadow(0 0 15px rgba(255, 107, 0, 0.6))' }}
               >
-                📺
+                {isLive ? '🔴' : '📺'}
               </div>
               <div 
-                className="text-lg font-semibold"
-                style={{ color: '#FF6B00' }}
+                className="text-2xl font-bold mb-2"
+                style={{ color: '#FF6B00', textShadow: '0 0 10px rgba(255, 107, 0, 0.5)' }}
               >
                 {isLive ? 'ON AIR' : 'OFF AIR'}
               </div>
               <div 
-                className="text-sm mt-1"
+                className="text-base mt-2 font-medium"
                 style={{ color: '#7A8BA3' }}
               >
                 {isLive ? 'Broadcasting to your audience' : 'Ready to go live'}
               </div>
+              {!isLive && (
+                <div 
+                  className="mt-4 text-xs"
+                  style={{ color: '#4A5568' }}
+                >
+                  Press GO LIVE to start
+                </div>
+              )}
             </div>
           </div>
           

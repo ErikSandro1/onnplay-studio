@@ -48,6 +48,18 @@ const HomeContent: React.FC = () => {
   const [duration, setDuration] = useState('00:00:00');
   const [bitrate, setBitrate] = useState('0 Kbps');
 
+  // Mock participants (used when Daily.co is not connected)
+  const mockParticipants = [
+    { id: '1', name: 'You (Local)', isMuted: false, isCameraOff: false, isSpeaking: false, isLocal: true },
+    { id: '2', name: 'Guest 1', isMuted: false, isCameraOff: false, isSpeaking: false, isLocal: false },
+    { id: '3', name: 'Guest 2', isMuted: true, isCameraOff: false, isSpeaking: false, isLocal: false },
+  ];
+
+  // Use Daily.co participants if connected, otherwise use mock
+  const displayParticipants = dailyContext.isConnected 
+    ? dailyContext.participants 
+    : mockParticipants;
+
   // Initialize services
   useEffect(() => {
     console.log('🚀 OnnPlay Studio - Services initialized');
@@ -235,7 +247,7 @@ const HomeContent: React.FC = () => {
 
             {/* Participants Strip */}
             <div style={{ height: '140px' }}>
-              <ParticipantsStrip participants={dailyContext.participants} />
+              <ParticipantsStrip participants={displayParticipants} />
             </div>
 
             {/* Control Bar */}
