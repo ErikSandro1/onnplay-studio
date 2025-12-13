@@ -33,6 +33,9 @@ import { rtmpStreamService } from '../services/RTMPStreamService';
 
 // Context
 import { DailyProvider, useDailyContext } from '../contexts/DailyContext';
+
+// Hooks
+import { useBroadcast } from '../hooks/useBroadcast';
 const HomeContent: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
@@ -41,6 +44,9 @@ const HomeContent: React.FC = () => {
   
   // Daily.co context
   const dailyContext = useDailyContext();
+  
+  // Broadcast tracking
+  const { startBroadcast, endBroadcast, updateViewers, broadcastId } = useBroadcast();
   
   // Subscribe to RTMP stream stats
   useEffect(() => {
@@ -153,8 +159,14 @@ const HomeContent: React.FC = () => {
   const handleGoLive = async () => {
     try {
       if (isLive) {
+        // Stop streaming
         await rtmpStreamService.stopStreaming();
         setIsLive(false);
+        
+        // End broadcast tracking
+        if (broadcastId) {
+          await endBroadcast(viewers); // Pass peak viewers
+        }
       } else {
         // Check if destinations are configured
         const destinations = rtmpStreamService.getDestinations();
@@ -164,6 +176,20 @@ const HomeContent: React.FC = () => {
           setActiveTool('destinations');
           return;
         }
+        
+        // Start broadcast tracking first
+        const platform = enabled[0]?.name || 'Multi-platform';
+        const quality = '1080p'; // Get from settings
+        const participantsCount = displayParticipants.length;
+        
+        const newBroadcastId = await startBroadcast(platform, quality, participantsCount);
+        
+        if (!newBroadcastId) {
+          // Permission denied or error (toast already shown)
+          return;
+        }
+        
+        // Start actual streaming
         await rtmpStreamService.startStreaming();
         setIsLive(true);
       }
