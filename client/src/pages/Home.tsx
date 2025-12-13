@@ -24,6 +24,9 @@ import CameraComposer from '@/components/CameraComposer';
 import DataPersistenceManager from '@/components/DataPersistenceManager';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { toast } from 'sonner';
+import UnifiedChat from '@/components/UnifiedChat';
+import OverlayManager from '@/components/OverlayManager';
+import AdvancedAudioMixer from '@/components/AdvancedAudioMixer';
 
 export default function Home() {
   // The userAuth hooks provides authentication state
@@ -42,6 +45,9 @@ export default function Home() {
   const [showLiveChat, setShowLiveChat] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
   const [showRecordingVideocall, setShowRecordingVideocall] = useState(false);
+  const [showUnifiedChat, setShowUnifiedChat] = useState(false);
+  const [showOverlayManager, setShowOverlayManager] = useState(false);
+  const [showAdvancedAudioMixer, setShowAdvancedAudioMixer] = useState(false);
 
   const handleTake = () => {
     setIsLive(!isLive);
@@ -72,6 +78,9 @@ export default function Home() {
           onRecordingVideocall={() => setShowRecordingVideocall(true)}
           onReactions={() => setShowReactions(true)}
           onChat={() => setShowLiveChat(true)}
+          onUnifiedChat={() => setShowUnifiedChat(true)}
+          onOverlayManager={() => setShowOverlayManager(true)}
+          onAdvancedAudioMixer={() => setShowAdvancedAudioMixer(true)}
         />
 
         {/* Scrollable Content */}
@@ -211,6 +220,24 @@ export default function Home() {
         isOpen={showRecordingVideocall}
         onClose={() => setShowRecordingVideocall(false)}
         isLive={isLive}
+      />
+
+      {/* Unified Chat */}
+      <UnifiedChat
+        isOpen={showUnifiedChat}
+        onClose={() => setShowUnifiedChat(false)}
+      />
+
+      {/* Overlay Manager */}
+      <OverlayManager
+        isOpen={showOverlayManager}
+        onClose={() => setShowOverlayManager(false)}
+      />
+
+      {/* Advanced Audio Mixer */}
+      <AdvancedAudioMixer
+        isOpen={showAdvancedAudioMixer}
+        onClose={() => setShowAdvancedAudioMixer(false)}
       />
 
       {/* Notification Center */}

@@ -1,4 +1,4 @@
-import { Home as HomeIcon, Share2, Users as UsersIcon, Zap, BarChart3, Settings, Video, Smile, MessageSquare } from 'lucide-react';
+import { Home as HomeIcon, Share2, Users as UsersIcon, Zap, BarChart3, Settings, Video, Smile, MessageSquare, MessageCircle, Layers, Volume2 } from 'lucide-react';
 import CompactClock from './CompactClock';
 import { useLocation } from 'wouter';
 
@@ -14,6 +14,9 @@ interface StudioHeaderProps {
   onRecordingVideocall: () => void;
   onReactions: () => void;
   onChat: () => void;
+  onUnifiedChat?: () => void;
+  onOverlayManager?: () => void;
+  onAdvancedAudioMixer?: () => void;
 }
 
 export default function StudioHeader({
@@ -28,6 +31,9 @@ export default function StudioHeader({
   onRecordingVideocall,
   onReactions,
   onChat,
+  onUnifiedChat,
+  onOverlayManager,
+  onAdvancedAudioMixer,
 }: StudioHeaderProps) {
   return (
     <div className="h-14 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-4 flex-shrink-0">
@@ -55,6 +61,13 @@ export default function StudioHeader({
           <ActionButton icon={Video} onClick={onRecordingVideocall} title="Gravar Chamada" />
         </div>
 
+        {/* Pro Features Group */}
+        <div className="flex items-center gap-1 bg-gradient-to-r from-orange-900/30 to-orange-800/30 p-1 rounded-lg border border-orange-700/50 ml-2">
+          {onUnifiedChat && <ActionButton icon={MessageCircle} onClick={onUnifiedChat} title="Chat Unificado" badge="PRO" badgeColor="bg-orange-600" />}
+          {onOverlayManager && <ActionButton icon={Layers} onClick={onOverlayManager} title="Overlays" badge="PRO" badgeColor="bg-orange-600" />}
+          {onAdvancedAudioMixer && <ActionButton icon={Volume2} onClick={onAdvancedAudioMixer} title="Mixer Avançado" badge="PRO" badgeColor="bg-orange-600" />}
+        </div>
+
         {/* System Group */}
         <div className="flex items-center gap-1 bg-gray-800/50 p-1 rounded-lg border border-gray-800 ml-2">
           <ActionButton icon={Zap} onClick={onStreamingConfig} title="Stream Config" />
@@ -67,6 +80,8 @@ export default function StudioHeader({
 }
 
 function ActionButton({ icon: Icon, onClick, title, badge, badgeColor }: any) {
+  const isTextBadge = typeof badge === 'string' && badge.length > 2;
+  
   return (
     <button
       onClick={onClick}
@@ -75,7 +90,7 @@ function ActionButton({ icon: Icon, onClick, title, badge, badgeColor }: any) {
     >
       <Icon size={18} />
       {badge && (
-        <span className={`absolute -top-1 -right-1 w-4 h-4 ${badgeColor || 'bg-blue-600'} rounded-full text-[10px] text-white font-bold flex items-center justify-center border border-gray-900`}>
+        <span className={`absolute -top-1 -right-1 ${isTextBadge ? 'px-1.5 py-0.5' : 'w-4 h-4'} ${badgeColor || 'bg-blue-600'} rounded-full text-[10px] text-white font-bold flex items-center justify-center border border-gray-900`}>
           {badge}
         </span>
       )}
