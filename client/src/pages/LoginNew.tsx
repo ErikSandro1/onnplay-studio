@@ -72,7 +72,7 @@ export default function LoginNew() {
             <img
               src="/logo-gold-clean-v2.png"
               alt="OnnPlay"
-              className="h-16"
+              className="h-24"
               style={{ filter: 'drop-shadow(0 0 20px rgba(255, 215, 0, 0.6))' }}
             />
             <div>
