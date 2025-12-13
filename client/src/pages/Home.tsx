@@ -32,8 +32,7 @@ import { cameraControlService } from '../services/CameraControlService';
 import { rtmpStreamService } from '../services/RTMPStreamService';
 
 // Context
-import { DailyPrimport { useDailyContext } from '../contexts/DailyContext';
-import { useEffect } from 'react';
+import { DailyProvider, useDailyContext } from '../contexts/DailyContext';
 const HomeContent: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
