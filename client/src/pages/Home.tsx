@@ -117,37 +117,39 @@ export default function Home() {
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-hidden flex flex-col" style={{ background: '#0A0E1A' }}>
-          {/* Main Content Area - Mockup Layout */}
-          <div className="flex-1 flex overflow-hidden">
-            {/* Left: Monitors + Audio Controls */}
-            <div className="flex-1 flex flex-col p-6 gap-4">
-              {/* Monitors Section - 60% height */}
-              <div className="flex-[6]">
+        <div className="flex-1 overflow-y-auto flex flex-col" style={{ background: '#0A0E1A' }}>
+          {/* Main Content Area - Mockup Layout with FIXED heights */}
+          <div className="flex p-6 gap-6" style={{ minHeight: 'calc(100vh - 80px)' }}>
+            {/* Left: Monitors + Audio + Buttons */}
+            <div className="flex-1 flex flex-col gap-6">
+              {/* Monitors Section - FIXED large height */}
+              <div style={{ height: '500px' }}>
                 <VideoMonitors />
               </div>
 
-              {/* Audio Controls Section - 20% height */}
-              <div className="flex-[2]">
+              {/* Audio Controls Section - FIXED height */}
+              <div style={{ height: '120px' }}>
                 <AudioControlsPanel />
               </div>
 
-              {/* Record/Stream + Status Bar - 20% height */}
-              <div className="flex-[2] flex flex-col gap-4">
-                <RecordStreamButtons />
+              {/* Record/Stream + Status Bar */}
+              <div className="flex flex-col gap-4">
+                <div style={{ height: '140px' }}>
+                  <RecordStreamButtons />
+                </div>
                 <BottomStatusBar isLive={isLive} isRecording={isRecording} />
               </div>
             </div>
 
-            {/* Right: Sources + Transitions Column */}
-            <div className="w-80 flex flex-col p-6 gap-6">
-              {/* Sources Panel */}
-              <div className="flex-1">
+            {/* Right: Sources + Transitions Column - FIXED width */}
+            <div className="flex flex-col gap-6" style={{ width: '320px' }}>
+              {/* Sources Panel - FIXED height */}
+              <div style={{ height: '400px' }}>
                 <SourcesPanel />
               </div>
 
-              {/* Transitions Panel */}
-              <div className="flex-1">
+              {/* Transitions Panel - FIXED height */}
+              <div style={{ height: '350px' }}>
                 <TransitionsPanel />
               </div>
             </div>
