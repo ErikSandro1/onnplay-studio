@@ -7,6 +7,11 @@ import VideoMixer from '@/components/VideoMixer';
 import Mixer from '@/components/Mixer';
 import SceneGallery from '@/components/SceneGallery';
 import StatusBar from '@/components/StatusBar';
+import VideoMonitors from '@/components/VideoMonitors';
+import SourcesPanel from '@/components/SourcesPanel';
+import TransitionsPanel from '@/components/TransitionsPanel';
+import AudioControls from '@/components/AudioControls';
+import RecordStreamButtons from '@/components/RecordStreamButtons';
 import RecordingManager from '@/components/RecordingManager';
 import StreamingManager from '@/components/StreamingManager';
 import AdvancedSettings from '@/components/AdvancedSettings';
@@ -102,58 +107,32 @@ export default function Home() {
         />
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto flex flex-col">
-          {/* Top Section: Monitors - Responsive */}
-          <div className="flex-shrink-0 min-h-[50vh] flex gap-4 p-4">
-            {/* EDIT Monitor (Left) */}
-            <div className="flex-1 flex flex-col min-w-0">
-              <Monitor type="edit" title="EDIT" isActive={false} />
-            </div>
+        <div className="flex-1 overflow-y-auto flex flex-col" style={{ background: '#0A0E1A' }}>
+          {/* Top Section: Video Monitors - NEW DESIGN */}
+          <VideoMonitors />
 
-            {/* Center: Video Switcher */}
-            <div className="flex flex-col items-center justify-center">
-              <VideoMixer
-                activeProgram={isLive ? 1 : 0} // Mock logic
-                activePreview={2} // Mock logic
-                onProgramChange={(id) => console.log('PGM:', id)}
-                onPreviewChange={(id) => console.log('PVW:', id)}
-                onCut={handleTake}
-                onAuto={handleTake}
-                isLive={isLive}
-              />
-            </div>
-
-            {/* PROGRAM Monitor (Right) */}
-            <div className="flex-1 flex flex-col min-w-0">
-              <Monitor type="program" title="PROGRAM" isActive={isLive} />
-            </div>
-          </div>
-
-          {/* Controls Section: Mixer, Recording, Streaming - MOVED UP */}
-          <div className="flex-shrink-0 flex gap-4 px-4 pb-4 h-64">
-            {/* Mixer */}
-            <div className="flex-1 min-w-0">
-              <Mixer />
-            </div>
-
-            {/* Camera Composer */}
-            <div className="w-64 min-w-0 flex flex-col gap-4">
-              <div className="flex-1">
-                <CameraComposer />
+          {/* Controls Section - NEW DESIGN */}
+          <div className="px-6 pb-6">
+            <div className="grid grid-cols-3 gap-6">
+              {/* Left Column: Sources */}
+              <div>
+                <SourcesPanel />
               </div>
-              <div className="flex-shrink-0">
-                <DataPersistenceManager />
+
+              {/* Center Column: Transitions */}
+              <div>
+                <TransitionsPanel />
+              </div>
+
+              {/* Right Column: Audio Controls */}
+              <div>
+                <AudioControls />
               </div>
             </div>
 
-            {/* Recording & Streaming */}
-            <div className="flex gap-4 min-w-0">
-              <div className="flex-shrink-0 w-48">
-                <RecordingManager />
-              </div>
-              <div className="flex-shrink-0 w-48">
-                <StreamingManager />
-              </div>
+            {/* Record & Stream Buttons */}
+            <div className="mt-6">
+              <RecordStreamButtons />
             </div>
           </div>
 

@@ -1,39 +1,33 @@
-import { useEffect, useState } from 'react';
-import { Wifi, Activity, Users, Zap, Clock } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Wifi, Activity, Zap, HardDrive, Clock } from 'lucide-react';
 
 interface StatusData {
+  connectionStatus: 'connected' | 'disconnected' | 'connecting';
   bitrate: number;
   fps: number;
-  latency: number;
-  viewers: number;
+  storage: string;
   uptime: string;
-  connection: 'online' | 'offline' | 'warning';
 }
 
-export default function StatusBar() {
+const StatusBar: React.FC = () => {
   const [status, setStatus] = useState<StatusData>({
-    bitrate: 5.2,
+    connectionStatus: 'connected',
+    bitrate: 6.5,
     fps: 60,
-    latency: 45,
-    viewers: 1234,
+    storage: '256 GB',
     uptime: '00:00:00',
-    connection: 'online',
   });
 
   const [seconds, setSeconds] = useState(0);
 
-  // Simular atualizações em tempo real
   useEffect(() => {
     const interval = setInterval(() => {
-      setSeconds(s => s + 1);
-      
-      // Simular variações realistas
-      setStatus(prev => ({
+      setSeconds((s) => s + 1);
+
+      setStatus((prev) => ({
         ...prev,
-        bitrate: 5.0 + Math.random() * 0.5,
+        bitrate: 6.0 + Math.random() * 1.0,
         fps: 59 + Math.floor(Math.random() * 2),
-        latency: 40 + Math.floor(Math.random() * 20),
-        viewers: Math.max(1000, prev.viewers + Math.floor((Math.random() - 0.5) * 100)),
         uptime: formatUptime(seconds),
       }));
     }, 1000);
@@ -49,75 +43,101 @@ export default function StatusBar() {
   };
 
   const getConnectionColor = () => {
-    switch (status.connection) {
-      case 'online':
-        return 'text-green-500';
-      case 'warning':
-        return 'text-yellow-500';
-      case 'offline':
-        return 'text-red-500';
-      default:
-        return 'text-green-500';
+    switch (status.connectionStatus) {
+      case 'connected':
+        return '#00FF88';
+      case 'connecting':
+        return '#FFB800';
+      case 'disconnected':
+        return '#FF3366';
     }
   };
 
-  const getFpsColor = () => {
-    if (status.fps >= 59) return 'text-green-500';
-    if (status.fps >= 50) return 'text-yellow-500';
-    return 'text-red-500';
-  };
-
-  const getLatencyColor = () => {
-    if (status.latency < 50) return 'text-green-500';
-    if (status.latency < 100) return 'text-yellow-500';
-    return 'text-red-500';
+  const getConnectionLabel = () => {
+    switch (status.connectionStatus) {
+      case 'connected':
+        return 'Connected';
+      case 'connecting':
+        return 'Connecting...';
+      case 'disconnected':
+        return 'Disconnected';
+    }
   };
 
   return (
-    <div className="bg-gray-800 border-t border-gray-700 px-4 py-2">
-      <div className="flex items-center justify-between gap-6 text-xs font-mono">
-        {/* Connection Status */}
+    <div
+      className="px-6 py-3 flex items-center justify-between"
+      style={{
+        background: '#0A0E1A',
+        borderTop: '2px solid #1E2842',
+      }}
+    >
+      {/* Left Side - Connection Status */}
+      <div className="flex items-center gap-6">
         <div className="flex items-center gap-2">
-          <Wifi size={14} className={getConnectionColor()} />
-          <span className="text-gray-400">Connection:</span>
-          <span className={getConnectionColor()}>{status.connection.toUpperCase()}</span>
+          <Wifi
+            size={18}
+            style={{ color: getConnectionColor() }}
+            className={status.connectionStatus === 'connecting' ? 'animate-pulse' : ''}
+          />
+          <span className="text-sm font-semibold" style={{ color: getConnectionColor() }}>
+            {getConnectionLabel()}
+          </span>
         </div>
 
-        {/* Bitrate */}
+        <div className="w-px h-6" style={{ background: '#1E2842' }} />
+
         <div className="flex items-center gap-2">
-          <Zap size={14} className="text-orange-500" />
-          <span className="text-gray-400">Bitrate:</span>
-          <span className="text-orange-500">{status.bitrate.toFixed(1)} Mbps</span>
+          <Activity size={18} style={{ color: '#00D9FF' }} />
+          <span className="text-sm font-semibold" style={{ color: '#B8C5D6' }}>
+            {status.bitrate.toFixed(1)} Mbps
+          </span>
         </div>
 
-        {/* FPS */}
         <div className="flex items-center gap-2">
-          <Activity size={14} className={getFpsColor()} />
-          <span className="text-gray-400">FPS:</span>
-          <span className={getFpsColor()}>{status.fps}</span>
+          <Zap size={18} style={{ color: '#FFB800' }} />
+          <span className="text-sm font-semibold" style={{ color: '#B8C5D6' }}>
+            {status.fps} FPS
+          </span>
+        </div>
+      </div>
+
+      {/* Center - System Info */}
+      <div className="flex items-center gap-6">
+        <div className="flex items-center gap-2">
+          <HardDrive size={18} style={{ color: '#7A8BA3' }} />
+          <span className="text-sm font-semibold" style={{ color: '#B8C5D6' }}>
+            {status.storage} Free
+          </span>
         </div>
 
-        {/* Latency */}
         <div className="flex items-center gap-2">
-          <Clock size={14} className={getLatencyColor()} />
-          <span className="text-gray-400">Latency:</span>
-          <span className={getLatencyColor()}>{status.latency}ms</span>
+          <Clock size={18} style={{ color: '#7A8BA3' }} />
+          <span className="text-sm font-semibold" style={{ color: '#B8C5D6' }}>
+            {status.uptime}
+          </span>
         </div>
+      </div>
 
-        {/* Viewers */}
-        <div className="flex items-center gap-2">
-          <Users size={14} className="text-blue-500" />
-          <span className="text-gray-400">Viewers:</span>
-          <span className="text-blue-500">{status.viewers.toLocaleString()}</span>
-        </div>
+      {/* Right Side - Version */}
+      <div className="flex items-center gap-4">
+        <span className="text-xs font-semibold" style={{ color: '#7A8BA3' }}>
+          OnnPlay Studio v2.0
+        </span>
 
-        {/* Uptime */}
-        <div className="flex items-center gap-2">
-          <Clock size={14} className="text-purple-500" />
-          <span className="text-gray-400">Uptime:</span>
-          <span className="text-purple-500">{status.uptime}</span>
+        <div
+          className="px-3 py-1 rounded-md text-xs font-bold"
+          style={{
+            background: 'rgba(0, 217, 255, 0.2)',
+            color: '#00D9FF',
+            border: '1px solid #00D9FF',
+          }}
+        >
+          PRO
         </div>
       </div>
     </div>
   );
-}
+};
+
+export default StatusBar;
