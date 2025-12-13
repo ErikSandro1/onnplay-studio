@@ -14,10 +14,10 @@ export default function Landing() {
             {/* Logo */}
             <div className="flex items-center gap-3">
               <img
-                src="/logo-onnplay.png"
+                src="/logo-onnplay-gold.png"
                 alt="OnnPlay"
                 className="h-10"
-                style={{ filter: 'drop-shadow(0 0 10px rgba(255, 107, 0, 0.5))' }}
+                style={{ filter: 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.6))' }}
               />
               <h1 className="text-xl font-bold text-white">OnnPlay Studio</h1>
             </div>
@@ -234,10 +234,10 @@ export default function Landing() {
             <div>
               <div className="flex items-center gap-3 mb-4">
                 <img
-                  src="/logo-onnplay.png"
+                  src="/logo-onnplay-gold.png"
                   alt="OnnPlay"
                   className="h-8"
-                  style={{ filter: 'drop-shadow(0 0 10px rgba(255, 107, 0, 0.5))' }}
+                  style={{ filter: 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.6))' }}
                 />
                 <span className="text-white font-semibold">OnnPlay Studio</span>
               </div>

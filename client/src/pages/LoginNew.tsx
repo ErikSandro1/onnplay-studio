@@ -70,10 +70,10 @@ export default function LoginNew() {
           {/* Logo */}
           <div className="flex items-center gap-4 mb-8">
             <img
-              src="/logo-onnplay.png"
+              src="/logo-onnplay-gold.png"
               alt="OnnPlay"
               className="h-16"
-              style={{ filter: 'drop-shadow(0 0 10px rgba(255, 107, 0, 0.5))' }}
+              style={{ filter: 'drop-shadow(0 0 20px rgba(255, 215, 0, 0.6))' }}
             />
             <div>
               <h1 className="text-3xl font-bold text-white">OnnPlay</h1>
