@@ -7,6 +7,9 @@ interface DualMonitorsProps {
   duration?: string;
   previewSource?: string;
   programSource?: string;
+  lastTransition?: string;
+  transitionTimestamp?: string;
+  isTransitioning?: boolean;
 }
 
 const DualMonitors: React.FC<DualMonitorsProps> = ({
@@ -15,6 +18,9 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
   duration = '00:00:00',
   previewSource = 'CAM 1',
   programSource = 'CAM 2',
+  lastTransition = 'none',
+  transitionTimestamp = '',
+  isTransitioning = false,
 }) => {
   return (
     <div className="flex gap-4 h-full">
@@ -308,6 +314,39 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           >
             1080p
           </div>
+          
+          {/* Transition Indicator */}
+          {lastTransition !== 'none' && (
+            <div 
+              className="absolute top-16 left-3 px-3 py-2 rounded-lg backdrop-blur-sm"
+              style={{
+                background: 'rgba(10, 14, 26, 0.9)',
+                border: isTransitioning ? '2px solid #00D9FF' : '1px solid #FF6B00',
+                boxShadow: isTransitioning ? '0 0 20px rgba(0, 217, 255, 0.5)' : 'none',
+              }}
+            >
+              <div 
+                className="text-xs font-semibold mb-1"
+                style={{ color: '#7A8BA3' }}
+              >
+                {isTransitioning ? 'TRANSITIONING...' : 'LAST TRANSITION'}
+              </div>
+              <div 
+                className={`text-lg font-bold ${isTransitioning ? 'animate-pulse' : ''}`}
+                style={{ color: isTransitioning ? '#00D9FF' : '#FF6B00' }}
+              >
+                {lastTransition}
+              </div>
+              {transitionTimestamp && (
+                <div 
+                  className="text-xs font-mono mt-1"
+                  style={{ color: '#7A8BA3' }}
+                >
+                  {transitionTimestamp}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -42,6 +42,9 @@ const HomeContent: React.FC = () => {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [lastTransition, setLastTransition] = useState<string>('none');
+  const [transitionTimestamp, setTransitionTimestamp] = useState<string>('');
   
   // Broadcast stats
   const [viewers, setViewers] = useState(0);
@@ -196,10 +199,47 @@ const HomeContent: React.FC = () => {
     setActiveTool(null);
   };
 
+  const handleTransition = async (type: 'mix' | 'wipe' | 'cut' | 'auto') => {
+    
+    if (isTransitioning) {
+      console.log('⚠️ Already transitioning, skipping');
+      return;
+    }
+    
+    setIsTransitioning(true);
+    
+    try {
+      // Map transition types to ProgramSwitcher types
+      const transitionMap = {
+        mix: 'fade' as const,
+        wipe: 'wipe' as const,
+        cut: 'cut' as const,
+        auto: 'fade' as const,
+      };
+      
+      // Execute transition via ProgramSwitcher
+      await programSwitcher.take({
+        type: transitionMap[type],
+        duration: type === 'cut' ? 0 : 1000,
+      });
+      
+      // Update visual feedback
+      setLastTransition(type.toUpperCase());
+      const now = new Date();
+      setTransitionTimestamp(now.toLocaleTimeString('pt-BR'));
+      
+      console.log(`✅ Transition ${type} executed`);
+    } catch (error) {
+      console.error('❌ Transition error:', error);
+    } finally {
+      setIsTransitioning(false);
+    }
+  };
+
   const renderToolModal = () => {
     switch (activeTool) {
       case 'transitions':
-        return <TransitionSystem isOpen={true} onClose={handleCloseTool} />;
+        return <TransitionSystem onTransition={handleTransition} isTransitioning={isTransitioning} />;
       case 'brand':
         return <OverlayManager isOpen={true} onClose={handleCloseTool} />;
       case 'people':
@@ -242,7 +282,14 @@ const HomeContent: React.FC = () => {
           <div className="flex-1 flex flex-col p-4 gap-4">
             {/* Monitors */}
             <div className="flex-1 min-h-0">
-              <DualMonitors />
+              <DualMonitors 
+                isLive={isLive}
+                viewers={viewers}
+                duration={duration}
+                lastTransition={lastTransition}
+                transitionTimestamp={transitionTimestamp}
+                isTransitioning={isTransitioning}
+              />
             </div>
 
             {/* Participants Strip */}

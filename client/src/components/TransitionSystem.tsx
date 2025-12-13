@@ -61,7 +61,10 @@ export default function TransitionSystem({ onTransition, isTransitioning }: Tran
   }, [isAutoMode, autoTransitionInterval]);
 
   const handleTransition = (type: TransitionType) => {
+    console.log('🎭 TransitionSystem.handleTransition called:', type);
+    
     if (isTransitioning) {
+      console.log('⚠️ isTransitioning is true, showing warning');
       toast.warning('Aguarde a transição atual terminar');
       return;
     }
@@ -69,6 +72,7 @@ export default function TransitionSystem({ onTransition, isTransitioning }: Tran
     setSelectedTransition(type);
 
     // Execute transition
+    console.log('📞 Calling onTransition prop with:', type);
     onTransition(type);
 
     // Show toast based on transition type
