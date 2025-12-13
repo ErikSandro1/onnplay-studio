@@ -1,5 +1,5 @@
-import { Menu, Video, Headphones, Film, BarChart3, ChevronDown } from 'lucide-react';
-import { useState } from 'react';
+import React, { useState } from 'react';
+import { Video, Mic, Settings, BarChart3 } from 'lucide-react';
 
 interface SidebarProps {
   activeSection: string;
@@ -7,15 +7,15 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
 
-  const sections = [
+  const menuSections = [
     {
       id: 'video',
       label: 'VIDEO',
       icon: Video,
-      submenu: [
+      color: '#00D9FF', // Azul neon
+      subsections: [
         { id: 'preview', label: 'Preview' },
         { id: 'scenes', label: 'Scenes' },
       ],
@@ -23,8 +23,9 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
     {
       id: 'audio',
       label: 'AUDIO',
-      icon: Headphones,
-      submenu: [
+      icon: Mic,
+      color: '#FF6B00', // Laranja
+      subsections: [
         { id: 'mixer', label: 'Mixer' },
         { id: 'levels', label: 'Levels' },
       ],
@@ -32,8 +33,9 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
     {
       id: 'production',
       label: 'PRODUCTION',
-      icon: Film,
-      submenu: [
+      icon: Settings,
+      color: '#FF6B00', // Laranja
+      subsections: [
         { id: 'recording', label: 'Recording' },
         { id: 'streaming', label: 'Streaming' },
       ],
@@ -42,124 +44,129 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
       id: 'analytics',
       label: 'ANALYTICS',
       icon: BarChart3,
-      submenu: [
+      color: '#00D9FF', // Azul neon
+      subsections: [
         { id: 'stats', label: 'Statistics' },
         { id: 'performance', label: 'Performance' },
       ],
     },
   ];
 
+  const handleSectionClick = (sectionId: string) => {
+    const section = menuSections.find((s) => s.id === sectionId);
+    
+    if (!section) return;
+
+    // Se já está expandido, fecha
+    if (expandedMenu === sectionId) {
+      setExpandedMenu(null);
+      return;
+    }
+
+    // Expande o menu
+    setExpandedMenu(sectionId);
+    onSectionChange(sectionId);
+  };
+
+  const handleBackClick = () => {
+    setExpandedMenu(null);
+  };
+
   return (
     <div
-      className={`flex flex-col h-full bg-sidebar border-r border-sidebar-border transition-all duration-300 ${
-        isCollapsed ? 'w-20' : 'w-64'
-      }`}
+      className="flex flex-col h-full transition-all duration-300"
+      style={{
+        width: expandedMenu ? '200px' : '170px',
+        background: '#0A0E1A',
+        borderRight: '2px solid #1E2842',
+      }}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
-        {!isCollapsed && (
-          <div className="flex items-center gap-3">
-            <img src="/logo-silver.png" alt="OnnPlay" className="w-10 h-10 object-contain" />
-            <span className="text-white font-bold text-sm">OnnPlay</span>
-          </div>
-        )}
-        <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-1 hover:bg-gray-700 rounded transition-colors"
-        >
-          <Menu size={20} className="text-gray-300" />
-        </button>
-      </div>
-
-      {/* Back Button - Show when a submenu item is active - Force rebuild */}
+      {/* Back Button - Só aparece quando menu está expandido */}
       {expandedMenu && (
-        <div className="px-4 py-2">
-          <button
-            onClick={() => {
-              setExpandedMenu(null);
-              const parentSection = sections.find(s => 
-                s.submenu?.some(item => item.id === activeSection)
-              );
-              if (parentSection) {
-                onSectionChange(parentSection.id);
-              }
-            }}
-            className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm"
-          >
-            <ChevronDown size={16} className="rotate-90" />
-            <span>Voltar ao Menu</span>
-          </button>
-        </div>
+        <button
+          onClick={handleBackClick}
+          className="flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all duration-200 hover:bg-[#1E2842]"
+          style={{
+            color: '#00D9FF',
+            borderBottom: '1px solid #1E2842',
+          }}
+        >
+          <span>←</span>
+          <span>Voltar ao Menu</span>
+        </button>
       )}
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4">
-        {sections.map((section) => {
-          const Icon = section.icon;
-          const isActive = activeSection === section.id;
-          const isExpanded = expandedMenu === section.id;
+      {/* Menu Items */}
+      <div className="flex-1 py-4">
+        {!expandedMenu ? (
+          // Menu Principal
+          <div className="space-y-2">
+            {menuSections.map((section) => {
+              const Icon = section.icon;
+              const isActive = activeSection === section.id;
 
-          return (
-            <div key={section.id}>
-              <button
-                onClick={() => {
-                  onSectionChange(section.id);
-                  // Se a sidebar estiver recolhida, expanda primeiro
-                  if (isCollapsed) {
-                    setIsCollapsed(false);
-                  }
-                  // Toggle do submenu
-                  setExpandedMenu(isExpanded ? null : section.id);
-                }}
-                className={`sidebar-item w-full justify-between ${
-                  isActive ? 'active' : 'text-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Icon size={20} />
-                  {!isCollapsed && <span className="text-sm font-semibold">{section.label}</span>}
-                </div>
-                {!isCollapsed && section.submenu && (
-                  <ChevronDown
-                    size={16}
-                    className={`transition-transform duration-200 ${
-                      isExpanded ? 'rotate-180' : ''
-                    }`}
+              return (
+                <button
+                  key={section.id}
+                  onClick={() => handleSectionClick(section.id)}
+                  className="flex flex-col items-center justify-center w-full py-6 transition-all duration-200 group"
+                  style={{
+                    background: isActive ? '#1E2842' : 'transparent',
+                    borderLeft: isActive ? `4px solid ${section.color}` : '4px solid transparent',
+                  }}
+                >
+                  <Icon
+                    size={32}
+                    style={{
+                      color: isActive ? section.color : '#7A8BA3',
+                      filter: isActive ? `drop-shadow(0 0 8px ${section.color})` : 'none',
+                    }}
+                    className="mb-2 transition-all duration-200 group-hover:scale-110"
                   />
-                )}
-              </button>
-
-              {/* Submenu */}
-              {!isCollapsed && isExpanded && section.submenu && (
-                <div className="ml-4 border-l border-gray-700">
-                  {section.submenu.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => onSectionChange(item.id)}
-                      className={`sidebar-item w-full text-left pl-6 py-2 text-xs ${
-                        activeSection === item.id
-                          ? 'bg-orange-600 text-white'
-                          : 'text-gray-400 hover:text-gray-200'
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </nav>
-
-      {/* Footer */}
-      <div className="p-4 border-t border-sidebar-border">
-        {!isCollapsed && (
-          <div className="text-xs text-gray-500 text-center">
-            <p className="font-semibold text-gray-400">OnnPlay Studio</p>
-            <p className="text-gray-600">v1.0.0</p>
+                  <span
+                    className="text-xs font-semibold tracking-wide"
+                    style={{
+                      color: isActive ? section.color : '#B8C5D6',
+                    }}
+                  >
+                    {section.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          // Submenu
+          <div className="px-4 space-y-2">
+            {menuSections
+              .find((s) => s.id === expandedMenu)
+              ?.subsections.map((sub) => (
+                <button
+                  key={sub.id}
+                  onClick={() => onSectionChange(sub.id)}
+                  className="w-full px-4 py-3 text-left text-sm font-medium rounded-lg transition-all duration-200"
+                  style={{
+                    background: activeSection === sub.id ? '#1E2842' : 'transparent',
+                    color: activeSection === sub.id ? '#00D9FF' : '#B8C5D6',
+                  }}
+                >
+                  {sub.label}
+                </button>
+              ))}
           </div>
         )}
+      </div>
+
+      {/* Footer */}
+      <div
+        className="px-4 py-4 text-center text-xs"
+        style={{
+          color: '#7A8BA3',
+          borderTop: '1px solid #1E2842',
+        }}
+      >
+        <div className="font-semibold">OnnPlay Studio</div>
+        <div className="mt-1">v1.0.0</div>
       </div>
     </div>
   );
