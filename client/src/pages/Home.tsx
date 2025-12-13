@@ -17,6 +17,7 @@ import StreamingConfig from '../components/StreamingConfig';
 import RecordingSettings from '../components/RecordingSettings';
 import UnifiedChat from '../components/UnifiedChat';
 import AdvancedSettings from '../components/AdvancedSettings';
+import { AIChat } from '../components/AIChat';
 
 // Services
 import { videoSourceManager } from '../services/VideoSourceManager';
@@ -25,6 +26,8 @@ import { programSwitcher } from '../services/ProgramSwitcher';
 import { layoutManager } from '../services/LayoutManager';
 import { streamingService } from '../services/StreamingService';
 import { recordingService } from '../services/RecordingService';
+import { aiAssistantService } from '../services/AIAssistantService';
+import { cameraControlService } from '../services/CameraControlService';
 
 // Context
 import { DailyProvider, useDailyContext } from '../contexts/DailyContext';
@@ -32,6 +35,7 @@ import { DailyProvider, useDailyContext } from '../contexts/DailyContext';
 const HomeContent: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
+  const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   
   // Daily.co context
   const dailyContext = useDailyContext();
@@ -276,6 +280,95 @@ const HomeContent: React.FC = () => {
     }
   };
 
+  // Register AI Assistant handlers
+  useEffect(() => {
+    // Camera commands
+    aiAssistantService.registerHandler('set_zoom', async (params) => {
+      const cameraId = params.target.toLowerCase().includes('cam 1') ? 'cam1' :
+                       params.target.toLowerCase().includes('cam 2') ? 'cam2' : 'cam1';
+      cameraControlService.setZoom(cameraId, params.value);
+      return {
+        success: true,
+        message: `Zoom da ${params.target} ajustado para ${params.value}x`,
+        details: { camera: cameraId, zoom: params.value },
+      };
+    });
+    
+    aiAssistantService.registerHandler('reset_zoom', async (params) => {
+      const cameraId = params.target.toLowerCase().includes('cam 1') ? 'cam1' :
+                       params.target.toLowerCase().includes('cam 2') ? 'cam2' : 'cam1';
+      cameraControlService.resetCamera(cameraId);
+      return {
+        success: true,
+        message: `Zoom da ${params.target} resetado`,
+        details: { camera: cameraId },
+      };
+    });
+    
+    // Layout commands
+    aiAssistantService.registerHandler('set_pip', async (params) => {
+      handleLayoutChange('pip');
+      return { success: true, message: 'Layout mudado para Picture-in-Picture' };
+    });
+    
+    aiAssistantService.registerHandler('set_split', async (params) => {
+      handleLayoutChange('split');
+      return { success: true, message: 'Layout mudado para Split Screen' };
+    });
+    
+    aiAssistantService.registerHandler('set_grid', async (params) => {
+      handleLayoutChange('grid');
+      return { success: true, message: 'Layout mudado para Grid 2x2' };
+    });
+    
+    aiAssistantService.registerHandler('set_single', async (params) => {
+      handleLayoutChange('single');
+      return { success: true, message: 'Layout mudado para Single' };
+    });
+    
+    // Transition commands
+    aiAssistantService.registerHandler('fade', async (params) => {
+      await handleTransition('mix');
+      return { success: true, message: 'Transição fade aplicada' };
+    });
+    
+    aiAssistantService.registerHandler('wipe', async (params) => {
+      await handleTransition('wipe');
+      return { success: true, message: 'Transição wipe aplicada' };
+    });
+    
+    aiAssistantService.registerHandler('cut', async (params) => {
+      await handleTransition('cut');
+      return { success: true, message: 'Corte direto aplicado' };
+    });
+    
+    aiAssistantService.registerHandler('take', async (params) => {
+      await handleTransition('mix');
+      return { success: true, message: 'TAKE executado (PREVIEW → PROGRAM)' };
+    });
+    
+    // Broadcast commands
+    aiAssistantService.registerHandler('go_live', async (params) => {
+      setIsLive(true);
+      return { success: true, message: '🔴 Transmissão iniciada! Você está AO VIVO!' };
+    });
+    
+    aiAssistantService.registerHandler('stop_broadcast', async (params) => {
+      setIsLive(false);
+      return { success: true, message: 'Transmissão encerrada' };
+    });
+    
+    aiAssistantService.registerHandler('start_recording', async (params) => {
+      setIsRecording(true);
+      return { success: true, message: '⏺️ Gravação iniciada!' };
+    });
+    
+    aiAssistantService.registerHandler('stop_recording', async (params) => {
+      setIsRecording(false);
+      return { success: true, message: 'Gravação parada' };
+    });
+  }, []);
+
   return (
     <div 
       className="flex h-screen overflow-hidden"
@@ -378,6 +471,18 @@ const HomeContent: React.FC = () => {
 
       {/* Tool Modals */}
       {renderToolModal()}
+      
+      {/* AI Assistant Chat */}
+      <AIChat isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} />
+      
+      {/* AI Assistant Button (floating) */}
+      <button
+        onClick={() => setIsAIChatOpen(true)}
+        className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 shadow-lg hover:shadow-xl hover:scale-110 transition-all flex items-center justify-center text-2xl z-40"
+        title="Operador IA"
+      >
+        🤖
+      </button>
     </div>
   );
 };
