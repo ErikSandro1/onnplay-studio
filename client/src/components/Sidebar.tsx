@@ -104,9 +104,12 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
               <button
                 onClick={() => {
                   onSectionChange(section.id);
-                  if (!isCollapsed) {
-                    setExpandedMenu(isExpanded ? null : section.id);
+                  // Se a sidebar estiver recolhida, expanda primeiro
+                  if (isCollapsed) {
+                    setIsCollapsed(false);
                   }
+                  // Toggle do submenu
+                  setExpandedMenu(isExpanded ? null : section.id);
                 }}
                 className={`sidebar-item w-full justify-between ${
                   isActive ? 'active' : 'text-gray-300'

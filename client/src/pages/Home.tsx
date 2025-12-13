@@ -69,7 +69,7 @@ export default function Home() {
         <StudioHeader
           isLive={isLive}
           participantCount={participantCount}
-          onNavigateHome={() => navigate('/dashboard')}
+          onNavigateHome={() => navigate('/')}
           onInvite={() => setShowInvitePanel(true)}
           onParticipants={() => setShowParticipantsPanel(true)}
           onStreamingConfig={() => setShowStreamingConfig(true)}
@@ -174,7 +174,7 @@ export default function Home() {
 
       {showAdvancedSettings && (
         <div className="fixed inset-0 z-50">
-          <AdvancedSettings onClose={() => setShowAdvancedSettings(false)} />
+          <AdvancedSettings isOpen={true} onClose={() => setShowAdvancedSettings(false)} />
         </div>
       )}
 
