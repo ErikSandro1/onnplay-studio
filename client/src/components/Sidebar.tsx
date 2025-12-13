@@ -71,6 +71,27 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
         </button>
       </div>
 
+      {/* Back Button - Show when a submenu item is active */}
+      {expandedMenu && (
+        <div className="px-4 py-2">
+          <button
+            onClick={() => {
+              setExpandedMenu(null);
+              const parentSection = sections.find(s => 
+                s.submenu?.some(item => item.id === activeSection)
+              );
+              if (parentSection) {
+                onSectionChange(parentSection.id);
+              }
+            }}
+            className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm"
+          >
+            <ChevronDown size={16} className="rotate-90" />
+            <span>Voltar ao Menu</span>
+          </button>
+        </div>
+      )}
+
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4">
         {sections.map((section) => {
