@@ -71,7 +71,7 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
         </button>
       </div>
 
-      {/* Back Button - Show when a submenu item is active */}
+      {/* Back Button - Show when a submenu item is active - Force rebuild */}
       {expandedMenu && (
         <div className="px-4 py-2">
           <button
