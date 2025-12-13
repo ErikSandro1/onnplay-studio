@@ -18,9 +18,23 @@ import RecordingSettings from '../components/RecordingSettings';
 import UnifiedChat from '../components/UnifiedChat';
 import AdvancedSettings from '../components/AdvancedSettings';
 
-const Home: React.FC = () => {
+// Services
+import { videoSourceManager } from '../services/VideoSourceManager';
+import { transitionEngine } from '../services/TransitionEngine';
+import { programSwitcher } from '../services/ProgramSwitcher';
+import { layoutManager } from '../services/LayoutManager';
+import { streamingService } from '../services/StreamingService';
+import { recordingService } from '../services/RecordingService';
+
+// Context
+import { DailyProvider, useDailyContext } from '../contexts/DailyContext';
+
+const HomeContent: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
+  
+  // Daily.co context
+  const dailyContext = useDailyContext();
   
   // Control states
   const [isMuted, setIsMuted] = useState(false);
@@ -33,13 +47,42 @@ const Home: React.FC = () => {
   const [viewers, setViewers] = useState(0);
   const [duration, setDuration] = useState('00:00:00');
   const [bitrate, setBitrate] = useState('0 Kbps');
-  
-  // Mock participants data
-  const [participants] = useState([
-    { id: '1', name: 'You', isMuted: false, isCameraOff: false, isSpeaking: false },
-    { id: '2', name: 'Guest 1', isMuted: false, isCameraOff: false, isSpeaking: false },
-    { id: '3', name: 'Guest 2', isMuted: true, isCameraOff: false, isSpeaking: false },
-  ]);
+
+  // Initialize services
+  useEffect(() => {
+    console.log('🚀 OnnPlay Studio - Services initialized');
+    console.log('📹 VideoSourceManager:', videoSourceManager);
+    console.log('🎬 TransitionEngine:', transitionEngine);
+    console.log('🎯 ProgramSwitcher:', programSwitcher);
+    console.log('📐 LayoutManager:', layoutManager);
+    console.log('📡 StreamingService:', streamingService);
+    console.log('⏺️ RecordingService:', recordingService);
+
+    // Cleanup on unmount
+    return () => {
+      streamingService.destroy();
+      recordingService.destroy();
+    };
+  }, []);
+
+  // Subscribe to recording state
+  useEffect(() => {
+    const unsubscribe = recordingService.subscribe((state) => {
+      setIsRecording(state.isRecording);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  // Subscribe to streaming state
+  useEffect(() => {
+    const unsubscribe = streamingService.subscribe((destinations) => {
+      const hasActive = destinations.some(d => d.isActive);
+      setIsLive(hasActive);
+    });
+
+    return unsubscribe;
+  }, []);
 
   // Update duration timer
   useEffect(() => {
@@ -76,12 +119,61 @@ const Home: React.FC = () => {
     }
   }, [isLive]);
 
-  const handleGoLive = () => {
-    setIsLive(!isLive);
+  const handleGoLive = async () => {
+    try {
+      if (isLive) {
+        await streamingService.stopAllStreams();
+      } else {
+        // Check if destinations are configured
+        const destinations = streamingService.getAllDestinations();
+        if (destinations.length === 0) {
+          alert('Please configure streaming destinations first (Tools → Destinations)');
+          setActiveTool('destinations');
+          return;
+        }
+        await streamingService.startAllStreams();
+      }
+    } catch (err) {
+      console.error('Failed to toggle streaming:', err);
+      alert(`Failed to ${isLive ? 'stop' : 'start'} streaming: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
   };
 
-  const handleStartRecording = () => {
-    setIsRecording(!isRecording);
+  const handleStartRecording = async () => {
+    try {
+      if (isRecording) {
+        await recordingService.stopRecording();
+      } else {
+        await recordingService.startRecording({
+          quality: 'high',
+          format: 'mp4',
+        });
+      }
+    } catch (err) {
+      console.error('Failed to toggle recording:', err);
+      alert(`Failed to ${isRecording ? 'stop' : 'start'} recording: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleToggleMute = () => {
+    setIsMuted(!isMuted);
+    if (dailyContext.isConnected) {
+      dailyContext.toggleAudio();
+    }
+  };
+
+  const handleToggleCamera = () => {
+    setIsCameraOff(!isCameraOff);
+    if (dailyContext.isConnected) {
+      dailyContext.toggleVideo();
+    }
+  };
+
+  const handleToggleScreenShare = () => {
+    setIsScreenSharing(!isScreenSharing);
+    if (dailyContext.isConnected) {
+      dailyContext.toggleScreenShare();
+    }
   };
 
   const handleSelectTool = (toolId: ToolId) => {
@@ -143,7 +235,7 @@ const Home: React.FC = () => {
 
             {/* Participants Strip */}
             <div style={{ height: '140px' }}>
-              <ParticipantsStrip participants={participants} />
+              <ParticipantsStrip participants={dailyContext.participants} />
             </div>
 
             {/* Control Bar */}
@@ -152,12 +244,13 @@ const Home: React.FC = () => {
                 isMuted={isMuted}
                 isCameraOff={isCameraOff}
                 isScreenSharing={isScreenSharing}
-                onToggleMute={() => setIsMuted(!isMuted)}
-                onToggleCamera={() => setIsCameraOff(!isCameraOff)}
-                onToggleScreenShare={() => setIsScreenSharing(!isScreenSharing)}
+                onToggleMute={handleToggleMute}
+                onToggleCamera={handleToggleCamera}
+                onToggleScreenShare={handleToggleScreenShare}
                 onInvite={() => alert('Invite feature coming soon!')}
                 onLeave={() => {
                   if (confirm('Are you sure you want to leave the studio?')) {
+                    dailyContext.leaveRoom();
                     window.location.href = '/';
                   }
                 }}
@@ -210,6 +303,14 @@ const Home: React.FC = () => {
       {/* Tool Modals */}
       {renderToolModal()}
     </div>
+  );
+};
+
+const Home: React.FC = () => {
+  return (
+    <DailyProvider>
+      <HomeContent />
+    </DailyProvider>
   );
 };
 
