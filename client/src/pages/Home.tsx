@@ -18,6 +18,7 @@ import RecordingSettings from '../components/RecordingSettings';
 import UnifiedChat from '../components/UnifiedChat';
 import AdvancedSettings from '../components/AdvancedSettings';
 import { AIChat } from '../components/AIChat';
+import { JoinRoomModal } from '../components/JoinRoomModal';
 
 // Services
 import { videoSourceManager } from '../services/VideoSourceManager';
@@ -36,6 +37,7 @@ const HomeContent: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
+  const [isJoinRoomModalOpen, setIsJoinRoomModalOpen] = useState(false);
   
   // Daily.co context
   const dailyContext = useDailyContext();
@@ -474,6 +476,31 @@ const HomeContent: React.FC = () => {
       
       {/* AI Assistant Chat */}
       <AIChat isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} />
+      
+      {/* Join Room Modal */}
+      <JoinRoomModal isOpen={isJoinRoomModalOpen} onClose={() => setIsJoinRoomModalOpen(false)} />
+      
+      {/* Join Room Button (floating) - only show when not connected */}
+      {!dailyContext.isConnected && (
+        <button
+          onClick={() => setIsJoinRoomModalOpen(true)}
+          className="fixed bottom-6 right-24 w-14 h-14 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 shadow-lg hover:shadow-xl hover:scale-110 transition-all flex items-center justify-center text-2xl z-40"
+          title="Join Video Room"
+        >
+          📹
+        </button>
+      )}
+      
+      {/* Leave Room Button (floating) - only show when connected */}
+      {dailyContext.isConnected && (
+        <button
+          onClick={() => dailyContext.leaveRoom()}
+          className="fixed bottom-6 right-24 w-14 h-14 rounded-full bg-gradient-to-r from-red-500 to-red-600 shadow-lg hover:shadow-xl hover:scale-110 transition-all flex items-center justify-center text-2xl z-40"
+          title="Leave Room"
+        >
+          🚪
+        </button>
+      )}
       
       {/* AI Assistant Button (floating) */}
       <button
