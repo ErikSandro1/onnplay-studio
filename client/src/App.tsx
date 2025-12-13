@@ -5,11 +5,15 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { AuthProvider } from "./contexts/AuthContext";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
+import DashboardAnalytics from "./pages/DashboardAnalytics";
 import RemoteControl from "./pages/RemoteControl";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
+import LoginNew from "./pages/LoginNew";
+import Pricing from "./pages/Pricing";
 
 /**
  * OnnPlay Studio - Main Application Router
@@ -29,15 +33,19 @@ function Router() {
     <Switch>
       {/* Public routes */}
       <Route path="/login" component={Login} />
+      <Route path="/login-new" component={LoginNew} />
+      <Route path="/pricing" component={Pricing} />
       
       {/* Public routes - Studio accessible without authentication */}
       <Route path="/" component={Home} />
       
       <Route path="/studio" component={Home} />
       
-      <Route path="/dashboard">
+      <Route path="/dashboard" component={Dashboard} />
+      
+      <Route path="/analytics">
         <ProtectedRoute requiredRole="admin">
-          <Dashboard />
+          <DashboardAnalytics />
         </ProtectedRoute>
       </Route>
       
@@ -63,14 +71,16 @@ function Router() {
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="dark"
-      >
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider
+          defaultTheme="dark"
+        >
+          <TooltipProvider>
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+        </ThemeProvider>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }

@@ -1,518 +1,461 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
-import { 
-  ArrowLeft, 
-  Play, 
-  Users, 
-  Clock, 
-  TrendingUp, 
-  Radio, 
-  Calendar,
-  Eye,
-  Zap,
-  BarChart3,
-  RefreshCw
-} from 'lucide-react';
-import { trpc } from '@/lib/trpc';
+import { useAuth } from '../contexts/AuthContext';
 import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-  Legend
-} from 'recharts';
+  Radio,
+  User,
+  CreditCard,
+  BarChart3,
+  Settings,
+  LogOut,
+  Crown,
+  Zap,
+  Calendar,
+  Clock,
+  TrendingUp,
+  Loader2,
+  ExternalLink,
+} from 'lucide-react';
+import { toast } from 'sonner';
 
-type PeriodFilter = 7 | 30 | 90;
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+
+interface Subscription {
+  id: string;
+  plan: 'free' | 'pro' | 'enterprise';
+  status: string;
+  current_period_end: string;
+  cancel_at_period_end: boolean;
+}
+
+interface Usage {
+  streaming_minutes: number;
+  recording_minutes: number;
+  ai_commands_count: number;
+}
 
 export default function Dashboard() {
   const [, navigate] = useLocation();
-  const [period, setPeriod] = useState<PeriodFilter>(30);
+  const { user, token, logout, isLoading: authLoading } = useAuth();
 
-  // Fetch analytics data
-  const { data: summary, isLoading: summaryLoading, refetch: refetchSummary } = trpc.analytics.summary.useQuery();
-  const { data: viewersByDay, isLoading: viewersLoading, refetch: refetchViewers } = trpc.analytics.viewersByDay.useQuery({ days: period });
-  const { data: platformStats, isLoading: platformLoading, refetch: refetchPlatform } = trpc.analytics.platformStats.useQuery();
-  const { data: transmissions, isLoading: transmissionsLoading, refetch: refetchTransmissions } = trpc.analytics.transmissionsByPeriod.useQuery({ days: period });
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const isLoading = summaryLoading || viewersLoading || platformLoading || transmissionsLoading;
-
-  const handleRefresh = () => {
-    refetchSummary();
-    refetchViewers();
-    refetchPlatform();
-    refetchTransmissions();
-  };
-
-  // Format duration
-  const formatDuration = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m`;
-  };
-
-  // Chart colors
-  const COLORS = ['#f97316', '#06b6d4', '#8b5cf6', '#10b981', '#f43f5e', '#eab308'];
-
-  // Prepare chart data with demo data if empty
-  const chartData = useMemo(() => {
-    if (viewersByDay && viewersByDay.length > 0) {
-      return viewersByDay.map(d => ({
-        ...d,
-        date: new Date(d.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
-      }));
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/login');
+    } else if (user) {
+      fetchData();
     }
-    // Demo data
-    const demoData = [];
-    for (let i = period; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      demoData.push({
-        date: date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
-        viewers: Math.floor(Math.random() * 2000) + 500,
-        peakViewers: Math.floor(Math.random() * 3000) + 1000,
-        transmissions: Math.floor(Math.random() * 3) + 1,
+  }, [user, authLoading, navigate]);
+
+  const fetchData = async () => {
+    try {
+      // Fetch subscription
+      const subResponse = await fetch(`${API_URL}/payments/subscription`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
-    }
-    return demoData;
-  }, [viewersByDay, period]);
 
-  const platformData = useMemo(() => {
-    if (platformStats && platformStats.length > 0) {
-      return platformStats;
-    }
-    // Demo data
-    return [
-      { platform: 'YouTube', count: 45, totalViewers: 125000 },
-      { platform: 'Twitch', count: 32, totalViewers: 89000 },
-      { platform: 'Facebook', count: 18, totalViewers: 45000 },
-      { platform: 'Instagram', count: 12, totalViewers: 28000 },
-    ];
-  }, [platformStats]);
+      if (subResponse.ok) {
+        const subData = await subResponse.json();
+        setSubscription(subData.subscription);
+      }
 
-  const summaryData = summary || {
-    totalTransmissions: 107,
-    totalDurationSeconds: 432000,
-    totalViewers: 287000,
-    avgViewers: 2682,
-    peakViewers: 8543,
+      // TODO: Fetch usage data when endpoint is ready
+      // For now, using mock data
+      setUsage({
+        streaming_minutes: 45,
+        recording_minutes: 30,
+        ai_commands_count: 127,
+      });
+    } catch (error) {
+      console.error('Failed to fetch data:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  const handleManageSubscription = async () => {
+    setIsProcessing(true);
+    try {
+      const response = await fetch(`${API_URL}/payments/create-portal`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create portal session');
+      }
+
+      // Redirect to Stripe customer portal
+      window.location.href = data.url;
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao abrir portal de pagamentos');
+      setIsProcessing(false);
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const getPlanIcon = (plan: string) => {
+    switch (plan) {
+      case 'pro':
+        return <Zap className="w-5 h-5 text-orange-500" />;
+      case 'enterprise':
+        return <Crown className="w-5 h-5 text-yellow-500" />;
+      default:
+        return <Radio className="w-5 h-5 text-gray-400" />;
+    }
+  };
+
+  const getPlanName = (plan: string) => {
+    switch (plan) {
+      case 'pro':
+        return 'Pro';
+      case 'enterprise':
+        return 'Enterprise';
+      default:
+        return 'Free';
+    }
+  };
+
+  const getPlanColor = (plan: string) => {
+    switch (plan) {
+      case 'pro':
+        return 'from-orange-500/20 to-orange-600/20 border-orange-500';
+      case 'enterprise':
+        return 'from-yellow-500/20 to-yellow-600/20 border-yellow-500';
+      default:
+        return 'from-gray-500/20 to-gray-600/20 border-gray-500';
+    }
+  };
+
+  if (authLoading || isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <Loader2 className="w-12 h-12 text-orange-500 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       {/* Header */}
-      <div className="border-b border-gray-800 bg-gray-900/80 backdrop-blur sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate('/')}
-                className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-              >
-                <ArrowLeft size={20} className="text-gray-400" />
-              </button>
-              <div>
-                <h1 className="text-xl font-bold text-white flex items-center gap-2">
-                  <BarChart3 className="text-orange-500" size={24} />
-                  Analytics Dashboard
-                </h1>
-                <p className="text-sm text-gray-500">Métricas e estatísticas de transmissão</p>
-              </div>
+      <div className="border-b border-gray-800">
+        <div className="max-w-7xl mx-auto px-4 py-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center">
+              <Radio className="w-5 h-5 text-white" />
             </div>
-            <div className="flex items-center gap-3">
-              {/* Period Filter */}
-              <div className="flex bg-gray-800 rounded-lg p-1">
-                {([7, 30, 90] as PeriodFilter[]).map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setPeriod(p)}
-                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                      period === p
-                        ? 'bg-orange-600 text-white'
-                        : 'text-gray-400 hover:text-white'
-                    }`}
-                  >
-                    {p} dias
-                  </button>
-                ))}
-              </div>
-              <button
-                onClick={handleRefresh}
-                disabled={isLoading}
-                className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50"
-              >
-                <RefreshCw size={18} className={`text-gray-400 ${isLoading ? 'animate-spin' : ''}`} />
-              </button>
+            <div>
+              <h1 className="text-xl font-bold">OnnPlay Studio</h1>
+              <p className="text-xs text-gray-400">Dashboard</p>
             </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/studio')}
+              className="px-4 py-2 bg-orange-500 hover:bg-orange-600 rounded-lg text-sm font-medium transition-colors"
+            >
+              Abrir Estúdio
+            </button>
+            <button
+              onClick={handleLogout}
+              className="p-2 text-gray-400 hover:text-white transition-colors"
+              title="Logout"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 hover:border-orange-500/50 transition-colors">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center">
-                <Radio size={20} className="text-orange-500" />
-              </div>
-              <span className="text-gray-400 text-sm">Transmissões</span>
-            </div>
-            <p className="text-3xl font-bold text-white">{summaryData.totalTransmissions}</p>
-            <p className="text-xs text-gray-500 mt-1">Total no período</p>
-          </div>
-
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 hover:border-cyan-500/50 transition-colors">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center">
-                <Clock size={20} className="text-cyan-500" />
-              </div>
-              <span className="text-gray-400 text-sm">Tempo Total</span>
-            </div>
-            <p className="text-3xl font-bold text-white">{formatDuration(summaryData.totalDurationSeconds)}</p>
-            <p className="text-xs text-gray-500 mt-1">De transmissão</p>
-          </div>
-
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 hover:border-green-500/50 transition-colors">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
-                <Users size={20} className="text-green-500" />
-              </div>
-              <span className="text-gray-400 text-sm">Total Viewers</span>
-            </div>
-            <p className="text-3xl font-bold text-white">{(summaryData.totalViewers / 1000).toFixed(1)}K</p>
-            <p className="text-xs text-gray-500 mt-1">Espectadores únicos</p>
-          </div>
-
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 hover:border-purple-500/50 transition-colors">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                <TrendingUp size={20} className="text-purple-500" />
-              </div>
-              <span className="text-gray-400 text-sm">Média/Stream</span>
-            </div>
-            <p className="text-3xl font-bold text-white">{summaryData.avgViewers.toLocaleString()}</p>
-            <p className="text-xs text-gray-500 mt-1">Espectadores médios</p>
-          </div>
-
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 hover:border-red-500/50 transition-colors">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-lg bg-red-500/20 flex items-center justify-center">
-                <Zap size={20} className="text-red-500" />
-              </div>
-              <span className="text-gray-400 text-sm">Pico Máximo</span>
-            </div>
-            <p className="text-3xl font-bold text-white">{summaryData.peakViewers.toLocaleString()}</p>
-            <p className="text-xs text-gray-500 mt-1">Espectadores simultâneos</p>
-          </div>
+        {/* Welcome Section */}
+        <div className="mb-8">
+          <h2 className="text-3xl font-bold mb-2">Olá, {user?.name}! 👋</h2>
+          <p className="text-gray-400">
+            Gerencie sua conta e acompanhe seu uso do OnnPlay Studio
+          </p>
         </div>
 
-        {/* Charts Row 1 */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Viewers Over Time - Area Chart */}
-          <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h3 className="text-lg font-semibold text-white">Espectadores ao Longo do Tempo</h3>
-                <p className="text-sm text-gray-500">Visualizações diárias nos últimos {period} dias</p>
-              </div>
-              <div className="flex items-center gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                  <span className="text-gray-400">Total</span>
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* Left Column - Account Info */}
+          <div className="lg:col-span-1 space-y-6">
+            {/* Profile Card */}
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-2xl font-bold">
+                  {user?.name?.charAt(0).toUpperCase()}
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-cyan-500"></div>
-                  <span className="text-gray-400">Pico</span>
+                <div>
+                  <h3 className="font-semibold text-lg">{user?.name}</h3>
+                  <p className="text-sm text-gray-400">{user?.email}</p>
                 </div>
               </div>
-            </div>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="colorViewers" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f97316" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="colorPeak" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis 
-                    dataKey="date" 
-                    stroke="#6b7280" 
-                    fontSize={12}
-                    tickLine={false}
-                  />
-                  <YAxis 
-                    stroke="#6b7280" 
-                    fontSize={12}
-                    tickLine={false}
-                    tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`}
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#1f2937', 
-                      border: '1px solid #374151',
-                      borderRadius: '8px',
-                      color: '#fff'
-                    }}
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="viewers" 
-                    stroke="#f97316" 
-                    fillOpacity={1} 
-                    fill="url(#colorViewers)" 
-                    strokeWidth={2}
-                    name="Total Viewers"
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="peakViewers" 
-                    stroke="#06b6d4" 
-                    fillOpacity={1} 
-                    fill="url(#colorPeak)" 
-                    strokeWidth={2}
-                    name="Pico"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
 
-          {/* Platform Distribution - Pie Chart */}
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-white">Distribuição por Plataforma</h3>
-              <p className="text-sm text-gray-500">Transmissões por destino</p>
+              <div className="space-y-3">
+                <button
+                  onClick={() => toast.info('Em breve!')}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors text-left"
+                >
+                  <User className="w-5 h-5 text-gray-400" />
+                  <span>Editar Perfil</span>
+                </button>
+                <button
+                  onClick={() => toast.info('Em breve!')}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors text-left"
+                >
+                  <Settings className="w-5 h-5 text-gray-400" />
+                  <span>Configurações</span>
+                </button>
+              </div>
             </div>
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={platformData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="count"
-                    nameKey="platform"
-                  >
-                    {platformData.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#1f2937', 
-                      border: '1px solid #374151',
-                      borderRadius: '8px',
-                      color: '#fff'
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="grid grid-cols-2 gap-2 mt-4">
-              {platformData.slice(0, 4).map((p, i) => (
-                <div key={p.platform} className="flex items-center gap-2">
-                  <div 
-                    className="w-3 h-3 rounded-full" 
-                    style={{ backgroundColor: COLORS[i % COLORS.length] }}
-                  ></div>
-                  <span className="text-sm text-gray-400">{p.platform}</span>
-                  <span className="text-sm text-white font-medium ml-auto">{p.count}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
 
-        {/* Charts Row 2 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* Transmissions Bar Chart */}
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-white">Transmissões por Dia</h3>
-              <p className="text-sm text-gray-500">Quantidade de lives realizadas</p>
-            </div>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData.slice(-14)}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis 
-                    dataKey="date" 
-                    stroke="#6b7280" 
-                    fontSize={12}
-                    tickLine={false}
-                  />
-                  <YAxis 
-                    stroke="#6b7280" 
-                    fontSize={12}
-                    tickLine={false}
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#1f2937', 
-                      border: '1px solid #374151',
-                      borderRadius: '8px',
-                      color: '#fff'
-                    }}
-                  />
-                  <Bar 
-                    dataKey="transmissions" 
-                    fill="#8b5cf6" 
-                    radius={[4, 4, 0, 0]}
-                    name="Transmissões"
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Peak Viewers Line Chart */}
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-white">Evolução do Pico de Espectadores</h3>
-              <p className="text-sm text-gray-500">Máximo de espectadores simultâneos</p>
-            </div>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData.slice(-14)}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis 
-                    dataKey="date" 
-                    stroke="#6b7280" 
-                    fontSize={12}
-                    tickLine={false}
-                  />
-                  <YAxis 
-                    stroke="#6b7280" 
-                    fontSize={12}
-                    tickLine={false}
-                    tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`}
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#1f2937', 
-                      border: '1px solid #374151',
-                      borderRadius: '8px',
-                      color: '#fff'
-                    }}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="peakViewers" 
-                    stroke="#10b981" 
-                    strokeWidth={3}
-                    dot={{ fill: '#10b981', strokeWidth: 2 }}
-                    activeDot={{ r: 6, fill: '#10b981' }}
-                    name="Pico de Espectadores"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Transmissions Table */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-lg font-semibold text-white">Transmissões Recentes</h3>
-              <p className="text-sm text-gray-500">Últimas {period} dias</p>
-            </div>
-            <button
-              onClick={() => navigate('/studio')}
-              className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+            {/* Current Plan Card */}
+            <div
+              className={`bg-gradient-to-br ${getPlanColor(
+                user?.plan || 'free'
+              )} border-2 rounded-xl p-6`}
             >
-              <Play size={16} />
-              Nova Transmissão
-            </button>
+              <div className="flex items-center gap-3 mb-4">
+                {getPlanIcon(user?.plan || 'free')}
+                <h3 className="text-xl font-bold">
+                  Plano {getPlanName(user?.plan || 'free')}
+                </h3>
+              </div>
+
+              {subscription && subscription.plan !== 'free' && (
+                <div className="space-y-2 mb-6 text-sm">
+                  <div className="flex items-center gap-2 text-gray-300">
+                    <Calendar className="w-4 h-4" />
+                    <span>
+                      Renova em{' '}
+                      {new Date(
+                        subscription.current_period_end
+                      ).toLocaleDateString('pt-BR')}
+                    </span>
+                  </div>
+                  {subscription.cancel_at_period_end && (
+                    <div className="px-3 py-2 bg-yellow-500/20 border border-yellow-500 rounded-lg text-yellow-500">
+                      Cancelado - Acesso até o fim do período
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {user?.plan === 'free' && (
+                  <button
+                    onClick={() => navigate('/pricing')}
+                    className="w-full py-3 bg-white text-black font-semibold rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    Fazer Upgrade
+                  </button>
+                )}
+                {user?.plan !== 'free' && (
+                  <button
+                    onClick={handleManageSubscription}
+                    disabled={isProcessing}
+                    className="w-full py-3 bg-white text-black font-semibold rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Carregando...
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="w-4 h-4" />
+                        Gerenciar Assinatura
+                        <ExternalLink className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                )}
+                <button
+                  onClick={() => navigate('/pricing')}
+                  className="w-full py-2 text-sm text-gray-400 hover:text-white transition-colors"
+                >
+                  Ver todos os planos
+                </button>
+              </div>
+            </div>
           </div>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-800">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Título</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Data</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Plataformas</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-400">Duração</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-400">Viewers</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-400">Pico</th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(transmissions && transmissions.length > 0 ? transmissions.slice(0, 10) : [
-                  { id: 1, title: 'Live de Lançamento', createdAt: new Date(), platforms: ['youtube', 'twitch'], durationSeconds: 7200, totalViewers: 4500, peakViewers: 2100, status: 'ended' },
-                  { id: 2, title: 'Podcast Semanal #45', createdAt: new Date(Date.now() - 86400000), platforms: ['youtube'], durationSeconds: 5400, totalViewers: 3200, peakViewers: 1800, status: 'ended' },
-                  { id: 3, title: 'Q&A com a Comunidade', createdAt: new Date(Date.now() - 172800000), platforms: ['twitch', 'facebook'], durationSeconds: 3600, totalViewers: 2800, peakViewers: 1500, status: 'ended' },
-                  { id: 4, title: 'Tutorial de Streaming', createdAt: new Date(Date.now() - 259200000), platforms: ['youtube'], durationSeconds: 4800, totalViewers: 5100, peakViewers: 2400, status: 'ended' },
-                  { id: 5, title: 'Evento Especial', createdAt: new Date(Date.now() - 345600000), platforms: ['youtube', 'twitch', 'facebook'], durationSeconds: 10800, totalViewers: 12000, peakViewers: 5500, status: 'ended' },
-                ]).map((t: any) => (
-                  <tr key={t.id} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
-                    <td className="py-3 px-4">
-                      <span className="text-white font-medium">{t.title}</span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="text-gray-400 text-sm">
-                        {new Date(t.createdAt).toLocaleDateString('pt-BR')}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex gap-1">
-                        {(t.platforms as string[]).map((p: string) => (
-                          <span 
-                            key={p} 
-                            className="px-2 py-0.5 bg-gray-800 text-gray-300 text-xs rounded capitalize"
-                          >
-                            {p}
-                          </span>
-                        ))}
+
+          {/* Right Column - Usage Stats */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Usage Overview */}
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <BarChart3 className="w-6 h-6 text-orange-500" />
+                <h3 className="text-xl font-bold">Uso deste mês</h3>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-6">
+                {/* Streaming Minutes */}
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock className="w-5 h-5 text-cyan-500" />
+                    <span className="text-sm text-gray-400">Transmissão</span>
+                  </div>
+                  <div className="text-3xl font-bold mb-1">
+                    {usage?.streaming_minutes || 0}
+                    <span className="text-lg text-gray-400"> min</span>
+                  </div>
+                  {user?.plan === 'free' && (
+                    <div className="mt-2">
+                      <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-cyan-500"
+                          style={{
+                            width: `${Math.min(
+                              ((usage?.streaming_minutes || 0) / 60) * 100,
+                              100
+                            )}%`,
+                          }}
+                        ></div>
                       </div>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <span className="text-gray-300">{formatDuration(t.durationSeconds ?? 0)}</span>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <span className="text-white font-medium">{(t.totalViewers ?? 0).toLocaleString()}</span>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <span className="text-orange-500 font-medium">{(t.peakViewers ?? 0).toLocaleString()}</span>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        t.status === 'live' 
-                          ? 'bg-red-500/20 text-red-400' 
-                          : t.status === 'ended'
-                          ? 'bg-green-500/20 text-green-400'
-                          : 'bg-gray-500/20 text-gray-400'
-                      }`}>
-                        {t.status === 'live' ? '🔴 AO VIVO' : t.status === 'ended' ? 'Finalizada' : t.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {60 - (usage?.streaming_minutes || 0)} min restantes
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Recording Minutes */}
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Radio className="w-5 h-5 text-green-500" />
+                    <span className="text-sm text-gray-400">Gravação</span>
+                  </div>
+                  <div className="text-3xl font-bold mb-1">
+                    {usage?.recording_minutes || 0}
+                    <span className="text-lg text-gray-400"> min</span>
+                  </div>
+                  {user?.plan === 'free' ? (
+                    <p className="text-xs text-gray-500 mt-2">
+                      Disponível no plano Pro
+                    </p>
+                  ) : (
+                    <p className="text-xs text-green-500 mt-2">Ilimitado</p>
+                  )}
+                </div>
+
+                {/* AI Commands */}
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Zap className="w-5 h-5 text-orange-500" />
+                    <span className="text-sm text-gray-400">
+                      Comandos AI
+                    </span>
+                  </div>
+                  <div className="text-3xl font-bold mb-1">
+                    {usage?.ai_commands_count || 0}
+                  </div>
+                  {user?.plan === 'free' ? (
+                    <p className="text-xs text-gray-500 mt-2">
+                      Disponível no plano Pro
+                    </p>
+                  ) : (
+                    <p className="text-xs text-orange-500 mt-2">Ilimitado</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Activity */}
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <TrendingUp className="w-6 h-6 text-orange-500" />
+                <h3 className="text-xl font-bold">Atividade Recente</h3>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center gap-4 p-4 bg-gray-800 rounded-lg">
+                  <div className="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center">
+                    <Radio className="w-5 h-5 text-cyan-500" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">Transmissão ao vivo</p>
+                    <p className="text-sm text-gray-400">
+                      YouTube • 45 minutos
+                    </p>
+                  </div>
+                  <span className="text-sm text-gray-500">Há 2 dias</span>
+                </div>
+
+                <div className="flex items-center gap-4 p-4 bg-gray-800 rounded-lg">
+                  <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
+                    <Radio className="w-5 h-5 text-green-500" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">Gravação local</p>
+                    <p className="text-sm text-gray-400">
+                      Entrevista.mp4 • 30 minutos
+                    </p>
+                  </div>
+                  <span className="text-sm text-gray-500">Há 5 dias</span>
+                </div>
+
+                <div className="flex items-center gap-4 p-4 bg-gray-800 rounded-lg">
+                  <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center">
+                    <Zap className="w-5 h-5 text-orange-500" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">AI Assistant usado</p>
+                    <p className="text-sm text-gray-400">
+                      127 comandos processados
+                    </p>
+                  </div>
+                  <span className="text-sm text-gray-500">Este mês</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+              <h3 className="text-xl font-bold mb-4">Ações Rápidas</h3>
+              <div className="grid md:grid-cols-2 gap-4">
+                <button
+                  onClick={() => navigate('/studio')}
+                  className="flex items-center gap-3 p-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 rounded-lg transition-all"
+                >
+                  <Radio className="w-6 h-6" />
+                  <div className="text-left">
+                    <div className="font-semibold">Iniciar Transmissão</div>
+                    <div className="text-sm opacity-90">
+                      Abrir estúdio ao vivo
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => navigate('/pricing')}
+                  className="flex items-center gap-3 p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  <Crown className="w-6 h-6 text-yellow-500" />
+                  <div className="text-left">
+                    <div className="font-semibold">Fazer Upgrade</div>
+                    <div className="text-sm text-gray-400">
+                      Desbloquear recursos Pro
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
