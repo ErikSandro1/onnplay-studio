@@ -70,6 +70,20 @@ const VideoMonitors: React.FC<VideoMonitorsProps> = ({
             1080p
           </div>
         </div>
+        
+        {/* Monitor Stand - EDIT */}
+        <div className="flex justify-center mt-3">
+          <div
+            className="w-24 h-2 rounded-t-lg"
+            style={{ background: '#1E2842' }}
+          />
+        </div>
+        <div className="flex justify-center">
+          <div
+            className="w-40 h-3 rounded-b-lg"
+            style={{ background: '#1E2842' }}
+          />
+        </div>
       </div>
 
       {/* PROGRAM Monitor */}
@@ -145,6 +159,20 @@ const VideoMonitors: React.FC<VideoMonitorsProps> = ({
           >
             1080p
           </div>
+        </div>
+        
+        {/* Monitor Stand - PROGRAM */}
+        <div className="flex justify-center mt-3">
+          <div
+            className="w-24 h-2 rounded-t-lg"
+            style={{ background: '#1E2842' }}
+          />
+        </div>
+        <div className="flex justify-center">
+          <div
+            className="w-40 h-3 rounded-b-lg"
+            style={{ background: '#1E2842' }}
+          />
         </div>
       </div>
     </div>

@@ -8,7 +8,7 @@ const AudioControlsPanel: React.FC = () => {
 
   return (
     <div
-      className="p-6 rounded-xl"
+      className="h-full p-4 rounded-xl flex flex-col justify-between"
       style={{
         background: '#141B2E',
         border: '2px solid #1E2842',
