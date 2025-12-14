@@ -223,7 +223,7 @@ export default function Pricing() {
             <div className="mt-8 space-y-3">
               <div className="flex items-center gap-2 text-sm">
                 <Check className="w-4 h-4 text-green-500" />
-                <span>5 horas de transmissão/mês</span>
+                <span>2 horas de transmissão/mês</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <Check className="w-4 h-4 text-green-500" />
@@ -285,11 +285,11 @@ export default function Pricing() {
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <Check className="w-4 h-4 text-green-500" />
-                <span className="font-semibold">Qualidade até 1080p</span>
+                <span className="font-semibold">Qualidade 1080p Full HD/4K</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <Check className="w-4 h-4 text-green-500" />
-                <span className="font-semibold">Até 10 participantes</span>
+                <span className="font-semibold">Até 20 participantes</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <Check className="w-4 h-4 text-green-500" />
