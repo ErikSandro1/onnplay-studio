@@ -1,9 +1,16 @@
 import Stripe from 'stripe';
 import { v4 as uuidv4 } from 'uuid';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2024-12-18.acacia',
-});
+// Initialize Stripe only if API key is provided
+const stripe = process.env.STRIPE_SECRET_KEY 
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: '2024-12-18.acacia',
+    })
+  : null;
+
+if (!stripe) {
+  console.warn('⚠️  STRIPE_SECRET_KEY not configured - payment features disabled');
+}
 
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
 
@@ -78,6 +85,9 @@ export class StripeService {
    * Create Stripe customer for user
    */
   async createCustomer(userId: string, email: string, name: string): Promise<string> {
+    if (!stripe) {
+      throw new Error('Stripe not configured');
+    }
     const customer = await stripe.customers.create({
       email,
       name,
@@ -104,6 +114,9 @@ export class StripeService {
     successUrl: string,
     cancelUrl: string
   ): Promise<{ sessionId: string; url: string }> {
+    if (!stripe) {
+      throw new Error('Stripe not configured');
+    }
     // Get or create Stripe customer
     const [user] = await this.db.query(
       'SELECT email, name, stripe_customer_id FROM users WHERE id = ?',
@@ -156,6 +169,9 @@ export class StripeService {
     userId: string,
     returnUrl: string
   ): Promise<{ url: string }> {
+    if (!stripe) {
+      throw new Error('Stripe not configured');
+    }
     const [user] = await this.db.query(
       'SELECT stripe_customer_id FROM users WHERE id = ?',
       [userId]
@@ -180,6 +196,9 @@ export class StripeService {
     payload: string | Buffer,
     signature: string
   ): Promise<void> {
+    if (!stripe) {
+      throw new Error('Stripe not configured');
+    }
     let event: Stripe.Event;
 
     try {
@@ -383,6 +402,9 @@ export class StripeService {
    * Cancel subscription
    */
   async cancelSubscription(userId: string): Promise<void> {
+    if (!stripe) {
+      throw new Error('Stripe not configured');
+    }
     const [subscription] = await this.db.query(
       'SELECT stripe_subscription_id FROM subscriptions WHERE user_id = ? AND status = "active"',
       [userId]
@@ -407,6 +429,9 @@ export class StripeService {
    * Reactivate subscription
    */
   async reactivateSubscription(userId: string): Promise<void> {
+    if (!stripe) {
+      throw new Error('Stripe not configured');
+    }
     const [subscription] = await this.db.query(
       'SELECT stripe_subscription_id FROM subscriptions WHERE user_id = ? AND cancel_at_period_end = TRUE',
       [userId]
