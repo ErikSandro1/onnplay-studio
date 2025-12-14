@@ -283,9 +283,8 @@ export default function LoginNew() {
 
             {/* OAuth Buttons */}
             <div className="space-y-3">
-              <button
-                type="button"
-                onClick={() => window.location.replace('/api/auth/google')}
+              <a
+                href="/api/auth/google"
                 className="w-full py-3 bg-white hover:bg-gray-100 text-gray-900 font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -307,7 +306,7 @@ export default function LoginNew() {
                   />
                 </svg>
                 Continuar com Google
-              </button>
+              </a>
 
               <button
                 type="button"
