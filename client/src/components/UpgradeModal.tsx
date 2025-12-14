@@ -113,7 +113,7 @@ export function UpgradeModal({ isOpen, onClose, currentPlan = 'FREE' }: UpgradeM
               <ul className="space-y-3">
                 <li className="flex items-start">
                   <Check className="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-600">5 horas de transmissão/mês</span>
+                  <span className="text-gray-600">2 horas de transmissão/mês</span>
                 </li>
                 <li className="flex items-start">
                   <Check className="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
@@ -165,11 +165,11 @@ export function UpgradeModal({ isOpen, onClose, currentPlan = 'FREE' }: UpgradeM
                 </li>
                 <li className="flex items-start">
                   <Check className="w-5 h-5 text-purple-600 mr-2 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-900 font-medium">Qualidade até 4K</span>
+                  <span className="text-gray-900 font-medium">Qualidade 1080p Full HD/4K</span>
                 </li>
                 <li className="flex items-start">
                   <Check className="w-5 h-5 text-purple-600 mr-2 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-900 font-medium">Até 10 participantes</span>
+                  <span className="text-gray-900 font-medium">Até 20 participantes</span>
                 </li>
                 <li className="flex items-start">
                   <Check className="w-5 h-5 text-purple-600 mr-2 flex-shrink-0 mt-0.5" />
@@ -178,6 +178,18 @@ export function UpgradeModal({ isOpen, onClose, currentPlan = 'FREE' }: UpgradeM
                 <li className="flex items-start">
                   <Check className="w-5 h-5 text-purple-600 mr-2 flex-shrink-0 mt-0.5" />
                   <span className="text-gray-900 font-medium">Suporte prioritário</span>
+                </li>
+                <li className="flex items-start">
+                  <Check className="w-5 h-5 text-purple-600 mr-2 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-900 font-medium">100GB Cloud Storage</span>
+                </li>
+                <li className="flex items-start">
+                  <Check className="w-5 h-5 text-purple-600 mr-2 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-900 font-medium">Sem marca d'água</span>
+                </li>
+                <li className="flex items-start">
+                  <Check className="w-5 h-5 text-purple-600 mr-2 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-900 font-medium">AI Assistant</span>
                 </li>
               </ul>
             </div>
