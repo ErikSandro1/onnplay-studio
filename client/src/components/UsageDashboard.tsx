@@ -3,7 +3,7 @@ import { Progress } from './ui/progress';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Clock, TrendingUp, AlertCircle, Crown } from 'lucide-react';
-import { useNavigate } from 'wouter';
+import { useLocation } from 'wouter';
 
 interface UsageSummary {
   streaming_minutes: number;
@@ -24,7 +24,7 @@ interface UsageSummary {
 export function UsageDashboard() {
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [, navigate] = useNavigate();
+  const [, setLocation] = useLocation();
 
   useEffect(() => {
     fetchUsage();
@@ -97,7 +97,7 @@ export function UsageDashboard() {
           </div>
           {usage.plan === 'free' && (
             <Button 
-              onClick={() => navigate('/pricing')}
+              onClick={() => setLocation('/pricing')}
               className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
             >
               <Crown className="w-4 h-4 mr-2" />
