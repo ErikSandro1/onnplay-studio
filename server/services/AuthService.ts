@@ -107,11 +107,12 @@ export class AuthService {
     const { email, password } = data;
 
     // Get user
-    const [user] = await this.db.query(
+    const [users] = await this.db.query(
       'SELECT * FROM users WHERE email = ?',
       [email]
     );
 
+    const user = users[0];
     if (!user) {
       throw new Error('Invalid email or password');
     }
