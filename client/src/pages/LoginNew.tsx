@@ -203,9 +203,20 @@ export default function LoginNew() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Senha
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-300">
+                    Senha
+                  </label>
+                  {isLoginMode && (
+                    <button
+                      type="button"
+                      onClick={() => navigate('/forgot-password')}
+                      className="text-xs text-orange-500 hover:text-orange-400 transition-colors"
+                    >
+                      Esqueci minha senha
+                    </button>
+                  )}
+                </div>
                 <input
                   type="password"
                   value={password}
@@ -251,7 +262,7 @@ export default function LoginNew() {
             <div className="space-y-3">
               <button
                 type="button"
-                onClick={() => toast.info('OAuth em breve!')}
+                onClick={() => window.location.href = '/api/auth/google'}
                 className="w-full py-3 bg-white hover:bg-gray-100 text-gray-900 font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -277,7 +288,7 @@ export default function LoginNew() {
 
               <button
                 type="button"
-                onClick={() => toast.info('OAuth em breve!')}
+                onClick={() => window.location.href = '/api/auth/google'}
                 className="w-full py-3 bg-[#24292e] hover:bg-[#2f363d] text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">

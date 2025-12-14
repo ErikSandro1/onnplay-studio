@@ -15,6 +15,8 @@ import Login from "./pages/Login";
 import LoginNew from "./pages/LoginNew";
 import Pricing from "./pages/Pricing";
 import Landing from "./pages/Landing";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 
 /**
  * OnnPlay Studio - Main Application Router
@@ -35,6 +37,8 @@ function Router() {
       {/* Public routes */}
       <Route path="/login" component={Login} />
       <Route path="/login-new" component={LoginNew} />
+      <Route path="/forgot-password" component={ForgotPassword} />
+      <Route path="/reset-password" component={ResetPassword} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/home" component={Landing} />
       
