@@ -18,6 +18,7 @@ import Landing from "./pages/Landing";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import EmailVerified from "./pages/EmailVerified";
+import CheckoutSuccess from "./pages/CheckoutSuccess";
 
 /**
  * OnnPlay Studio - Main Application Router
@@ -48,6 +49,7 @@ function Router() {
       <Route path="/email-verified" component={EmailVerified} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/home" component={Landing} />
+      <Route path="/checkout/success" component={CheckoutSuccess} />
       
       {/* Protected routes - Require authentication */}
       <Route path="/">
