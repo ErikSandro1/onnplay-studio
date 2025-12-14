@@ -51,7 +51,7 @@ export class AuthService {
     console.log(`[AUTH] Register attempt for email: ${email}`);
 
     // Check if user already exists
-    const existingUser = await this.db.query(
+    const [existingUser] = await this.db.query(
       'SELECT id FROM users WHERE email = ?',
       [email]
     );
