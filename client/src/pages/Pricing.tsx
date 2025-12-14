@@ -16,7 +16,7 @@ interface PlanFeature {
 const features: PlanFeature[] = [
   {
     name: 'Tempo de transmissão',
-    free: '2h/mês',
+    free: '5h/mês',
     pro: 'Ilimitado',
     enterprise: 'Ilimitado',
   },
@@ -223,7 +223,7 @@ export default function Pricing() {
             <div className="mt-8 space-y-3">
               <div className="flex items-center gap-2 text-sm">
                 <Check className="w-4 h-4 text-green-500" />
-                <span>2 horas de transmissão/mês</span>
+                <span>5 horas de transmissão/mês</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <Check className="w-4 h-4 text-green-500" />
@@ -258,8 +258,9 @@ export default function Pricing() {
               <h3 className="text-2xl font-bold">Pro</h3>
             </div>
             <div className="mb-6">
-              <div className="text-4xl font-bold">$29</div>
+              <div className="text-4xl font-bold">$39</div>
               <div className="text-gray-400">por mês</div>
+              <div className="text-sm text-orange-400 mt-1">ou $29/mês no plano anual</div>
             </div>
             <button
               onClick={() => handleSelectPlan('pro')}

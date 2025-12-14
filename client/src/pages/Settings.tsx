@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
-import { ArrowLeft, Key, Bell, Shield, User, Zap } from 'lucide-react';
+import { ArrowLeft, Key, Bell, Shield, User, Zap, CreditCard } from 'lucide-react';
 import StreamKeyManager from '@/components/StreamKeyManager';
+import { SubscriptionManager } from '@/components/SubscriptionManager';
 
-type SettingsTab = 'stream-keys' | 'notifications' | 'security' | 'profile' | 'advanced';
+type SettingsTab = 'stream-keys' | 'subscription' | 'notifications' | 'security' | 'profile' | 'advanced';
 
 interface TabConfig {
   id: SettingsTab;
@@ -22,6 +23,12 @@ export default function Settings() {
       label: 'Stream Keys',
       icon: <Key size={20} />,
       description: 'Gerencie suas chaves de transmissão',
+    },
+    {
+      id: 'subscription',
+      label: 'Assinatura',
+      icon: <CreditCard size={20} />,
+      description: 'Gerencie seu plano e pagamentos',
     },
     {
       id: 'notifications',
@@ -101,6 +108,16 @@ export default function Settings() {
           <div className="lg:col-span-3">
             {activeTab === 'stream-keys' && (
               <StreamKeyManager />
+            )}
+
+            {activeTab === 'subscription' && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-white mb-4">Assinatura</h2>
+                  <p className="text-gray-400 mb-6">Gerencie seu plano e pagamentos</p>
+                </div>
+                <SubscriptionManager />
+              </div>
             )}
 
             {activeTab === 'notifications' && (
