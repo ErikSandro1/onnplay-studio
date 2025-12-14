@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 );
 
 -- Usage tracking table
-CREATE TABLE IF NOT EXISTS usage (
+CREATE TABLE IF NOT EXISTS user_usage (
   id VARCHAR(36) PRIMARY KEY,
   user_id VARCHAR(36) NOT NULL,
   month VARCHAR(7) NOT NULL, -- 'YYYY-MM'
