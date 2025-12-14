@@ -111,7 +111,7 @@ export function createAuthRoutes(authService: AuthService) {
     try {
       const googleOAuth = new GoogleOAuthService();
       const authUrl = googleOAuth.getAuthUrl();
-      res.json({ authUrl });
+      res.redirect(authUrl);
     } catch (error: any) {
       console.error('Google OAuth URL error:', error);
       res.status(500).json({
