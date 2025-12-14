@@ -1,4 +1,5 @@
 import express from 'express';
+import { getDbPool } from '../db/connection';
 import { AuthService } from '../services/AuthService';
 import { StripeService } from '../services/StripeService';
 import { UsageLimitService } from '../services/UsageLimitService';
@@ -13,11 +14,14 @@ import { createBroadcastRoutes } from '../routes/broadcast';
  * Integrates authentication, payments, usage tracking, and broadcast routes
  */
 export function setupRestRoutes(app: express.Application) {
-  // Initialize services
-  const authService = new AuthService();
-  const stripeService = new StripeService();
-  const usageLimitService = new UsageLimitService();
-  const broadcastTrackingService = new BroadcastTrackingService();
+  // Get database connection
+  const db = getDbPool();
+
+  // Initialize services with database
+  const authService = new AuthService(db);
+  const stripeService = new StripeService(db);
+  const usageLimitService = new UsageLimitService(db);
+  const broadcastTrackingService = new BroadcastTrackingService(db);
 
   // Create routers
   const authRoutes = createAuthRoutes(authService);
