@@ -106,28 +106,10 @@ export default function Login() {
 
             {/* Login Button */}
             <button
-              onClick={handleLogin}
+              onClick={() => navigate('/login-new')}
               className="w-full py-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold rounded-xl transition-all duration-200 flex items-center justify-center gap-3 shadow-lg shadow-orange-500/25"
             >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-              </svg>
-              Entrar com Manus
-            </button>
-
-            {/* Divider */}
-            <div className="flex items-center gap-4 my-6">
-              <div className="flex-1 h-px bg-gray-800"></div>
-              <span className="text-gray-500 text-sm">ou</span>
-              <div className="flex-1 h-px bg-gray-800"></div>
-            </div>
-
-            {/* Demo Access */}
-            <button
-              onClick={() => navigate('/')}
-              className="w-full py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium rounded-xl transition-colors border border-gray-700"
-            >
-              Acessar Demo (Sem Login)
+              Entrar
             </button>
 
             {/* Terms */}
@@ -141,7 +123,7 @@ export default function Login() {
 
           {/* Footer */}
           <p className="text-center text-gray-600 text-sm mt-8">
-            OnnPlay Studio v13.0 • Powered by Manus
+            OnnPlay Studio v1.0
           </p>
         </div>
       </div>
