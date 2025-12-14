@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Button } from './ui/button';
 import { Clock, TrendingUp, AlertCircle, Crown } from 'lucide-react';
 import { useLocation } from 'wouter';
-import UpgradeModal from './UpgradeModal';
+import { UpgradeModal } from './UpgradeModal';
 
 interface UsageSummary {
   streaming_minutes: number;
