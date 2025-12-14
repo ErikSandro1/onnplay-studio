@@ -79,17 +79,17 @@ async function startServer() {
   });
 
   const port = process.env.PORT || 3000;
-  const server = app.listen(PORT, "0.0.0.0", () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}/`);
-    console.log(`📡 API available at http://localhost:${PORT}/api`);
-    console.log(`🎨 Frontend served from ${publicPath}`);
+  const httpServer = server.listen(port, "0.0.0.0", () => {
+    console.log(`🚀 Server running on http://localhost:${port}/`);
+    console.log(`📡 API available at http://localhost:${port}/api`);
+    console.log(`🎨 Frontend served from ${staticPath}`);
   });
 
   // Graceful shutdown
   process.on('SIGTERM', async () => {
     console.log('SIGTERM signal received: closing HTTP server');
     await broadcastService.cleanup();
-    server.close(() => {
+    httpServer.close(() => {
       console.log('HTTP server closed');
     });
   });
@@ -97,8 +97,11 @@ async function startServer() {
   process.on('SIGINT', async () => {
     console.log('SIGINT signal received: closing HTTP server');
     await broadcastService.cleanup();
-    server.close(() => {
+    httpServer.close(() => {
       console.log('HTTP server closed');
       process.exit(0);
     });
-  });rtServer().catch(console.error);
+  });
+}
+
+startServer().catch(console.error);
