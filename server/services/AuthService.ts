@@ -48,15 +48,23 @@ export class AuthService {
   async register(data: RegisterData): Promise<{ user: User; token: string }> {
     const { email, password, name } = data;
 
+    console.log(`[AUTH] Register attempt for email: ${email}`);
+
     // Check if user already exists
     const existingUser = await this.db.query(
       'SELECT id FROM users WHERE email = ?',
       [email]
     );
 
+    console.log(`[AUTH] Existing user query result:`, existingUser);
+    console.log(`[AUTH] Existing user count: ${existingUser.length}`);
+
     if (existingUser.length > 0) {
+      console.log(`[AUTH] Email ${email} already exists! Rejecting registration.`);
       throw new Error('Email already registered');
     }
+
+    console.log(`[AUTH] Email ${email} is new! Proceeding with registration...`);
 
     // Hash password
     const password_hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
