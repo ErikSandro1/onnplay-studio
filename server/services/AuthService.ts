@@ -121,6 +121,15 @@ export class AuthService {
       throw new Error('Invalid email or password');
     }
 
+    // Check if user is OAuth-only (no password set)
+    if (!user.password_hash) {
+      if (user.oauth_provider) {
+        throw new Error(`This account uses ${user.oauth_provider.charAt(0).toUpperCase() + user.oauth_provider.slice(1)} login. Please sign in with ${user.oauth_provider.charAt(0).toUpperCase() + user.oauth_provider.slice(1)}.`);
+      } else {
+        throw new Error('No password set for this account. Please use password recovery.');
+      }
+    }
+
     // Verify password
     const isValid = await bcrypt.compare(password, user.password_hash);
     if (!isValid) {
