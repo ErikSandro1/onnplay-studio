@@ -147,7 +147,7 @@ export class AuthService {
     name: string,
     avatar_url?: string
   ): Promise<{ user: User; token: string; isNewUser: boolean }> {
-    // Check if user exists
+    // Check if user exists by OAuth provider and ID
     const [users] = await this.db.query(
       'SELECT * FROM users WHERE oauth_provider = ? AND oauth_id = ?',
       [provider, oauthId]
@@ -157,28 +157,48 @@ export class AuthService {
     let isNewUser = false;
 
     if (!user) {
-      // Create new user
-      const userId = uuidv4();
-      await this.db.query(
-        `INSERT INTO users (id, email, name, avatar_url, oauth_provider, oauth_id, plan) 
-         VALUES (?, ?, ?, ?, ?, ?, 'free')`,
-        [userId, email, name, avatar_url, provider, oauthId]
+      // Check if user exists by email (link existing account)
+      const [existingUsers] = await this.db.query(
+        'SELECT * FROM users WHERE email = ?',
+        [email]
       );
 
-      // Create initial usage record
-      const currentMonth = new Date().toISOString().slice(0, 7);
-      await this.db.query(
-        `INSERT INTO user_usage (id, user_id, month) VALUES (?, ?, ?)`,
-        [uuidv4(), userId, currentMonth]
-      );
+      if (existingUsers[0]) {
+        // Link OAuth to existing account
+        await this.db.query(
+          `UPDATE users SET oauth_provider = ?, oauth_id = ?, avatar_url = ?, updated_at = NOW() WHERE email = ?`,
+          [provider, oauthId, avatar_url, email]
+        );
+        
+        const [updatedUsers] = await this.db.query(
+          'SELECT id, email, name, avatar_url, plan, oauth_provider, created_at FROM users WHERE email = ?',
+          [email]
+        );
+        user = updatedUsers[0];
+      } else {
+        // Create new user
+        const userId = uuidv4();
+        await this.db.query(
+          `INSERT INTO users (id, email, name, avatar_url, oauth_provider, oauth_id, plan) 
+           VALUES (?, ?, ?, ?, ?, ?, 'free')`,
+          [userId, email, name, avatar_url, provider, oauthId]
+        );
 
-      const [newUsers] = await this.db.query(
-        'SELECT id, email, name, avatar_url, plan, oauth_provider, created_at FROM users WHERE id = ?',
-        [userId]
-      );
-      user = newUsers[0];
+        // Create initial usage record
+        const currentMonth = new Date().toISOString().slice(0, 7);
+        await this.db.query(
+          `INSERT INTO user_usage (id, user_id, month) VALUES (?, ?, ?)`,
+          [uuidv4(), userId, currentMonth]
+        );
 
-      isNewUser = true;
+        const [newUsers] = await this.db.query(
+          'SELECT id, email, name, avatar_url, plan, oauth_provider, created_at FROM users WHERE id = ?',
+          [userId]
+        );
+        user = newUsers[0];
+
+        isNewUser = true;
+      }
     }
 
     // Generate JWT token
