@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
+import { GoogleOAuthService } from './GoogleOAuthService';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const JWT_EXPIRES_IN = '7d';
@@ -147,11 +148,12 @@ export class AuthService {
     avatar_url?: string
   ): Promise<{ user: User; token: string; isNewUser: boolean }> {
     // Check if user exists
-    let [user] = await this.db.query(
+    const [users] = await this.db.query(
       'SELECT * FROM users WHERE oauth_provider = ? AND oauth_id = ?',
       [provider, oauthId]
     );
 
+    let user = users[0];
     let isNewUser = false;
 
     if (!user) {
@@ -170,10 +172,11 @@ export class AuthService {
         [uuidv4(), userId, currentMonth]
       );
 
-      [user] = await this.db.query(
+      const [newUsers] = await this.db.query(
         'SELECT id, email, name, avatar_url, plan, oauth_provider, created_at FROM users WHERE id = ?',
         [userId]
       );
+      user = newUsers[0];
 
       isNewUser = true;
     }
@@ -211,11 +214,11 @@ export class AuthService {
    * Get user by ID
    */
   async getUserById(userId: string): Promise<User | null> {
-    const [user] = await this.db.query(
+    const [users] = await this.db.query(
       'SELECT id, email, name, avatar_url, plan, oauth_provider, stripe_customer_id, created_at FROM users WHERE id = ?',
       [userId]
     );
-    return user || null;
+    return users[0] || null;
   }
 
   /**
@@ -262,10 +265,11 @@ export class AuthService {
     currentPassword: string,
     newPassword: string
   ): Promise<void> {
-    const [user] = await this.db.query(
+    const [users] = await this.db.query(
       'SELECT password_hash FROM users WHERE id = ?',
       [userId]
     );
+    const user = users[0];
 
     if (!user || !user.password_hash) {
       throw new Error('Cannot change password for OAuth users');
@@ -289,5 +293,82 @@ export class AuthService {
   async deleteAccount(userId: string): Promise<void> {
     // Cascade delete will handle related records
     await this.db.query('DELETE FROM users WHERE id = ?', [userId]);
+  }
+
+  /**
+   * Request password reset
+   * Returns reset token (in production, send via email)
+   */
+  async requestPasswordReset(email: string): Promise<string> {
+    // Check if user exists
+    const [users] = await this.db.query(
+      'SELECT id, oauth_provider FROM users WHERE email = ?',
+      [email]
+    );
+    const user = users[0];
+
+    if (!user) {
+      // Don't reveal if email exists or not (security)
+      throw new Error('If this email exists, a reset link has been sent');
+    }
+
+    if (user.oauth_provider) {
+      throw new Error('Cannot reset password for OAuth users');
+    }
+
+    // Generate reset token
+    const token = uuidv4();
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    // Save token
+    await this.db.query(
+      'INSERT INTO password_reset_tokens (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)',
+      [uuidv4(), user.id, token, expiresAt]
+    );
+
+    // In production, send email with reset link
+    console.log(`[Password Reset] Token for ${email}: ${token}`);
+    console.log(`[Password Reset] Reset link: ${process.env.CLIENT_URL}/reset-password?token=${token}`);
+
+    return token;
+  }
+
+  /**
+   * Reset password with token
+   */
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    // Find valid token
+    const [tokens] = await this.db.query(
+      'SELECT user_id, expires_at, used FROM password_reset_tokens WHERE token = ?',
+      [token]
+    );
+    const resetToken = tokens[0];
+
+    if (!resetToken) {
+      throw new Error('Invalid reset token');
+    }
+
+    if (resetToken.used) {
+      throw new Error('Reset token already used');
+    }
+
+    if (new Date(resetToken.expires_at) < new Date()) {
+      throw new Error('Reset token expired');
+    }
+
+    // Hash new password
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+
+    // Update password
+    await this.db.query(
+      'UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?',
+      [passwordHash, resetToken.user_id]
+    );
+
+    // Mark token as used
+    await this.db.query(
+      'UPDATE password_reset_tokens SET used = TRUE WHERE token = ?',
+      [token]
+    );
   }
 }
