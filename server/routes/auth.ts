@@ -125,16 +125,29 @@ export function createAuthRoutes(authService: AuthService) {
    * Google OAuth callback
    */
   router.get('/google/callback', async (req: Request, res: Response) => {
+    console.log('[Google OAuth Callback] START');
+    console.log('[Google OAuth Callback] Query params:', req.query);
+    console.log('[Google OAuth Callback] Headers:', req.headers);
+    
     try {
       const { code } = req.query;
 
+      console.log('[Google OAuth Callback] Code present:', !!code);
+      console.log('[Google OAuth Callback] Code type:', typeof code);
+
       if (!code || typeof code !== 'string') {
+        console.error('[Google OAuth Callback] Missing or invalid authorization code');
         return res.status(400).send('Missing authorization code');
       }
 
+      console.log('[Google OAuth Callback] Creating GoogleOAuthService...');
       const googleOAuth = new GoogleOAuthService();
+      
+      console.log('[Google OAuth Callback] Getting user info...');
       const userInfo = await googleOAuth.getUserInfo(code);
+      console.log('[Google OAuth Callback] User info received:', { email: userInfo.email, name: userInfo.name });
 
+      console.log('[Google OAuth Callback] Calling authService.oauthLogin...');
       const result = await authService.oauthLogin(
         'google',
         userInfo.id,
@@ -142,14 +155,20 @@ export function createAuthRoutes(authService: AuthService) {
         userInfo.name,
         userInfo.picture
       );
+      console.log('[Google OAuth Callback] OAuth login successful, token generated');
 
       // Redirect to frontend with token
       const frontendUrl = process.env.CLIENT_URL || 'http://localhost:5173';
-      res.redirect(`${frontendUrl}/?token=${result.token}&isNewUser=${result.isNewUser}`);
+      const redirectUrl = `${frontendUrl}/?token=${result.token}&isNewUser=${result.isNewUser}`;
+      console.log('[Google OAuth Callback] Redirecting to:', redirectUrl);
+      res.redirect(redirectUrl);
     } catch (error: any) {
-      console.error('Google OAuth callback error:', error);
+      console.error('[Google OAuth Callback] ERROR:', error);
+      console.error('[Google OAuth Callback] Error stack:', error.stack);
       const frontendUrl = process.env.CLIENT_URL || 'http://localhost:5173';
-      res.redirect(`${frontendUrl}/?error=${encodeURIComponent(error.message || 'OAuth login failed')}`);
+      const errorUrl = `${frontendUrl}/?error=${encodeURIComponent(error.message || 'OAuth login failed')}`;
+      console.log('[Google OAuth Callback] Redirecting to error URL:', errorUrl);
+      res.redirect(errorUrl);
     }
   });
 
