@@ -1,6 +1,11 @@
 import { getDbPool } from './connection';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export async function runMigrations() {
   try {
@@ -10,6 +15,7 @@ export async function runMigrations() {
     
     // Read schema.sql
     const schemaPath = path.join(__dirname, 'schema.sql');
+    console.log('Reading schema from:', schemaPath);
     const schema = fs.readFileSync(schemaPath, 'utf-8');
     
     // Split by semicolon and filter empty statements
