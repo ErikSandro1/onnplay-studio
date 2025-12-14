@@ -32,6 +32,11 @@ import ResetPassword from "./pages/ResetPassword";
  * - user: Basic viewer access
  */
 function Router() {
+  // Don't handle API routes - let them go to the backend
+  if (window.location.pathname.startsWith('/api/')) {
+    return null;
+  }
+  
   return (
     <Switch>
       {/* Public routes */}
