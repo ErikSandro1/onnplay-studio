@@ -26,7 +26,7 @@ export default function LoginNew() {
       window.history.replaceState({}, '', '/login-new');
     } else if (token) {
       // Save token to localStorage
-      localStorage.setItem('token', token);
+      localStorage.setItem('auth_token', token);
       
       // Clean URL and redirect to studio
       window.history.replaceState({}, '', '/login-new');
