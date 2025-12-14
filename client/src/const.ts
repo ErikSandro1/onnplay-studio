@@ -5,10 +5,10 @@ export const getLoginUrl = () => {
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
   const appId = import.meta.env.VITE_APP_ID;
   
-  // If OAuth is not configured, return a placeholder URL
+  // If OAuth is not configured, return the new login page
   if (!oauthPortalUrl || !appId) {
-    console.warn('OAuth not configured. Please set VITE_OAUTH_PORTAL_URL and VITE_APP_ID environment variables.');
-    return '#';
+    console.warn('OAuth not configured. Using local authentication.');
+    return '/login-new';
   }
   
   const redirectUri = `${window.location.origin}/api/oauth/callback`;
