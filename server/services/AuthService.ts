@@ -2,6 +2,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { GoogleOAuthService } from './GoogleOAuthService';
+import { EmailService } from './EmailService';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const JWT_EXPIRES_IN = '7d';
@@ -38,9 +39,11 @@ export interface JWTPayload {
 
 export class AuthService {
   private db: any; // Database connection
+  private emailService: EmailService;
 
   constructor(db: any) {
     this.db = db;
+    this.emailService = new EmailService();
   }
 
   /**
@@ -322,7 +325,7 @@ export class AuthService {
   async requestPasswordReset(email: string): Promise<string> {
     // Check if user exists
     const [users] = await this.db.query(
-      'SELECT id, oauth_provider FROM users WHERE email = ?',
+      'SELECT id, name, oauth_provider FROM users WHERE email = ?',
       [email]
     );
     const user = users[0];
@@ -346,7 +349,15 @@ export class AuthService {
       [uuidv4(), user.id, token, expiresAt]
     );
 
-    // In production, send email with reset link
+    // Send password reset email
+    try {
+      await this.emailService.sendPasswordResetEmail(email, token, user.name);
+    } catch (error) {
+      console.error('Failed to send password reset email:', error);
+      // Continue even if email fails - token is still valid
+    }
+
+    // Also log for debugging
     console.log(`[Password Reset] Token for ${email}: ${token}`);
     console.log(`[Password Reset] Reset link: ${process.env.CLIENT_URL}/reset-password?token=${token}`);
 
