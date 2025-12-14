@@ -77,7 +77,11 @@ async function startServer() {
 
   // Handle client-side routing - serve index.html for all routes
   // This must be last to not interfere with API routes
-  app.get("*", (_req, res) => {
+  app.get("*", (req, res) => {
+    // Don't serve index.html for API routes - they should have been handled above
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ error: 'API endpoint not found', path: req.path });
+    }
     res.sendFile(path.join(staticPath, "index.html"));
   });
 
