@@ -422,5 +422,52 @@ export function createAuthRoutes(authService: AuthService) {
     }
   });
 
+  /**
+   * POST /api/auth/send-verification-email
+   * Send email verification link
+   */
+  router.post('/send-verification-email', authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const userId = (req as any).user.id;
+      
+      await authService.sendVerificationEmail(userId);
+
+      res.json({
+        success: true,
+        message: 'Verification email sent',
+      });
+    } catch (error: any) {
+      console.error('Send verification email error:', error);
+      res.status(400).json({
+        error: error.message || 'Failed to send verification email',
+      });
+    }
+  });
+
+  /**
+   * GET /api/auth/verify-email/:token
+   * Verify email with token
+   */
+  router.get('/verify-email/:token', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+
+      if (!token) {
+        return res.status(400).json({
+          error: 'Token is required',
+        });
+      }
+
+      await authService.verifyEmail(token);
+
+      // Redirect to success page
+      res.redirect('/email-verified?success=true');
+    } catch (error: any) {
+      console.error('Verify email error:', error);
+      // Redirect to error page
+      res.redirect('/email-verified?success=false&error=' + encodeURIComponent(error.message || 'Verification failed'));
+    }
+  });
+
   return router;
 }

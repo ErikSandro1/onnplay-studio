@@ -412,4 +412,76 @@ export class AuthService {
       [token]
     );
   }
+
+  /**
+   * Send email verification
+   */
+  async sendVerificationEmail(userId: string): Promise<void> {
+    // Get user
+    const [users] = await this.db.query(
+      'SELECT id, email, name, email_verified FROM users WHERE id = ?',
+      [userId]
+    );
+    const user = users[0];
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    if (user.email_verified) {
+      throw new Error('Email already verified');
+    }
+
+    // Generate verification token
+    const token = uuidv4();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+    // Save token
+    await this.db.query(
+      'UPDATE users SET email_verification_token = ?, email_verification_expires = ? WHERE id = ?',
+      [token, expiresAt, userId]
+    );
+
+    // Send verification email
+    try {
+      await this.emailService.sendVerificationEmail(user.email, token, user.name);
+    } catch (error) {
+      console.error('Failed to send verification email:', error);
+      // Continue even if email fails - token is still valid
+    }
+
+    // Log for debugging
+    console.log(`[Email Verification] Token for ${user.email}: ${token}`);
+    console.log(`[Email Verification] Verification link: ${process.env.CLIENT_URL || 'http://localhost:5000'}/api/auth/verify-email/${token}`);
+  }
+
+  /**
+   * Verify email with token
+   */
+  async verifyEmail(token: string): Promise<void> {
+    // Find user with token
+    const [users] = await this.db.query(
+      'SELECT id, email_verified, email_verification_expires FROM users WHERE email_verification_token = ?',
+      [token]
+    );
+    const user = users[0];
+
+    if (!user) {
+      throw new Error('Invalid verification token');
+    }
+
+    if (user.email_verified) {
+      throw new Error('Email already verified');
+    }
+
+    if (user.email_verification_expires && new Date(user.email_verification_expires) < new Date()) {
+      throw new Error('Verification token expired');
+    }
+
+    // Mark email as verified
+    await this.db.query(
+      'UPDATE users SET email_verified = TRUE, email_verification_token = NULL, email_verification_expires = NULL, updated_at = NOW() WHERE id = ?',
+      [user.id]
+    );
+  }
 }

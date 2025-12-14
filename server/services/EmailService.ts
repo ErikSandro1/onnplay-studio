@@ -264,4 +264,122 @@ export class EmailService {
 </html>
     `.trim();
   }
+
+  /**
+   * Send email verification
+   */
+  async sendVerificationEmail(email: string, token: string, userName?: string): Promise<void> {
+    if (!RESEND_API_KEY) {
+      console.log('Email sending disabled. Verification link:', `${APP_URL}/api/auth/verify-email/${token}`);
+      return;
+    }
+
+    const verificationLink = `${APP_URL}/api/auth/verify-email/${token}`;
+    const name = userName || email.split('@')[0];
+
+    try {
+      if (!this.resend) {
+        console.log('Email sending disabled (no Resend client)');
+        return;
+      }
+      await this.resend.emails.send({
+        from: FROM_EMAIL,
+        to: email,
+        subject: 'Verificação de Email - OnnPlay Studio',
+        html: this.getEmailVerificationTemplate(name, verificationLink),
+      });
+
+      console.log(`Email verification sent to ${email}`);
+    } catch (error) {
+      console.error('Failed to send email verification:', error);
+      throw new Error('Failed to send email verification');
+    }
+  }
+
+  /**
+   * HTML template for email verification
+   */
+  private getEmailVerificationTemplate(name: string, verificationLink: string): string {
+    return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verificação de Email</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0f172a;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <td align="center" style="padding: 40px 0;">
+        <table role="presentation" style="width: 600px; max-width: 100%; border-collapse: collapse; background-color: #1e293b; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);">
+          
+          <!-- Header -->
+          <tr>
+            <td style="padding: 40px 40px 30px; background: linear-gradient(135deg, #ea580c 0%, #f97316 100%);">
+              <table role="presentation" style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                      <div style="width: 48px; height: 48px; background: rgba(255, 255, 255, 0.2); border-radius: 12px; display: flex; align-items: center; justify-content: center;">
+                        <span style="font-size: 24px;">📻</span>
+                      </div>
+                      <div>
+                        <h1 style="margin: 0; color: white; font-size: 24px; font-weight: 700;">OnnPlay</h1>
+                        <p style="margin: 0; color: rgba(255, 255, 255, 0.9); font-size: 14px; font-weight: 600;">STUDIO PRO</p>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 40px;">
+              <h2 style="margin: 0 0 16px; color: #f1f5f9; font-size: 24px; font-weight: 600;">Olá, ${name}!</h2>
+              
+              <p style="margin: 0 0 24px; color: #cbd5e1; font-size: 16px; line-height: 1.6;">
+                Obrigado por se registrar no <strong style="color: #f97316;">OnnPlay Studio</strong>! Para completar seu cadastro, por favor verifique seu endereço de email clicando no botão abaixo:
+              </p>
+
+              <!-- Button -->
+              <table role="presentation" style="margin: 32px 0; border-collapse: collapse;">
+                <tr>
+                  <td align="center">
+                    <a href="${verificationLink}" style="display: inline-block; padding: 16px 32px; background: linear-gradient(135deg, #ea580c 0%, #f97316 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(249, 115, 22, 0.3);">
+                      Verificar Email
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 24px 0 0; color: #94a3b8; font-size: 14px; line-height: 1.6;">
+                Se você não criou uma conta no OnnPlay Studio, por favor ignore este email.
+              </p>
+
+              <p style="margin: 16px 0 0; color: #94a3b8; font-size: 14px; line-height: 1.6;">
+                Este link expira em 24 horas.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 40px; background-color: #0f172a; border-top: 1px solid #334155;">
+              <p style="margin: 0; color: #64748b; font-size: 12px; text-align: center;">
+                © 2024 OnnPlay Studio. Todos os direitos reservados.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `;
+  }
 }

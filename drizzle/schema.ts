@@ -28,6 +28,12 @@ export const users = sqliteTable("users", {
   stripeSubscriptionId: text("stripeSubscriptionId"),
   /** ID do cliente no Stripe */
   stripeCustomerId: text("stripeCustomerId"),
+  /** Email verificado */
+  emailVerified: integer("emailVerified", { mode: "boolean" }).default(false).notNull(),
+  /** Token de verificação de email */
+  emailVerificationToken: text("emailVerificationToken"),
+  /** Data de expiração do token de verificação */
+  emailVerificationExpires: integer("emailVerificationExpires", { mode: "timestamp" }),
 });
 
 export type User = typeof users.$inferSelect;

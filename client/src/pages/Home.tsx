@@ -19,6 +19,8 @@ import UnifiedChat from '../components/UnifiedChat';
 import AdvancedSettings from '../components/AdvancedSettings';
 import { AIChat } from '../components/AIChat';
 import { JoinRoomModal } from '../components/JoinRoomModal';
+import { EmailVerificationBanner } from '../components/EmailVerificationBanner';
+import { useAuth } from '../contexts/AuthContext';
 
 // Services
 import { videoSourceManager } from '../services/VideoSourceManager';
@@ -493,7 +495,15 @@ const HomeContent: React.FC = () => {
             </div>
 
             {/* Broadcast Panel */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto p-4">
+              {/* Email Verification Banner */}
+              {(() => {
+                const { user } = useAuth();
+                return user && !user.email_verified && user.email ? (
+                  <EmailVerificationBanner email={user.email} />
+                ) : null;
+              })()}
+              
               <BroadcastPanel
                 isLive={isLive}
                 isRecording={isRecording}
