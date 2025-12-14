@@ -68,16 +68,16 @@ export default function LoginNew() {
       <div className="hidden lg:flex flex-1 items-center justify-center p-12" style={{ background: 'linear-gradient(to bottom right, #0A0E1A, #1E2842, #0A0E1A)' }}>
         <div className="max-w-lg">
           {/* Logo */}
-          <div className="flex flex-col items-center mb-12">
+          <div className="flex items-center gap-4 mb-8">
             <img
-              src="/logo-gold-clean-v2.png"
+              src="/logo-onnplay-gold.png"
               alt="OnnPlay"
-              className="h-40 mb-6"
-              style={{ filter: 'drop-shadow(0 0 30px rgba(255, 215, 0, 0.7))' }}
+              className="h-16"
+              style={{ filter: 'drop-shadow(0 0 20px rgba(255, 215, 0, 0.6))' }}
             />
-            <div className="text-center">
-              <h1 className="text-5xl font-bold text-white mb-2">OnnPlay</h1>
-              <p className="text-orange-500 font-bold text-xl tracking-wider">STUDIO PRO</p>
+            <div>
+              <h1 className="text-3xl font-bold text-white">OnnPlay</h1>
+              <p className="text-orange-500 font-semibold text-sm">STUDIO PRO</p>
             </div>
           </div>
 
