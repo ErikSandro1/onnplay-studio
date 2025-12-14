@@ -285,7 +285,7 @@ export default function LoginNew() {
             <div className="space-y-3">
               <button
                 type="button"
-                onClick={() => window.location.href = '/api/auth/google'}
+                onClick={() => window.location.replace('/api/auth/google')}
                 className="w-full py-3 bg-white hover:bg-gray-100 text-gray-900 font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
