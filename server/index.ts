@@ -24,6 +24,9 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
+  // Trust proxy (required for Railway and other reverse proxies)
+  app.set('trust proxy', true);
+
   // CORS configuration
   app.use(
     cors({

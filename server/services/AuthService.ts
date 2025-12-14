@@ -335,9 +335,10 @@ export class AuthService {
       throw new Error('If this email exists, a reset link has been sent');
     }
 
-    if (user.oauth_provider) {
-      throw new Error('Cannot reset password for OAuth users');
-    }
+    // Allow OAuth users to create a password (they can then login with both methods)
+    // if (user.oauth_provider) {
+    //   throw new Error('Cannot reset password for OAuth users');
+    // }
 
     // Generate reset token
     const token = uuidv4();
