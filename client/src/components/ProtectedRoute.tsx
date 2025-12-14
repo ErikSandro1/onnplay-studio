@@ -13,6 +13,16 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
+      // Check if there's an OAuth token in the URL
+      const params = new URLSearchParams(window.location.search);
+      const hasOAuthToken = params.has('token');
+      
+      // Don't redirect if we're processing an OAuth callback
+      if (hasOAuthToken) {
+        console.log('[ProtectedRoute] OAuth token detected, not redirecting');
+        return;
+      }
+      
       // Save current location to redirect back after login
       sessionStorage.setItem('redirectAfterLogin', location);
       // Redirect to login

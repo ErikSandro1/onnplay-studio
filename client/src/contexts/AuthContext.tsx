@@ -32,6 +32,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Load token from localStorage on mount
   useEffect(() => {
+    // Check for OAuth token in URL first
+    const params = new URLSearchParams(window.location.search);
+    const oauthToken = params.get('token');
+    
+    if (oauthToken) {
+      console.log('[AuthContext] OAuth token found in URL, saving...');
+      localStorage.setItem('auth_token', oauthToken);
+      setToken(oauthToken);
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname);
+      fetchCurrentUser(oauthToken);
+      return;
+    }
+    
+    // Otherwise check localStorage
     const storedToken = localStorage.getItem('auth_token');
     if (storedToken) {
       setToken(storedToken);
