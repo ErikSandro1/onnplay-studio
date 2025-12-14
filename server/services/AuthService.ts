@@ -72,7 +72,7 @@ export class AuthService {
     // Create initial usage record
     const currentMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
     await this.db.query(
-      `INSERT INTO usage (id, user_id, month) VALUES (?, ?, ?)`,
+      `INSERT INTO user_usage (id, user_id, month) VALUES (?, ?, ?)`,
       [uuidv4(), userId, currentMonth]
     );
 
@@ -157,7 +157,7 @@ export class AuthService {
       // Create initial usage record
       const currentMonth = new Date().toISOString().slice(0, 7);
       await this.db.query(
-        `INSERT INTO usage (id, user_id, month) VALUES (?, ?, ?)`,
+        `INSERT INTO user_usage (id, user_id, month) VALUES (?, ?, ?)`,
         [uuidv4(), userId, currentMonth]
       );
 

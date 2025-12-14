@@ -83,7 +83,7 @@ export class UsageLimitService {
     const currentMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
 
     const [usage] = await this.db.query(
-      'SELECT * FROM usage WHERE user_id = ? AND month = ?',
+      'SELECT * FROM user_usage WHERE user_id = ? AND month = ?',
       [userId, currentMonth]
     );
 
@@ -100,7 +100,7 @@ export class UsageLimitService {
       };
 
       await this.db.query(
-        `INSERT INTO usage (id, user_id, month, streaming_minutes, recording_minutes, ai_commands_count, storage_mb)
+        `INSERT INTO user_usage (id, user_id, month, streaming_minutes, recording_minutes, ai_commands_count, storage_mb)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           newUsage.id,
@@ -286,7 +286,7 @@ export class UsageLimitService {
     await this.getCurrentUsage(userId);
 
     await this.db.query(
-      `UPDATE usage 
+      `UPDATE user_usage 
        SET streaming_minutes = streaming_minutes + ?, updated_at = NOW()
        WHERE user_id = ? AND month = ?`,
       [minutes, userId, currentMonth]
@@ -303,7 +303,7 @@ export class UsageLimitService {
     await this.getCurrentUsage(userId);
 
     await this.db.query(
-      `UPDATE usage 
+      `UPDATE user_usage 
        SET recording_minutes = recording_minutes + ?, updated_at = NOW()
        WHERE user_id = ? AND month = ?`,
       [minutes, userId, currentMonth]
@@ -320,7 +320,7 @@ export class UsageLimitService {
     await this.getCurrentUsage(userId);
 
     await this.db.query(
-      `UPDATE usage 
+      `UPDATE user_usage 
        SET ai_commands_count = ai_commands_count + ?, updated_at = NOW()
        WHERE user_id = ? AND month = ?`,
       [count, userId, currentMonth]

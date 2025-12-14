@@ -87,7 +87,7 @@ export class BroadcastTrackingService {
 
       // Increment usage
       await this.db.query(
-        `UPDATE usage 
+        `UPDATE user_usage 
          SET streaming_minutes = streaming_minutes + 1, updated_at = NOW()
          WHERE user_id = ? AND month = ?`,
         [userId, currentMonth]
@@ -258,7 +258,7 @@ export class BroadcastTrackingService {
 
       // Increment usage
       await this.db.query(
-        `UPDATE usage 
+        `UPDATE user_usage 
          SET recording_minutes = recording_minutes + 1, updated_at = NOW()
          WHERE user_id = ? AND month = ?`,
         [userId, currentMonth]
@@ -304,7 +304,7 @@ export class BroadcastTrackingService {
 
     if (recording) {
       await this.db.query(
-        `UPDATE usage 
+        `UPDATE user_usage 
          SET storage_mb = storage_mb + ?, updated_at = NOW()
          WHERE user_id = ? AND month = ?`,
         [fileSizeMb, recording.user_id, currentMonth]
