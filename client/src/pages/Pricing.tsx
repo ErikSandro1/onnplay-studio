@@ -16,21 +16,21 @@ interface PlanFeature {
 const features: PlanFeature[] = [
   {
     name: 'Tempo de transmissão',
-    free: '5h/mês',
+    free: '2h/mês',
     pro: 'Ilimitado',
     enterprise: 'Ilimitado',
   },
   {
     name: 'Qualidade máxima',
     free: '720p',
-    pro: '1080p',
+    pro: '1080p Full HD/4K',
     enterprise: '4K',
   },
   {
     name: 'Participantes simultâneos',
     free: '3',
-    pro: '10',
-    enterprise: '20',
+    pro: '20',
+    enterprise: '50',
   },
   {
     name: 'Gravação local',
