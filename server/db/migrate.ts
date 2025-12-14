@@ -19,11 +19,17 @@ export async function runMigrations() {
     const schema = fs.readFileSync(schemaPath, 'utf-8');
     console.log(`Schema file size: ${schema.length} characters`);
     
+    // Remove comment lines before splitting
+    const schemaWithoutComments = schema
+      .split('\n')
+      .filter(line => !line.trim().startsWith('--'))
+      .join('\n');
+    
     // Split by semicolon and filter empty statements
-    const statements = schema
+    const statements = schemaWithoutComments
       .split(';')
       .map(s => s.trim())
-      .filter(s => s.length > 0 && !s.startsWith('--'));
+      .filter(s => s.length > 0);
     
     console.log(`Found ${statements.length} SQL statements to execute`);
     
