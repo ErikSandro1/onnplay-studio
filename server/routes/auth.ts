@@ -426,7 +426,7 @@ export function createAuthRoutes(authService: AuthService) {
    * POST /api/auth/send-verification-email
    * Send email verification link
    */
-  router.post('/send-verification-email', authMiddleware, async (req: Request, res: Response) => {
+  router.post('/send-verification-email', authMiddleware(authService), async (req: Request, res: Response) => {
     try {
       const userId = (req as any).user.id;
       
