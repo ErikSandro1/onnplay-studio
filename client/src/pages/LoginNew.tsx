@@ -25,13 +25,14 @@ export default function LoginNew() {
       // Clean URL
       window.history.replaceState({}, '', '/login-new');
     } else if (token) {
+      console.log('[OAuth] Token received from URL:', token.substring(0, 20) + '...');
+      
       // Save token to localStorage
       localStorage.setItem('auth_token', token);
+      console.log('[OAuth] Token saved to localStorage');
       
-      // Clean URL and redirect to studio
-      window.history.replaceState({}, '', '/login-new');
-      
-      // Force reload to update auth context
+      // Redirect to studio (this will clean the URL)
+      console.log('[OAuth] Redirecting to /studio');
       window.location.href = '/studio';
     }
   }, []);
