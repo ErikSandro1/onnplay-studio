@@ -108,9 +108,15 @@ export function createAuthRoutes(authService: AuthService) {
    * Get Google OAuth URL
    */
   router.get('/google', (req: Request, res: Response) => {
+    console.log('[DEBUG] /api/auth/google route HIT!');
+    console.log('[DEBUG] Request URL:', req.url);
+    console.log('[DEBUG] Request path:', req.path);
     try {
+      console.log('[DEBUG] Creating GoogleOAuthService...');
       const googleOAuth = new GoogleOAuthService();
+      console.log('[DEBUG] Getting auth URL...');
       const authUrl = googleOAuth.getAuthUrl();
+      console.log('[DEBUG] Redirecting to:', authUrl);
       res.redirect(authUrl);
     } catch (error: any) {
       console.error('Google OAuth URL error:', error);
