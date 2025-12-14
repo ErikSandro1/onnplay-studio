@@ -1,25 +1,33 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, json, boolean, bigint } from "drizzle-orm/mysql-core";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 /**
  * Core user table backing auth flow.
  * Extend this file with additional tables as your product grows.
  * Columns use camelCase to match both database fields and generated types.
  */
-export const users = mysqlTable("users", {
+export const users = sqliteTable("users", {
   /**
    * Surrogate primary key. Auto-incremented numeric value managed by the database.
    * Use this for relations between tables.
    */
-  id: int("id").autoincrement().primaryKey(),
+  id: integer("id").primaryKey({ autoIncrement: true }),
   /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
+  openId: text("openId").notNull().unique(),
   name: text("name"),
-  email: varchar("email", { length: 320 }),
-  loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin", "operator", "moderator"]).default("user").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
+  email: text("email"),
+  loginMethod: text("loginMethod"),
+  role: text("role").default("user").notNull(), // user, admin, operator, moderator
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  lastSignedIn: integer("lastSignedIn", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  /** Plano do usuário: free, pro, enterprise */
+  plan: text("plan").default("free").notNull(), // free, pro, enterprise
+  /** Data de início da assinatura (para planos pagos) */
+  subscriptionStartedAt: integer("subscriptionStartedAt", { mode: "timestamp" }),
+  /** ID da assinatura no Stripe */
+  stripeSubscriptionId: text("stripeSubscriptionId"),
+  /** ID do cliente no Stripe */
+  stripeCustomerId: text("stripeCustomerId"),
 });
 
 export type User = typeof users.$inferSelect;
@@ -28,22 +36,22 @@ export type InsertUser = typeof users.$inferInsert;
 /**
  * Mixer Presets - Configurações salvas do mixer de áudio
  */
-export const mixerPresets = mysqlTable("mixer_presets", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  name: varchar("name", { length: 100 }).notNull(),
+export const mixerPresets = sqliteTable("mixer_presets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  name: text("name").notNull(),
   description: text("description"),
   /** JSON com níveis dos canais: { ch1: 75, ch2: 60, ch3: 85, ch4: 70, master: 80 } */
-  channelLevels: json("channelLevels").notNull(),
+  channelLevels: text("channelLevels", { mode: "json" }).notNull(),
   /** JSON com configurações de EQ: { bass: 0, mid: 0, treble: 0 } */
-  eqSettings: json("eqSettings"),
+  eqSettings: text("eqSettings", { mode: "json" }),
   /** JSON com configurações de compressor */
-  compressorSettings: json("compressorSettings"),
+  compressorSettings: text("compressorSettings", { mode: "json" }),
   /** JSON com configurações de efeitos */
-  effectsSettings: json("effectsSettings"),
-  isDefault: boolean("isDefault").default(false).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  effectsSettings: text("effectsSettings", { mode: "json" }),
+  isDefault: integer("isDefault", { mode: "boolean" }).default(false).notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
 
 export type MixerPreset = typeof mixerPresets.$inferSelect;
@@ -52,33 +60,33 @@ export type InsertMixerPreset = typeof mixerPresets.$inferInsert;
 /**
  * Transmission History - Histórico de transmissões
  */
-export const transmissionHistory = mysqlTable("transmission_history", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  title: varchar("title", { length: 200 }).notNull(),
+export const transmissionHistory = sqliteTable("transmission_history", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  title: text("title").notNull(),
   description: text("description"),
   /** Plataformas usadas: ["youtube", "twitch", "facebook"] */
-  platforms: json("platforms").notNull(),
+  platforms: text("platforms", { mode: "json" }).notNull(),
   /** Status: scheduled, live, ended, cancelled */
-  status: mysqlEnum("status", ["scheduled", "live", "ended", "cancelled"]).default("scheduled").notNull(),
+  status: text("status").default("scheduled").notNull(), // scheduled, live, ended, cancelled
   /** Duração em segundos */
-  durationSeconds: int("durationSeconds").default(0),
+  durationSeconds: integer("durationSeconds").default(0),
   /** Pico de espectadores */
-  peakViewers: int("peakViewers").default(0),
+  peakViewers: integer("peakViewers").default(0),
   /** Total de espectadores únicos */
-  totalViewers: int("totalViewers").default(0),
+  totalViewers: integer("totalViewers").default(0),
   /** Média de bitrate em kbps */
-  avgBitrate: int("avgBitrate"),
+  avgBitrate: integer("avgBitrate"),
   /** URL da gravação (se disponível) */
   recordingUrl: text("recordingUrl"),
   /** Thumbnail da transmissão */
   thumbnailUrl: text("thumbnailUrl"),
   /** Timestamp de início */
-  startedAt: timestamp("startedAt"),
+  startedAt: integer("startedAt", { mode: "timestamp" }),
   /** Timestamp de término */
-  endedAt: timestamp("endedAt"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  endedAt: integer("endedAt", { mode: "timestamp" }),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
 
 export type TransmissionHistory = typeof transmissionHistory.$inferSelect;
@@ -87,23 +95,23 @@ export type InsertTransmissionHistory = typeof transmissionHistory.$inferInsert;
 /**
  * Streaming Configurations - Configurações de streaming por plataforma
  */
-export const streamingConfigs = mysqlTable("streaming_configs", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
+export const streamingConfigs = sqliteTable("streaming_configs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
   /** Nome da plataforma: youtube, twitch, facebook, instagram, tiktok, linkedin, rtmp */
-  platform: varchar("platform", { length: 50 }).notNull(),
+  platform: text("platform").notNull(),
   /** Nome amigável para identificação */
-  label: varchar("label", { length: 100 }),
+  label: text("label"),
   /** Stream Key (criptografada) */
   streamKey: text("streamKey"),
   /** URL do servidor RTMP */
   rtmpUrl: text("rtmpUrl"),
   /** Se está habilitada para multistream */
-  isEnabled: boolean("isEnabled").default(true).notNull(),
+  isEnabled: integer("isEnabled", { mode: "boolean" }).default(true).notNull(),
   /** Última vez que foi usada */
-  lastUsedAt: timestamp("lastUsedAt"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  lastUsedAt: integer("lastUsedAt", { mode: "timestamp" }),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
 
 export type StreamingConfig = typeof streamingConfigs.$inferSelect;
@@ -112,20 +120,20 @@ export type InsertStreamingConfig = typeof streamingConfigs.$inferInsert;
 /**
  * Scenes - Cenas salvas do estúdio
  */
-export const scenes = mysqlTable("scenes", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  name: varchar("name", { length: 100 }).notNull(),
+export const scenes = sqliteTable("scenes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  name: text("name").notNull(),
   /** Tipo de cena: camera, screen, media, overlay */
-  type: mysqlEnum("type", ["camera", "screen", "media", "overlay"]).default("camera").notNull(),
+  type: text("type").default("camera").notNull(), // camera, screen, media, overlay
   /** JSON com configuração da cena (posições, tamanhos, fontes) */
-  config: json("config"),
+  config: text("config", { mode: "json" }),
   /** Thumbnail da cena */
   thumbnailUrl: text("thumbnailUrl"),
   /** Ordem de exibição na galeria */
-  sortOrder: int("sortOrder").default(0),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  sortOrder: integer("sortOrder").default(0),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
 
 export type Scene = typeof scenes.$inferSelect;
@@ -134,18 +142,18 @@ export type InsertScene = typeof scenes.$inferInsert;
 /**
  * Chat Messages - Mensagens do chat ao vivo (para histórico)
  */
-export const chatMessages = mysqlTable("chat_messages", {
-  id: int("id").autoincrement().primaryKey(),
-  transmissionId: int("transmissionId").notNull(),
-  userId: int("userId"),
-  userName: varchar("userName", { length: 100 }).notNull(),
-  userRole: mysqlEnum("userRole", ["host", "moderator", "guest", "viewer"]).default("viewer").notNull(),
+export const chatMessages = sqliteTable("chat_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  transmissionId: integer("transmissionId").notNull(),
+  userId: integer("userId"),
+  userName: text("userName").notNull(),
+  userRole: text("userRole").default("viewer").notNull(), // host, moderator, guest, viewer
   message: text("message").notNull(),
   /** Se a mensagem foi deletada por moderação */
-  isDeleted: boolean("isDeleted").default(false).notNull(),
+  isDeleted: integer("isDeleted", { mode: "boolean" }).default(false).notNull(),
   /** Se o usuário foi bloqueado */
-  isBlocked: boolean("isBlocked").default(false).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  isBlocked: integer("isBlocked", { mode: "boolean" }).default(false).notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
 
 export type ChatMessage = typeof chatMessages.$inferSelect;
@@ -155,29 +163,29 @@ export type InsertChatMessage = typeof chatMessages.$inferInsert;
 /**
  * Active Transmissions - Transmissões ao vivo ativas
  */
-export const activeTransmissions = mysqlTable("active_transmissions", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
+export const activeTransmissions = sqliteTable("active_transmissions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
   /** Título da transmissão */
-  title: varchar("title", { length: 255 }).notNull(),
+  title: text("title").notNull(),
   /** Descrição da transmissão */
   description: text("description"),
   /** Status: live, paused, ended */
-  status: mysqlEnum("status", ["live", "paused", "ended"]).default("live").notNull(),
+  status: text("status").default("live").notNull(), // live, paused, ended
   /** URL única para convidados acessarem */
-  inviteCode: varchar("inviteCode", { length: 32 }).notNull().unique(),
+  inviteCode: text("inviteCode").notNull().unique(),
   /** Número de espectadores */
-  viewerCount: int("viewerCount").default(0).notNull(),
+  viewerCount: integer("viewerCount").default(0).notNull(),
   /** Número de participantes confirmados */
-  participantCount: int("participantCount").default(0).notNull(),
+  participantCount: integer("participantCount").default(0).notNull(),
   /** Plataformas onde está sendo transmitido */
-  platforms: json("platforms"), // ["youtube", "twitch", "facebook"]
+  platforms: text("platforms", { mode: "json" }), // ["youtube", "twitch", "facebook"]
   /** Hora de início da transmissão */
-  startedAt: timestamp("startedAt").defaultNow().notNull(),
+  startedAt: integer("startedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
   /** Hora de término da transmissão */
-  endedAt: timestamp("endedAt"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  endedAt: integer("endedAt", { mode: "timestamp" }),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
 
 export type ActiveTransmission = typeof activeTransmissions.$inferSelect;
@@ -186,22 +194,22 @@ export type InsertActiveTransmission = typeof activeTransmissions.$inferInsert;
 /**
  * Transmission Invites - Convites para participar da transmissão
  */
-export const transmissionInvites = mysqlTable("transmission_invites", {
-  id: int("id").autoincrement().primaryKey(),
-  transmissionId: int("transmissionId").notNull(),
+export const transmissionInvites = sqliteTable("transmission_invites", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  transmissionId: integer("transmissionId").notNull(),
   /** Email ou nome do convidado */
-  guestEmail: varchar("guestEmail", { length: 320 }),
-  guestName: varchar("guestName", { length: 100 }),
+  guestEmail: text("guestEmail"),
+  guestName: text("guestName"),
   /** Status do convite: pending, accepted, rejected, expired */
-  status: mysqlEnum("status", ["pending", "accepted", "rejected", "expired"]).default("pending").notNull(),
+  status: text("status").default("pending").notNull(), // pending, accepted, rejected, expired
   /** Token único para aceitar o convite */
-  token: varchar("token", { length: 64 }).notNull().unique(),
+  token: text("token").notNull().unique(),
   /** Hora em que o convite foi aceito */
-  acceptedAt: timestamp("acceptedAt"),
+  acceptedAt: integer("acceptedAt", { mode: "timestamp" }),
   /** Hora em que o convite expirou */
-  expiresAt: timestamp("expiresAt").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  expiresAt: integer("expiresAt", { mode: "timestamp" }).notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
 
 export type TransmissionInvite = typeof transmissionInvites.$inferSelect;
@@ -210,29 +218,71 @@ export type InsertTransmissionInvite = typeof transmissionInvites.$inferInsert;
 /**
  * Transmission Participants - Participantes confirmados na transmissão
  */
-export const transmissionParticipants = mysqlTable("transmission_participants", {
-  id: int("id").autoincrement().primaryKey(),
-  transmissionId: int("transmissionId").notNull(),
-  userId: int("userId"),
+export const transmissionParticipants = sqliteTable("transmission_participants", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  transmissionId: integer("transmissionId").notNull(),
+  userId: integer("userId"),
   /** Nome do participante */
-  name: varchar("name", { length: 100 }).notNull(),
+  name: text("name").notNull(),
   /** Email do participante */
-  email: varchar("email", { length: 320 }),
+  email: text("email"),
   /** Função: host, guest, moderator */
-  role: mysqlEnum("role", ["host", "guest", "moderator"]).default("guest").notNull(),
+  role: text("role").default("guest").notNull(), // host, guest, moderator
   /** Status: connected, disconnected, speaking */
-  status: mysqlEnum("status", ["connected", "disconnected", "speaking"]).default("disconnected").notNull(),
+  status: text("status").default("disconnected").notNull(), // connected, disconnected, speaking
   /** Se o áudio está ativado */
-  audioEnabled: boolean("audioEnabled").default(true).notNull(),
+  audioEnabled: integer("audioEnabled", { mode: "boolean" }).default(true).notNull(),
   /** Se o vídeo está ativado */
-  videoEnabled: boolean("videoEnabled").default(true).notNull(),
+  videoEnabled: integer("videoEnabled", { mode: "boolean" }).default(true).notNull(),
   /** Hora em que se conectou */
-  connectedAt: timestamp("connectedAt"),
+  connectedAt: integer("connectedAt", { mode: "timestamp" }),
   /** Hora em que se desconectou */
-  disconnectedAt: timestamp("disconnectedAt"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  disconnectedAt: integer("disconnectedAt", { mode: "timestamp" }),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
 
 export type TransmissionParticipant = typeof transmissionParticipants.$inferSelect;
 export type InsertTransmissionParticipant = typeof transmissionParticipants.$inferInsert;
+
+/**
+ * Usage Tracking - Rastreamento de uso de broadcast
+ */
+export const usageTracking = sqliteTable("usage_tracking", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  /** Mês de referência (YYYY-MM) */
+  month: text("month").notNull(),
+  /** Total de minutos usados no mês */
+  totalMinutes: integer("totalMinutes").default(0).notNull(),
+  /** Limite de minutos para o plano (0 = ilimitado) */
+  limitMinutes: integer("limitMinutes").default(300).notNull(), // 5 horas = 300 minutos para FREE
+  /** Última vez que foi atualizado */
+  lastUpdatedAt: integer("lastUpdatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+});
+
+export type UsageTracking = typeof usageTracking.$inferSelect;
+export type InsertUsageTracking = typeof usageTracking.$inferInsert;
+
+/**
+ * Broadcast Sessions - Sessões de broadcast individuais
+ */
+export const broadcastSessions = sqliteTable("broadcast_sessions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  /** ID da transmissão ativa */
+  transmissionId: integer("transmissionId"),
+  /** Duração em minutos */
+  durationMinutes: integer("durationMinutes").default(0).notNull(),
+  /** Hora de início */
+  startedAt: integer("startedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  /** Hora de término */
+  endedAt: integer("endedAt", { mode: "timestamp" }),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+});
+
+export type BroadcastSession = typeof broadcastSessions.$inferSelect;
+export type InsertBroadcastSession = typeof broadcastSessions.$inferInsert;

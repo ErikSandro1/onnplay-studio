@@ -1,26 +1,12 @@
 {
   "version": "7",
-  "dialect": "mysql",
+  "dialect": "sqlite",
   "entries": [
     {
       "idx": 0,
-      "version": "5",
-      "when": 1765089696530,
-      "tag": "0000_classy_gamma_corps",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "5",
-      "when": 1765089778554,
-      "tag": "0001_blue_switch",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "5",
-      "when": 1765603363120,
-      "tag": "0002_low_wendell_rand",
+      "version": "6",
+      "when": 1765730495974,
+      "tag": "0000_little_sauron",
       "breakpoints": true
     }
   ]

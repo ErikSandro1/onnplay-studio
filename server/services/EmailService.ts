@@ -5,13 +5,15 @@ const FROM_EMAIL = process.env.FROM_EMAIL || 'onboarding@resend.dev';
 const APP_URL = process.env.APP_URL || 'http://localhost:5173';
 
 export class EmailService {
-  private resend: Resend;
+  private resend: Resend | null;
 
   constructor() {
     if (!RESEND_API_KEY) {
       console.warn('RESEND_API_KEY not configured. Email sending will be disabled.');
+      this.resend = null;
+    } else {
+      this.resend = new Resend(RESEND_API_KEY);
     }
-    this.resend = new Resend(RESEND_API_KEY);
   }
 
   /**
@@ -27,6 +29,10 @@ export class EmailService {
     const name = userName || email.split('@')[0];
 
     try {
+      if (!this.resend) {
+        console.log('Email sending disabled (no Resend client)');
+        return;
+      }
       await this.resend.emails.send({
         from: FROM_EMAIL,
         to: email,
@@ -159,6 +165,10 @@ export class EmailService {
     }
 
     try {
+      if (!this.resend) {
+        console.log('Email sending disabled (no Resend client)');
+        return;
+      }
       await this.resend.emails.send({
         from: FROM_EMAIL,
         to: email,

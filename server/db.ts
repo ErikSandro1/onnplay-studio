@@ -1,5 +1,6 @@
 import { eq, desc, and } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import Database from "better-sqlite3";
 import { 
   InsertUser, 
   users, 
@@ -28,7 +29,9 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      const dbPath = process.env.DATABASE_URL.replace('file:', '');
+      const sqlite = new Database(dbPath);
+      _db = drizzle(sqlite);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -89,7 +92,8 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       updateSet.lastSignedIn = new Date();
     }
 
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
+    await db.insert(users).values(values).onConflictDoUpdate({
+      target: users.openId,
       set: updateSet,
     });
   } catch (error) {
@@ -132,7 +136,7 @@ export async function createMixerPreset(preset: InsertMixerPreset) {
   if (!db) throw new Error("Database not available");
 
   const result = await db.insert(mixerPresets).values(preset);
-  return { id: Number(result[0].insertId) };
+  return { id: Number(result.lastInsertRowid) };
 }
 
 export async function updateMixerPreset(id: number, preset: Partial<InsertMixerPreset>) {
@@ -173,7 +177,7 @@ export async function createTransmission(transmission: InsertTransmissionHistory
   if (!db) throw new Error("Database not available");
 
   const result = await db.insert(transmissionHistory).values(transmission);
-  return { id: Number(result[0].insertId) };
+  return { id: Number(result.lastInsertRowid) };
 }
 
 export async function updateTransmission(id: number, transmission: Partial<InsertTransmissionHistory>) {
@@ -198,7 +202,7 @@ export async function createStreamingConfig(config: InsertStreamingConfig) {
   if (!db) throw new Error("Database not available");
 
   const result = await db.insert(streamingConfigs).values(config);
-  return { id: Number(result[0].insertId) };
+  return { id: Number(result.lastInsertRowid) };
 }
 
 export async function updateStreamingConfig(id: number, config: Partial<InsertStreamingConfig>) {
@@ -231,7 +235,7 @@ export async function createScene(scene: InsertScene) {
   if (!db) throw new Error("Database not available");
 
   const result = await db.insert(scenes).values(scene);
-  return { id: Number(result[0].insertId) };
+  return { id: Number(result.lastInsertRowid) };
 }
 
 export async function updateScene(id: number, scene: Partial<InsertScene>) {
@@ -267,7 +271,7 @@ export async function createChatMessage(message: InsertChatMessage) {
   if (!db) throw new Error("Database not available");
 
   const result = await db.insert(chatMessages).values(message);
-  return { id: Number(result[0].insertId) };
+  return { id: Number(result.lastInsertRowid) };
 }
 
 export async function deleteChatMessage(id: number) {
@@ -391,7 +395,7 @@ export async function startTransmission(transmission: InsertActiveTransmission) 
   if (!db) throw new Error("Database not available");
 
   const result = await db.insert(activeTransmissions).values(transmission);
-  return { id: Number(result[0].insertId) };
+  return { id: Number(result.lastInsertRowid) };
 }
 
 export async function getActiveTransmission(id: number) {
@@ -446,7 +450,7 @@ export async function createInvite(invite: InsertTransmissionInvite) {
   if (!db) throw new Error("Database not available");
 
   const result = await db.insert(transmissionInvites).values(invite);
-  return { id: Number(result[0].insertId) };
+  return { id: Number(result.lastInsertRowid) };
 }
 
 export async function getInviteByToken(token: string) {
@@ -493,7 +497,7 @@ export async function addParticipant(participant: InsertTransmissionParticipant)
   if (!db) throw new Error("Database not available");
 
   const result = await db.insert(transmissionParticipants).values(participant);
-  return { id: Number(result[0].insertId) };
+  return { id: Number(result.lastInsertRowid) };
 }
 
 export async function getTransmissionParticipants(transmissionId: number) {

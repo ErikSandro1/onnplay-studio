@@ -1,5 +1,6 @@
 import React from 'react';
 import { Radio, Circle, Users, Activity } from 'lucide-react';
+import { UsageDashboard } from './UsageDashboard';
 
 interface BroadcastPanelProps {
   isLive: boolean;
@@ -110,6 +111,11 @@ const BroadcastPanel: React.FC<BroadcastPanelProps> = ({
             {bitrate}
           </div>
         </div>
+      </div>
+
+      {/* Usage Dashboard */}
+      <div className="mt-4">
+        <UsageDashboard />
       </div>
 
       {/* Action Buttons */}

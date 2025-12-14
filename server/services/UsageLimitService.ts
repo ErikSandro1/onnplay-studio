@@ -14,7 +14,7 @@ export interface PlanLimits {
 
 export const PLAN_LIMITS: Record<string, PlanLimits> = {
   free: {
-    streamingMinutesPerMonth: 60, // 1 hour
+    streamingMinutesPerMonth: 300, // 5 hours
     recordingMinutesPerMonth: 0, // No recording
     maxQuality: '720p',
     maxParticipants: 3,
@@ -27,8 +27,8 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
   pro: {
     streamingMinutesPerMonth: -1, // Unlimited
     recordingMinutesPerMonth: -1, // Unlimited
-    maxQuality: '1080p',
-    maxParticipants: 10,
+    maxQuality: '4K',
+    maxParticipants: 20,
     aiAssistant: true,
     recording: true,
     ptzControl: true,
