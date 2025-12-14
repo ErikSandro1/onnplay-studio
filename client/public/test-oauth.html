@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test OAuth</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: #1a1a2e;
+            color: white;
+        }
+        .container {
+            text-align: center;
+        }
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            background: white;
+            color: #1a1a2e;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:hover {
+            background: #f0f0f0;
+        }
+        a {
+            display: inline-block;
+            padding: 15px 30px;
+            font-size: 16px;
+            background: #4285f4;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            margin: 10px;
+        }
+        a:hover {
+            background: #357ae8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test OAuth - Sem React</h1>
+        <p>Se esses botões funcionarem, o problema é no React</p>
+        
+        <div>
+            <h3>Teste 1: Link direto</h3>
+            <a href="/api/auth/google">Link para Google OAuth</a>
+        </div>
+        
+        <div>
+            <h3>Teste 2: Button com window.location</h3>
+            <button onclick="window.location.href = '/api/auth/google'">
+                Button com window.location
+            </button>
+        </div>
+        
+        <div>
+            <h3>Teste 3: Button com window.location.assign</h3>
+            <button onclick="window.location.assign('/api/auth/google')">
+                Button com window.location.assign
+            </button>
+        </div>
+        
+        <div>
+            <h3>Teste 4: URL absoluta</h3>
+            <button onclick="window.location.href = 'https://onnplay-studio-production.up.railway.app/api/auth/google'">
+                Button com URL absoluta
+            </button>
+        </div>
+    </div>
+</body>
+</html>
