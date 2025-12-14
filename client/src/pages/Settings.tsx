@@ -15,7 +15,7 @@ interface TabConfig {
 
 export default function Settings() {
   const [, navigate] = useLocation();
-  const [activeTab, setActiveTab] = useState<SettingsTab>('stream-keys');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('subscription');
 
   const tabs: TabConfig[] = [
     {
