@@ -69,12 +69,9 @@ export default function LoginNew() {
         <div className="max-w-lg">
           {/* Logo */}
           <div className="flex items-center gap-4 mb-8">
-            <img
-              src="/logo-onnplay-gold.png"
-              alt="OnnPlay"
-              className="h-16"
-              style={{ filter: 'drop-shadow(0 0 20px rgba(255, 215, 0, 0.6))' }}
-            />
+            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center flex-shrink-0 shadow-lg">
+              <Radio className="w-8 h-8 text-white" />
+            </div>
             <div>
               <h1 className="text-3xl font-bold text-white">OnnPlay</h1>
               <p className="text-orange-500 font-semibold text-sm">STUDIO PRO</p>
