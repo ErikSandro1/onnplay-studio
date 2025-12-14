@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '../contexts/AuthContext';
-import { Check, X, Radio, Zap, Crown, Loader2 } from 'lucide-react';
+import { Check, X, Radio, Zap, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
@@ -10,7 +10,6 @@ interface PlanFeature {
   name: string;
   free: boolean | string;
   pro: boolean | string;
-  enterprise: boolean | string;
 }
 
 const features: PlanFeature[] = [
@@ -18,73 +17,61 @@ const features: PlanFeature[] = [
     name: 'Tempo de transmissão',
     free: '2h/mês',
     pro: 'Ilimitado',
-    enterprise: 'Ilimitado',
   },
   {
     name: 'Qualidade máxima',
     free: '720p',
     pro: '1080p Full HD/4K',
-    enterprise: '4K',
   },
   {
     name: 'Participantes simultâneos',
     free: '3',
     pro: '20',
-    enterprise: '50',
   },
   {
     name: 'Gravação local',
     free: false,
     pro: true,
-    enterprise: true,
   },
   {
     name: 'AI Studio Assistant',
     free: false,
     pro: true,
-    enterprise: true,
   },
   {
     name: 'Streaming multi-plataforma',
     free: true,
     pro: true,
-    enterprise: true,
   },
   {
     name: 'Mixer de áudio profissional',
     free: true,
     pro: true,
-    enterprise: true,
   },
   {
     name: 'Controle PTZ de câmeras',
     free: false,
     pro: true,
-    enterprise: true,
   },
   {
     name: 'Overlay de comentários',
     free: false,
     pro: true,
-    enterprise: true,
   },
   {
     name: 'Transições personalizadas',
     free: 'Básicas',
     pro: 'Todas',
-    enterprise: 'Todas + Custom',
   },
   {
     name: 'Suporte',
     free: 'Comunidade',
     pro: 'Email',
-    enterprise: 'Prioritário',
   },
   {
-    name: 'API Access',
+    name: 'Armazenamento na nuvem',
     free: false,
-    pro: false,
-    enterprise: true,
+    pro: '100GB',
   },
 ];
 
@@ -202,7 +189,7 @@ export default function Pricing() {
 
       {/* Pricing Cards */}
       <div className="max-w-7xl mx-auto px-4 pb-16">
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
           {/* Free Plan */}
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8">
             <div className="flex items-center gap-3 mb-4">
@@ -310,63 +297,6 @@ export default function Pricing() {
             </div>
           </div>
 
-          {/* Enterprise Plan */}
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8">
-            <div className="flex items-center gap-3 mb-4">
-              <Crown className="w-8 h-8 text-yellow-500" />
-              <h3 className="text-2xl font-bold">Enterprise</h3>
-            </div>
-            <div className="mb-6">
-              <div className="text-4xl font-bold">$99</div>
-              <div className="text-gray-400">por mês</div>
-            </div>
-            <button
-              onClick={() => handleSelectPlan('enterprise')}
-              disabled={isLoading === 'enterprise' || user?.plan === 'enterprise'}
-              className="w-full py-3 bg-gray-800 hover:bg-gray-700 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {isLoading === 'enterprise' ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Processando...
-                </>
-              ) : user?.plan === 'enterprise' ? (
-                'Plano Atual'
-              ) : (
-                'Assinar Enterprise'
-              )}
-            </button>
-            <div className="mt-8 space-y-3">
-              <div className="flex items-center gap-2 text-sm">
-                <Check className="w-4 h-4 text-green-500" />
-                <span className="font-semibold">Tudo do Pro +</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <Check className="w-4 h-4 text-green-500" />
-                <span className="font-semibold">Qualidade 4K</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <Check className="w-4 h-4 text-green-500" />
-                <span className="font-semibold">Até 20 participantes</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <Check className="w-4 h-4 text-green-500" />
-                <span>Transições customizadas</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <Check className="w-4 h-4 text-green-500" />
-                <span>API Access</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <Check className="w-4 h-4 text-green-500" />
-                <span>Suporte prioritário</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <Check className="w-4 h-4 text-green-500" />
-                <span>Onboarding personalizado</span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -384,9 +314,6 @@ export default function Pricing() {
                 <th className="text-center p-4 font-semibold text-orange-500">
                   Pro
                 </th>
-                <th className="text-center p-4 font-semibold text-yellow-500">
-                  Enterprise
-                </th>
               </tr>
             </thead>
             <tbody>
@@ -401,9 +328,6 @@ export default function Pricing() {
                   </td>
                   <td className="p-4 text-center">
                     {renderFeatureValue(feature.pro)}
-                  </td>
-                  <td className="p-4 text-center">
-                    {renderFeatureValue(feature.enterprise)}
                   </td>
                 </tr>
               ))}
