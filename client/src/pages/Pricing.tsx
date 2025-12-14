@@ -16,7 +16,7 @@ interface PlanFeature {
 const features: PlanFeature[] = [
   {
     name: 'Tempo de transmissão',
-    free: '1h/mês',
+    free: '2h/mês',
     pro: 'Ilimitado',
     enterprise: 'Ilimitado',
   },
@@ -223,7 +223,7 @@ export default function Pricing() {
             <div className="mt-8 space-y-3">
               <div className="flex items-center gap-2 text-sm">
                 <Check className="w-4 h-4 text-green-500" />
-                <span>1 hora de transmissão/mês</span>
+                <span>2 horas de transmissão/mês</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <Check className="w-4 h-4 text-green-500" />

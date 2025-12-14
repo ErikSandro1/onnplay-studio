@@ -26,7 +26,7 @@ export class UsageTrackingService {
       
       // Definir limites por plano
       const limits = {
-        free: 300, // 5 horas = 300 minutos
+        free: 120, // 2 horas = 120 minutos
         pro: 0,    // Ilimitado
         enterprise: 0 // Ilimitado
       };

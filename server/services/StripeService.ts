@@ -36,7 +36,7 @@ export const PLANS: Record<string, PlanConfig> = {
     price: 0,
     stripePriceId: '', // No Stripe price for free plan
     features: {
-      streamingMinutes: 60, // 1 hour/month
+      streamingMinutes: 120, // 2 hours/month
       quality: '720p',
       maxParticipants: 3,
       aiAssistant: false,
