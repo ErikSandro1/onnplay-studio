@@ -17,12 +17,15 @@ export async function runMigrations() {
     const schemaPath = path.join(__dirname, 'schema.sql');
     console.log('Reading schema from:', schemaPath);
     const schema = fs.readFileSync(schemaPath, 'utf-8');
+    console.log(`Schema file size: ${schema.length} characters`);
     
     // Split by semicolon and filter empty statements
     const statements = schema
       .split(';')
       .map(s => s.trim())
       .filter(s => s.length > 0 && !s.startsWith('--'));
+    
+    console.log(`Found ${statements.length} SQL statements to execute`);
     
     // Execute each statement
     for (const statement of statements) {
