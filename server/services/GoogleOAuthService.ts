@@ -8,6 +8,11 @@ export class GoogleOAuthService {
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:8080/api/auth/google/callback';
 
+    console.log('[Google OAuth] Initializing...');
+    console.log('[Google OAuth] Client ID present:', !!clientId);
+    console.log('[Google OAuth] Client Secret present:', !!clientSecret);
+    console.log('[Google OAuth] Redirect URI:', redirectUri);
+
     if (!clientId || !clientSecret) {
       console.warn('[Google OAuth] WARNING: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not configured');
       console.warn('[Google OAuth] Google Sign-In will not work until these are set');
