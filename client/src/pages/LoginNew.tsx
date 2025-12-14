@@ -14,6 +14,28 @@ export default function LoginNew() {
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  // Process OAuth token from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    const error = params.get('error');
+
+    if (error) {
+      toast.error(decodeURIComponent(error));
+      // Clean URL
+      window.history.replaceState({}, '', '/login-new');
+    } else if (token) {
+      // Save token to localStorage
+      localStorage.setItem('token', token);
+      
+      // Clean URL and redirect to studio
+      window.history.replaceState({}, '', '/login-new');
+      
+      // Force reload to update auth context
+      window.location.href = '/studio';
+    }
+  }, []);
+
   // Redirect if already authenticated
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
