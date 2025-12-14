@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Button } from './ui/button';
 import { Clock, TrendingUp, AlertCircle, Crown } from 'lucide-react';
 import { useLocation } from 'wouter';
+import UpgradeModal from './UpgradeModal';
 
 interface UsageSummary {
   streaming_minutes: number;
@@ -25,6 +26,7 @@ export function UsageDashboard() {
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [, setLocation] = useLocation();
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   useEffect(() => {
     fetchUsage();
@@ -97,7 +99,7 @@ export function UsageDashboard() {
           </div>
           {usage.plan === 'free' && (
             <Button 
-              onClick={() => setLocation('/pricing')}
+              onClick={() => setShowUpgradeModal(true)}
               className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
             >
               <Crown className="w-4 h-4 mr-2" />
@@ -180,6 +182,12 @@ export function UsageDashboard() {
           </div>
         </div>
       </CardContent>
+
+      <UpgradeModal 
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        currentPlan={usage.plan}
+      />
     </Card>
   );
 }
