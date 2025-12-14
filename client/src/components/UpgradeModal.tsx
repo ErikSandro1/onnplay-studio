@@ -165,7 +165,7 @@ export function UpgradeModal({ isOpen, onClose, currentPlan = 'FREE' }: UpgradeM
                 </li>
                 <li className="flex items-start">
                   <Check className="w-5 h-5 text-purple-600 mr-2 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-900 font-medium">Qualidade 1080p</span>
+                  <span className="text-gray-900 font-medium">Qualidade até 4K</span>
                 </li>
                 <li className="flex items-start">
                   <Check className="w-5 h-5 text-purple-600 mr-2 flex-shrink-0 mt-0.5" />
