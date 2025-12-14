@@ -47,7 +47,7 @@ export const PLANS: Record<string, PlanConfig> = {
   pro: {
     id: 'pro',
     name: 'Pro',
-    price: 2900, // $29.00
+    price: 3900, // $39.00
     stripePriceId: process.env.STRIPE_PRO_PRICE_ID || '',
     features: {
       streamingMinutes: -1, // Unlimited
