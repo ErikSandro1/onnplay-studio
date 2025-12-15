@@ -211,6 +211,19 @@ export class AuthService {
 
         isNewUser = true;
       }
+    } else {
+      // User exists - update email and name in case they changed
+      await this.db.query(
+        `UPDATE users SET email = ?, name = ?, avatar_url = ?, updated_at = NOW() WHERE id = ?`,
+        [email, name, avatar_url, user.id]
+      );
+      
+      // Refresh user data
+      const [updatedUsers] = await this.db.query(
+        'SELECT id, email, name, avatar_url, plan, oauth_provider, created_at FROM users WHERE id = ?',
+        [user.id]
+      );
+      user = updatedUsers[0];
     }
 
     // Generate JWT token
