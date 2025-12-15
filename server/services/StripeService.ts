@@ -158,6 +158,8 @@ export class StripeService {
       payment_method_configuration: process.env.STRIPE_PAYMENT_METHOD_CONFIG_ID || 'pmc_1SeSFyRpAyWqLoUotneQgibD',
       // Collect billing address to enable local payment methods like PIX
       billing_address_collection: 'required',
+      // Enable automatic tax calculation (may force billing address collection)
+      automatic_tax: { enabled: true },
       line_items: [
         {
           price: planConfig.stripePriceId,
