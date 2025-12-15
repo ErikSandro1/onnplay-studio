@@ -148,11 +148,9 @@ export class StripeService {
       customer_update: {
         address: 'auto', // Stripe will collect and save the billing address
       },
-      // Let Stripe automatically enable local payment methods based on:
-      // 1. Customer location (detected by IP)
-      // 2. Compatibility with subscriptions
-      // 3. Methods enabled in your Stripe Dashboard
-      payment_method_configuration: undefined, // Use default configuration
+      // Use OnnPlay Studio Pro payment method configuration
+      // This configuration includes PIX, Boleto, and other local payment methods
+      payment_method_configuration: 'pmc_1SeSFyRpAyWqLoUotneQgibD', // OnnPlay Studio Pro configuration
       payment_method_options: {
         card: {
           request_three_d_secure: 'automatic',
