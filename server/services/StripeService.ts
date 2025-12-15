@@ -146,18 +146,15 @@ export class StripeService {
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: 'subscription',
-            // Enable automatic payment methods - Stripe will detect user location and show appropriate methods
-            // Use OnnPlay Studio Pro payment method configuration
-      // This configuration includes Cards, PIX, Boleto, and other local payment methods
-      payment_method_configuration: 'pmc_1SeSFyRpAyWqLoUotneQgibD', // OnnPlay Studio Pro configuration
+      // Enable automatic payment methods - Stripe will detect user location and show appropriate methods
+      // Brazil: PIX, Boleto, Cards | USA: Cards, ACH, Cash App | Europe: SEPA, iDEAL, Cards, etc.
+      automatic_payment_methods: {
+        enabled: true, // Auto-detect and show local payment methods based on customer location
+        allow_redirects: 'always', // Allow redirect-based methods like PIX, iDEAL, etc.
+      },
       // Collect customer address automatically during checkout for tax calculation
       customer_update: {
         address: 'auto', // Stripe will collect and save the billing address
-      },
-      payment_method_options: {
-        card: {
-          request_three_d_secure: 'automatic',
-        },
       },
       line_items: [
         {
