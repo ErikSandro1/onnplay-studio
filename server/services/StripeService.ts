@@ -143,6 +143,13 @@ export class StripeService {
     }
 
     // Create checkout session with automatic payment methods
+    console.log('🔍 Creating checkout session with config:', {
+      mode: 'payment',
+      payment_method_configuration: process.env.STRIPE_PAYMENT_METHOD_CONFIG_ID || 'pmc_1SeSFyRpAyWqLoUotneQgibD',
+      billing_address_collection: 'required',
+      stripePriceId: planConfig.stripePriceId,
+    });
+    
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: 'payment',
