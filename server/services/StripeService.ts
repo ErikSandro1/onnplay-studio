@@ -202,11 +202,19 @@ export class StripeService {
       throw new Error('User not found');
     }
 
+    // Validate email (required for invoicing)
+    if (!user.email) {
+      throw new Error('User email is required for invoice subscriptions');
+    }
+
+    console.log('[createInvoiceSubscription] User email:', user.email);
+
     let customerId = user.stripe_customer_id;
     if (!customerId) {
       customerId = await this.createCustomer(userId, user.email, user.name);
     } else {
       // Update customer email if missing (required for invoicing)
+      console.log('[createInvoiceSubscription] Updating customer:', customerId, 'with email:', user.email);
       await stripe.customers.update(customerId, {
         email: user.email,
         name: user.name,
