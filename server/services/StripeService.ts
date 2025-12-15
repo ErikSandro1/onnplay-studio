@@ -141,40 +141,17 @@ export class StripeService {
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: 'subscription',
-      // Enable ALL available payment methods - Stripe will show only those available in customer's country
-      payment_method_types: [
-        'card',           // Global: Credit/Debit cards
-        'boleto',         // Brazil: Boleto Bancário
-        'oxxo',           // Mexico: OXXO cash payments
-        'sepa_debit',     // Europe: SEPA Direct Debit
-        'ideal',          // Netherlands: iDEAL
-        'bancontact',     // Belgium: Bancontact
-        'giropay',        // Germany: Giropay
-        'sofort',         // Germany/Austria: Sofort
-        'us_bank_account',// USA: ACH Direct Debit
-        'affirm',         // USA: Affirm (Buy Now Pay Later)
-        'afterpay_clearpay', // USA/UK/AU: Afterpay/Clearpay
-        'alipay',         // China: Alipay
-        'wechat_pay',     // China: WeChat Pay
-        'grabpay',        // Southeast Asia: GrabPay
-        'paynow',         // Singapore: PayNow
-        'link',           // Global: Stripe Link (saved payment)
-      ],
+      // Enable automatic payment methods - Stripe will show only compatible methods for subscriptions
+      payment_method_types: ['card'], // Start with card as primary
       automatic_tax: { enabled: true }, // Enable automatic tax calculation
+      // Let Stripe automatically enable local payment methods based on:
+      // 1. Customer location (detected by IP)
+      // 2. Compatibility with subscriptions
+      // 3. Methods enabled in your Stripe Dashboard
+      payment_method_configuration: undefined, // Use default configuration
       payment_method_options: {
         card: {
           request_three_d_secure: 'automatic',
-        },
-        boleto: {
-          expires_after_days: 3, // Boleto expires in 3 days
-        },
-        oxxo: {
-          expires_after_days: 3, // OXXO expires in 3 days
-        },
-        us_bank_account: {
-          financial_connections: {
-            permissions: ['payment_method'],
-          },
         },
       },
       line_items: [

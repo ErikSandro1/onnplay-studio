@@ -9,7 +9,10 @@ interface EmailVerificationBannerProps {
 
 export function EmailVerificationBanner({ email, onDismiss }: EmailVerificationBannerProps) {
   const [isResending, setIsResending] = useState(false);
-  const [isDismissed, setIsDismissed] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(() => {
+    // Check if user has permanently dismissed the banner
+    return localStorage.getItem('email_verification_banner_dismissed') === 'true';
+  });
 
   const handleResend = async () => {
     setIsResending(true);
@@ -36,6 +39,8 @@ export function EmailVerificationBanner({ email, onDismiss }: EmailVerificationB
   };
 
   const handleDismiss = () => {
+    // Save dismissal to localStorage so it persists
+    localStorage.setItem('email_verification_banner_dismissed', 'true');
     setIsDismissed(true);
     if (onDismiss) {
       onDismiss();
