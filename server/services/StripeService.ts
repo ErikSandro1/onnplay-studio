@@ -130,13 +130,8 @@ export class StripeService {
     let customerId = user.stripe_customer_id;
     if (!customerId) {
       customerId = await this.createCustomer(userId, user.email, user.name);
-    } else {
-      // Update customer email if missing (required for invoicing)
-      await stripe.customers.update(customerId, {
-        email: user.email,
-        name: user.name,
-      });
     }
+    // Customer already exists, no need to update
 
     const planConfig = PLANS[plan];
     if (!planConfig) {
