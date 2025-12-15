@@ -139,12 +139,18 @@ export class StripeService {
     }
 
     const planConfig = PLANS[plan];
-    if (!planConfig || !planConfig.stripePriceId) {
+    if (!planConfig) {
       throw new Error('Invalid plan');
     }
 
+    // Validate that we have a price ID (either from config or custom)
+    const priceId = customPriceId || planConfig.stripePriceId;
+    if (!priceId) {
+      throw new Error('No price ID available for this plan');
+    }
+
     // Create checkout session - simplified version
-    console.log('🔍 Creating checkout session for user:', userId, 'plan:', plan);
+    console.log('🔍 Creating checkout session for user:', userId, 'plan:', plan, 'priceId:', priceId);
     
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
@@ -152,7 +158,7 @@ export class StripeService {
       payment_method_types: ['card'],
       line_items: [
         {
-          price: customPriceId || planConfig.stripePriceId,
+          price: priceId,
           quantity: 1,
         },
       ],
