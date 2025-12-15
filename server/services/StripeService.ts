@@ -144,6 +144,10 @@ export class StripeService {
       // Enable automatic payment methods - Stripe will show only compatible methods for subscriptions
       payment_method_types: ['card'], // Start with card as primary
       automatic_tax: { enabled: true }, // Enable automatic tax calculation
+      // Collect customer address automatically during checkout for tax calculation
+      customer_update: {
+        address: 'auto', // Stripe will collect and save the billing address
+      },
       // Let Stripe automatically enable local payment methods based on:
       // 1. Customer location (detected by IP)
       // 2. Compatibility with subscriptions
