@@ -145,7 +145,7 @@ export class StripeService {
     // Create checkout session with automatic payment methods
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
-      mode: 'subscription',
+      mode: 'payment',
       // Enable automatic payment methods - Stripe will detect user location and show appropriate methods
       // Brazil: PIX, Boleto, Cards | USA: Cards, ACH, Cash App | Europe: SEPA, iDEAL, Cards, etc.
       automatic_payment_methods: {
@@ -358,8 +358,21 @@ export class StripeService {
       return;
     }
 
-    // Subscription will be handled by subscription.created event
-    console.log(`Checkout completed for user ${userId}, plan ${plan}`);
+    // For one-time payments (mode: 'payment'), activate PRO for 30 days
+    if (session.mode === 'payment' && session.payment_status === 'paid') {
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30); // Add 30 days
+
+      await this.db.query(
+        'UPDATE users SET plan = ?, pro_expires_at = ? WHERE id = ?',
+        [plan, expiresAt, userId]
+      );
+
+      console.log(`✅ User ${userId} activated with ${plan} plan until ${expiresAt.toISOString()}`);
+    } else {
+      // Subscription will be handled by subscription.created event
+      console.log(`Checkout completed for user ${userId}, plan ${plan}`);
+    }
   }
 
   /**
