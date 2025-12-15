@@ -26,6 +26,33 @@ export function createPaymentRoutes(
   });
 
   /**
+   * GET /api/payments/debug
+   * Debug endpoint to check configuration
+   */
+  router.get('/debug', authMiddleware(authService), async (req: Request, res: Response) => {
+    try {
+      const userId = (req as any).userId;
+      const stripeConfigured = stripeService ? true : false;
+      
+      res.json({
+        success: true,
+        debug: {
+          userId,
+          stripeServiceExists: stripeConfigured,
+          envVars: {
+            STRIPE_SECRET_KEY_present: !!process.env.STRIPE_SECRET_KEY,
+            STRIPE_SECRET_KEY_prefix: process.env.STRIPE_SECRET_KEY?.substring(0, 7) || 'MISSING',
+            DATABASE_URL_present: !!process.env.DATABASE_URL,
+            CLIENT_URL: process.env.CLIENT_URL || 'NOT_SET',
+          },
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
    * POST /api/payments/create-checkout
    * Create Stripe checkout session
    */
