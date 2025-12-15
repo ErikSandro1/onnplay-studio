@@ -137,11 +137,46 @@ export class StripeService {
       throw new Error('Invalid plan');
     }
 
-    // Create checkout session
+    // Create checkout session with automatic payment methods
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: 'subscription',
-      payment_method_types: ['card'],
+      // Enable ALL available payment methods - Stripe will show only those available in customer's country
+      payment_method_types: [
+        'card',           // Global: Credit/Debit cards
+        'boleto',         // Brazil: Boleto Bancário
+        'oxxo',           // Mexico: OXXO cash payments
+        'sepa_debit',     // Europe: SEPA Direct Debit
+        'ideal',          // Netherlands: iDEAL
+        'bancontact',     // Belgium: Bancontact
+        'giropay',        // Germany: Giropay
+        'sofort',         // Germany/Austria: Sofort
+        'us_bank_account',// USA: ACH Direct Debit
+        'affirm',         // USA: Affirm (Buy Now Pay Later)
+        'afterpay_clearpay', // USA/UK/AU: Afterpay/Clearpay
+        'alipay',         // China: Alipay
+        'wechat_pay',     // China: WeChat Pay
+        'grabpay',        // Southeast Asia: GrabPay
+        'paynow',         // Singapore: PayNow
+        'link',           // Global: Stripe Link (saved payment)
+      ],
+      automatic_tax: { enabled: true }, // Enable automatic tax calculation
+      payment_method_options: {
+        card: {
+          request_three_d_secure: 'automatic',
+        },
+        boleto: {
+          expires_after_days: 3, // Boleto expires in 3 days
+        },
+        oxxo: {
+          expires_after_days: 3, // OXXO expires in 3 days
+        },
+        us_bank_account: {
+          financial_connections: {
+            permissions: ['payment_method'],
+          },
+        },
+      },
       line_items: [
         {
           price: planConfig.stripePriceId,

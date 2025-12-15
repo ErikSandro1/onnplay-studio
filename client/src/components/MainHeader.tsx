@@ -89,9 +89,17 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onMenuClick }) => {
                   <p className="text-xs mt-1" style={{ color: '#B8C5D6' }}>
                     {user.email}
                   </p>
-                  <p className="text-xs mt-2 px-2 py-1 rounded inline-block" style={{ background: '#FF6B00', color: '#FFFFFF' }}>
-                    {user.plan.toUpperCase()}
-                  </p>
+                  <button
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      setLocation('/settings');
+                    }}
+                    className="text-xs mt-2 px-2 py-1 rounded inline-block transition-all duration-200 hover:opacity-80 cursor-pointer"
+                    style={{ background: '#FF6B00', color: '#FFFFFF' }}
+                    title="Clique para gerenciar assinatura"
+                  >
+                    {user.plan.toUpperCase()} {user.plan === 'free' && '→ UPGRADE'}
+                  </button>
                 </div>
               </div>
             )}
