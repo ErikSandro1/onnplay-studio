@@ -141,16 +141,14 @@ export class StripeService {
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: 'subscription',
-      // Enable automatic payment methods - Stripe will show only compatible methods for subscriptions
-      payment_method_types: ['card'], // Start with card as primary
+      // Use OnnPlay Studio Pro payment method configuration
+      // This configuration includes Cards, PIX, Boleto, and other local payment methods
+      payment_method_configuration: 'pmc_1SeSFyRpAyWqLoUotneQgibD', // OnnPlay Studio Pro configuration
       automatic_tax: { enabled: true }, // Enable automatic tax calculation
       // Collect customer address automatically during checkout for tax calculation
       customer_update: {
         address: 'auto', // Stripe will collect and save the billing address
       },
-      // Use OnnPlay Studio Pro payment method configuration
-      // This configuration includes PIX, Boleto, and other local payment methods
-      payment_method_configuration: 'pmc_1SeSFyRpAyWqLoUotneQgibD', // OnnPlay Studio Pro configuration
       payment_method_options: {
         card: {
           request_three_d_secure: 'automatic',
