@@ -19,6 +19,12 @@ export function UpgradeModal({ isOpen, onClose, currentPlan = 'FREE' }: UpgradeM
     setError(null);
 
     try {
+      // Get authentication token from localStorage
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        throw new Error('Você precisa estar autenticado para fazer upgrade');
+      }
+
       const priceId = selectedPlan === 'monthly' 
         ? 'price_1SeKoeRpAyWqLoUoSLrcO125' // Monthly
         : 'price_1SeKoeRpAyWqLoUodXiLf0DB'; // Yearly
@@ -27,6 +33,7 @@ export function UpgradeModal({ isOpen, onClose, currentPlan = 'FREE' }: UpgradeM
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         credentials: 'include',
         body: JSON.stringify({
