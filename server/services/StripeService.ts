@@ -146,12 +146,8 @@ export class StripeService {
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: 'payment',
-      // Enable automatic payment methods - Stripe will detect user location and show appropriate methods
-      // Brazil: PIX, Boleto, Cards | USA: Cards, ACH, Cash App | Europe: SEPA, iDEAL, Cards, etc.
-      automatic_payment_methods: {
-        enabled: true, // Auto-detect and show local payment methods based on customer location
-        allow_redirects: 'always', // Allow redirect-based methods like PIX, iDEAL, etc.
-      },
+      // Use payment method configuration to enable local payment methods
+      payment_method_configuration: process.env.STRIPE_PAYMENT_METHOD_CONFIG_ID || 'pmc_1SeSFyRpAyWqLoUotneQgibD',
       // Collect customer address automatically during checkout for tax calculation
       customer_update: {
         address: 'auto', // Stripe will collect and save the billing address
