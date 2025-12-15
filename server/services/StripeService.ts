@@ -132,52 +132,52 @@ export class StripeService {
       );
       console.log('✅ [createCheckoutSession] User found:', user ? 'YES' : 'NO');
 
-    if (!user) {
-      throw new Error('User not found');
-    }
+      if (!user) {
+        throw new Error('User not found');
+      }
 
-    let customerId = user.stripe_customer_id;
-    if (!customerId) {
-      customerId = await this.createCustomer(userId, user.email, user.name);
-    }
-    // Customer already exists, no need to update
+      let customerId = user.stripe_customer_id;
+      if (!customerId) {
+        customerId = await this.createCustomer(userId, user.email, user.name);
+      }
+      // Customer already exists, no need to update
 
-    const planConfig = PLANS[plan];
-    if (!planConfig) {
-      throw new Error('Invalid plan');
-    }
+      const planConfig = PLANS[plan];
+      if (!planConfig) {
+        throw new Error('Invalid plan');
+      }
 
-    // Validate that we have a price ID (either from config or custom)
-    const priceId = customPriceId || planConfig.stripePriceId;
-    if (!priceId) {
-      throw new Error('No price ID available for this plan');
-    }
+      // Validate that we have a price ID (either from config or custom)
+      const priceId = customPriceId || planConfig.stripePriceId;
+      if (!priceId) {
+        throw new Error('No price ID available for this plan');
+      }
 
-    // Create checkout session - simplified version
-    console.log('🔍 Creating checkout session for user:', userId, 'plan:', plan, 'priceId:', priceId);
-    
-    const session = await stripe.checkout.sessions.create({
-      customer: customerId,
-      mode: 'payment',
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
+      // Create checkout session - simplified version
+      console.log('🔍 Creating checkout session for user:', userId, 'plan:', plan, 'priceId:', priceId);
+      
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price: priceId,
+            quantity: 1,
+          },
+        ],
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        metadata: {
+          userId,
+          plan,
         },
-      ],
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      metadata: {
-        userId,
-        plan,
-      },
-    });
+      });
 
-    return {
-      sessionId: session.id,
-      url: session.url!,
-    };
+      return {
+        sessionId: session.id,
+        url: session.url!,
+      };
     } catch (error: any) {
       console.error('❌ [createCheckoutSession] ERROR:', error.message);
       console.error('❌ [createCheckoutSession] Stack:', error.stack);
