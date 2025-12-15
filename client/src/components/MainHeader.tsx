@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, LogOut } from 'lucide-react';
+import { Menu, LogOut, Settings } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocation } from 'wouter';
 
@@ -11,6 +11,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onMenuClick }) => {
   const { logout, user } = useAuth();
   const [, setLocation] = useLocation();
   const [showUserMenu, setShowUserMenu] = React.useState(false);
+  const [showMainMenu, setShowMainMenu] = React.useState(false);
 
   const handleLogout = () => {
     logout();
@@ -108,13 +109,38 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onMenuClick }) => {
         </button>
 
         {/* Menu Button */}
-        <button
-          onClick={onMenuClick}
-          className="p-3 rounded-lg transition-all duration-200 hover:bg-[#1E2842]"
-          style={{ color: '#B8C5D6' }}
-        >
-          <Menu size={28} />
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => setShowMainMenu(!showMainMenu)}
+            className="p-3 rounded-lg transition-all duration-200 hover:bg-[#1E2842]"
+            style={{ color: '#B8C5D6' }}
+            title="Menu"
+          >
+            <Menu size={28} />
+          </button>
+
+          {/* Main Menu Dropdown */}
+          {showMainMenu && (
+            <div
+              className="absolute right-0 mt-2 w-56 rounded-lg shadow-lg z-50"
+              style={{ background: '#1E2842', border: '1px solid #2A3F5F' }}
+            >
+              <div className="py-2">
+                <button
+                  onClick={() => {
+                    setShowMainMenu(false);
+                    setLocation('/settings');
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200 hover:bg-[#0A0E1A]"
+                  style={{ color: '#B8C5D6' }}
+                >
+                  <Settings size={20} />
+                  <span className="text-sm font-medium">Configurações</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
