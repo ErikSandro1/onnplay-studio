@@ -114,14 +114,23 @@ export class StripeService {
     cancelUrl: string,
     customPriceId?: string
   ): Promise<{ sessionId: string; url: string }> {
+    console.log('🚀 [createCheckoutSession] START - userId:', userId, 'plan:', plan);
+    
     if (!stripe) {
+      console.error('❌ [createCheckoutSession] Stripe not configured!');
       throw new Error('Stripe not configured');
     }
-    // Get or create Stripe customer
-    const [user] = await this.db.query(
-      'SELECT email, name, stripe_customer_id FROM users WHERE id = ?',
-      [userId]
-    );
+    
+    console.log('✅ [createCheckoutSession] Stripe initialized');
+    
+    try {
+      // Get or create Stripe customer
+      console.log('📊 [createCheckoutSession] Querying database for user...');
+      const [user] = await this.db.query(
+        'SELECT email, name, stripe_customer_id FROM users WHERE id = ?',
+        [userId]
+      );
+      console.log('✅ [createCheckoutSession] User found:', user ? 'YES' : 'NO');
 
     if (!user) {
       throw new Error('User not found');
@@ -169,6 +178,11 @@ export class StripeService {
       sessionId: session.id,
       url: session.url!,
     };
+    } catch (error: any) {
+      console.error('❌ [createCheckoutSession] ERROR:', error.message);
+      console.error('❌ [createCheckoutSession] Stack:', error.stack);
+      throw error;
+    }
   }
 
   /**
