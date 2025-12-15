@@ -80,43 +80,59 @@ export class UsageLimitService {
    * Get current month usage for a user
    */
   async getCurrentUsage(userId: string): Promise<UsageData> {
+    console.log('📊 [getCurrentUsage] START - userId:', userId);
     const currentMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
 
-    const [usage] = await this.db.query(
-      'SELECT * FROM user_usage WHERE user_id = ? AND month = ?',
-      [userId, currentMonth]
-    );
+    try {
+      console.log('📊 [getCurrentUsage] Querying user_usage table...');
+      const [usage] = await this.db.query(
+        'SELECT * FROM user_usage WHERE user_id = ? AND month = ?',
+        [userId, currentMonth]
+      );
+      console.log('📊 [getCurrentUsage] Query result:', usage ? 'Found' : 'Not found');
 
-    if (!usage) {
-      // Create usage record for current month
-      const newUsage = {
-        id: uuidv4(),
-        user_id: userId,
-        month: currentMonth,
+      if (!usage) {
+        // Create usage record for current month
+        console.log('📊 [getCurrentUsage] Creating new usage record...');
+        const newUsage = {
+          id: uuidv4(),
+          user_id: userId,
+          month: currentMonth,
+          streaming_minutes: 0,
+          recording_minutes: 0,
+          ai_commands_count: 0,
+          storage_mb: 0,
+        };
+
+        await this.db.query(
+          `INSERT INTO user_usage (id, user_id, month, streaming_minutes, recording_minutes, ai_commands_count, storage_mb)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            newUsage.id,
+            newUsage.user_id,
+            newUsage.month,
+            newUsage.streaming_minutes,
+            newUsage.recording_minutes,
+            newUsage.ai_commands_count,
+            newUsage.storage_mb,
+          ]
+        );
+        console.log('📊 [getCurrentUsage] New record created');
+
+        return newUsage;
+      }
+
+      return usage;
+    } catch (error: any) {
+      console.error('❌ [getCurrentUsage] ERROR:', error.message);
+      // Return default usage data if table doesn't exist
+      return {
         streaming_minutes: 0,
         recording_minutes: 0,
         ai_commands_count: 0,
         storage_mb: 0,
       };
-
-      await this.db.query(
-        `INSERT INTO user_usage (id, user_id, month, streaming_minutes, recording_minutes, ai_commands_count, storage_mb)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          newUsage.id,
-          newUsage.user_id,
-          newUsage.month,
-          newUsage.streaming_minutes,
-          newUsage.recording_minutes,
-          newUsage.ai_commands_count,
-          newUsage.storage_mb,
-        ]
-      );
-
-      return newUsage;
     }
-
-    return usage;
   }
 
   /**

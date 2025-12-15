@@ -2,29 +2,45 @@ import React, { useEffect, useState } from 'react';
 import { Progress } from './ui/progress';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
-import { Clock, TrendingUp, AlertCircle, Crown } from 'lucide-react';
+import { Clock, TrendingUp, AlertCircle, Crown, RefreshCw } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { UpgradeModal } from './UpgradeModal';
 
 interface UsageSummary {
-  streaming_minutes: number;
-  recording_minutes: number;
-  ai_commands_count: number;
-  storage_mb: number;
+  plan: string;
   limits: {
-    streamingMinutesPerMonth: number;
-    recordingMinutesPerMonth: number;
+    streamingMinutes: number;
+    recordingMinutes: number;
     maxQuality: string;
     maxParticipants: number;
-    aiAssistant: boolean;
-    recording: boolean;
+    features: {
+      aiAssistant: boolean;
+      recording: boolean;
+      ptzControl: boolean;
+      commentOverlay: boolean;
+      apiAccess: boolean;
+    };
   };
-  plan: string;
+  usage: {
+    streamingMinutes: number;
+    recordingMinutes: number;
+    aiCommandsCount: number;
+    storageMb: number;
+  };
+  remaining: {
+    streamingMinutes: number;
+    recordingMinutes: number;
+  };
+  percentUsed: {
+    streamingMinutes: number;
+    recordingMinutes: number;
+  };
 }
 
 export function UsageDashboard() {
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [, setLocation] = useLocation();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
@@ -33,8 +49,16 @@ export function UsageDashboard() {
   }, []);
 
   const fetchUsage = async () => {
+    setLoading(true);
+    setError(null);
     try {
       const token = localStorage.getItem('auth_token');
+      if (!token) {
+        setError('Não autenticado');
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch('/api/usage/summary', {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -43,10 +67,18 @@ export function UsageDashboard() {
 
       if (response.ok) {
         const data = await response.json();
-        setUsage(data.summary);
+        if (data.success && data.summary) {
+          setUsage(data.summary);
+        } else {
+          setError('Formato de resposta inválido');
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        setError(errorData.error || 'Falha ao carregar dados de uso');
       }
-    } catch (error) {
-      console.error('Failed to fetch usage:', error);
+    } catch (err: any) {
+      console.error('Failed to fetch usage:', err);
+      setError('Erro de conexão');
     } finally {
       setLoading(false);
     }
@@ -65,23 +97,53 @@ export function UsageDashboard() {
     );
   }
 
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-orange-600">
+              <AlertCircle className="w-5 h-5" />
+              <span>{error}</span>
+            </div>
+            <Button variant="outline" size="sm" onClick={fetchUsage}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Tentar novamente
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (!usage) {
     return null;
   }
 
-  const streamingLimit = usage.limits.streamingMinutesPerMonth;
-  const streamingUsed = usage.streaming_minutes;
-  const streamingPercentage = streamingLimit === -1 ? 0 : (streamingUsed / streamingLimit) * 100;
-  const streamingRemaining = streamingLimit === -1 ? Infinity : Math.max(0, streamingLimit - streamingUsed);
+  const streamingLimit = usage.limits.streamingMinutes;
+  const streamingUsed = usage.usage.streamingMinutes;
+  const streamingPercentage = usage.percentUsed?.streamingMinutes || 
+    (streamingLimit === -1 ? 0 : (streamingUsed / streamingLimit) * 100);
+  const streamingRemaining = usage.remaining?.streamingMinutes ?? 
+    (streamingLimit === -1 ? Infinity : Math.max(0, streamingLimit - streamingUsed));
   
   const isLimitReached = streamingLimit !== -1 && streamingUsed >= streamingLimit;
   const isNearLimit = streamingLimit !== -1 && streamingPercentage >= 80;
 
   const formatTime = (minutes: number) => {
-    if (minutes === Infinity) return '∞';
+    if (minutes === -1 || minutes === Infinity) return '∞';
     const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
+    const mins = Math.round(minutes % 60);
     return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+  };
+
+  const getPlanLabel = (plan: string) => {
+    switch (plan) {
+      case 'free': return 'Plano FREE';
+      case 'pro': return 'Plano PRO';
+      case 'enterprise': return 'Plano ENTERPRISE';
+      default: return plan.toUpperCase();
+    }
   };
 
   return (
@@ -94,7 +156,7 @@ export function UsageDashboard() {
               Uso de Broadcast
             </CardTitle>
             <CardDescription>
-              {usage.plan === 'free' ? 'Plano FREE' : usage.plan === 'pro' ? 'Plano PRO' : 'Plano ENTERPRISE'}
+              {getPlanLabel(usage.plan)}
             </CardDescription>
           </div>
           {usage.plan === 'free' && (
@@ -114,7 +176,7 @@ export function UsageDashboard() {
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium">Tempo de Transmissão</span>
             <span className={`font-bold ${isNearLimit ? 'text-orange-600' : isLimitReached ? 'text-red-600' : 'text-gray-700'}`}>
-              {formatTime(streamingUsed)} / {streamingLimit === -1 ? '∞' : formatTime(streamingLimit)}
+              {formatTime(streamingUsed)} / {formatTime(streamingLimit)}
             </span>
           </div>
           
@@ -130,6 +192,12 @@ export function UsageDashboard() {
                 <span>{formatTime(streamingRemaining)} restantes</span>
               </div>
             </>
+          )}
+
+          {streamingLimit === -1 && (
+            <div className="text-sm text-green-600 font-medium">
+              ✨ Transmissão ilimitada
+            </div>
           )}
         </div>
 
@@ -170,14 +238,14 @@ export function UsageDashboard() {
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-600">AI Assistant</span>
-            <span className={`font-medium ${usage.limits.aiAssistant ? 'text-green-600' : 'text-gray-400'}`}>
-              {usage.limits.aiAssistant ? 'Ativado' : 'Desativado'}
+            <span className={`font-medium ${usage.limits.features.aiAssistant ? 'text-green-600' : 'text-gray-400'}`}>
+              {usage.limits.features.aiAssistant ? 'Ativado' : 'Desativado'}
             </span>
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-600">Gravação</span>
-            <span className={`font-medium ${usage.limits.recording ? 'text-green-600' : 'text-gray-400'}`}>
-              {usage.limits.recording ? 'Ativado' : 'Desativado'}
+            <span className={`font-medium ${usage.limits.features.recording ? 'text-green-600' : 'text-gray-400'}`}>
+              {usage.limits.features.recording ? 'Ativado' : 'Desativado'}
             </span>
           </div>
         </div>
