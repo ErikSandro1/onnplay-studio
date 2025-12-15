@@ -151,16 +151,15 @@ export class StripeService {
     });
     
     const session = await stripe.checkout.sessions.create({
-      customer: customerId,
+      // Use customer_email instead of customer to force billing address collection
+      customer_email: user.email,
       mode: 'payment',
       // Use payment method configuration to enable local payment methods
-      // payment_method_configuration: process.env.STRIPE_PAYMENT_METHOD_CONFIG_ID || 'pmc_1SeSFyRpAyWqLoUotneQgibD',
+      payment_method_configuration: process.env.STRIPE_PAYMENT_METHOD_CONFIG_ID || 'pmc_1SeSFyRpAyWqLoUotneQgibD',
       // Collect billing address to enable local payment methods like PIX
       billing_address_collection: 'required',
-      // Save the billing address to customer
-      customer_update: {
-        address: 'auto',
-      },
+      // Allow Stripe to create or update customer after payment
+      customer_creation: 'always',
       line_items: [
         {
           price: planConfig.stripePriceId,
@@ -368,12 +367,16 @@ export class StripeService {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 30); // Add 30 days
 
+      // Save customer ID if created by Stripe
+      const customerId = session.customer as string;
+      
       await this.db.query(
-        'UPDATE users SET plan = ?, pro_expires_at = ? WHERE id = ?',
-        [plan, expiresAt, userId]
+        'UPDATE users SET plan = ?, pro_expires_at = ?, stripe_customer_id = ? WHERE id = ?',
+        [plan, expiresAt, customerId, userId]
       );
 
       console.log(`✅ User ${userId} activated with ${plan} plan until ${expiresAt.toISOString()}`);
+      console.log(`✅ Customer ID ${customerId} saved for user ${userId}`);
     } else {
       // Subscription will be handled by subscription.created event
       console.log(`Checkout completed for user ${userId}, plan ${plan}`);
