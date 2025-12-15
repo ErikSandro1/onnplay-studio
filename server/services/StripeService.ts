@@ -158,8 +158,6 @@ export class StripeService {
       payment_method_configuration: process.env.STRIPE_PAYMENT_METHOD_CONFIG_ID || 'pmc_1SeSFyRpAyWqLoUotneQgibD',
       // Collect billing address to enable local payment methods like PIX
       billing_address_collection: 'required',
-      // Allow Stripe to create or update customer after payment
-      customer_creation: 'always',
       line_items: [
         {
           price: planConfig.stripePriceId,
