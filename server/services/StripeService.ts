@@ -154,8 +154,8 @@ export class StripeService {
       // Use customer_email instead of customer to force billing address collection
       customer_email: user.email,
       mode: 'payment',
-      // Use payment method configuration to enable local payment methods
-      payment_method_configuration: process.env.STRIPE_PAYMENT_METHOD_CONFIG_ID || 'pmc_1SeSFyRpAyWqLoUotneQgibD',
+      // REMOVED payment_method_configuration to test if it's causing the issue
+      // payment_method_configuration: process.env.STRIPE_PAYMENT_METHOD_CONFIG_ID || 'pmc_1SeSFyRpAyWqLoUotneQgibD',
       // Collect billing address to enable local payment methods like PIX
       billing_address_collection: 'required',
       // Enable automatic tax calculation (may force billing address collection)
