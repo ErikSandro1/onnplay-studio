@@ -111,7 +111,8 @@ export class StripeService {
     userId: string,
     plan: 'pro' | 'enterprise',
     successUrl: string,
-    cancelUrl: string
+    cancelUrl: string,
+    customPriceId?: string
   ): Promise<{ sessionId: string; url: string }> {
     if (!stripe) {
       throw new Error('Stripe not configured');
@@ -162,7 +163,7 @@ export class StripeService {
       automatic_tax: { enabled: true },
       line_items: [
         {
-          price: planConfig.stripePriceId,
+          price: customPriceId || planConfig.stripePriceId, // Use custom price if provided
           quantity: 1,
         },
       ],

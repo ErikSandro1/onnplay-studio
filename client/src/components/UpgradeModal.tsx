@@ -38,6 +38,7 @@ export function UpgradeModal({ isOpen, onClose, currentPlan = 'FREE' }: UpgradeM
         credentials: 'include',
         body: JSON.stringify({
           plan: 'pro',
+          priceId: priceId, // Send the selected price ID
         }),
       });
 

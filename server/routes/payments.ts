@@ -35,7 +35,7 @@ export function createPaymentRoutes(
     async (req: Request, res: Response) => {
       try {
         const userId = (req as any).userId;
-        const { plan } = req.body;
+        const { plan, priceId } = req.body;
 
         if (!plan || (plan !== 'pro' && plan !== 'enterprise')) {
           return res.status(400).json({
@@ -51,7 +51,8 @@ export function createPaymentRoutes(
           userId,
           plan,
           successUrl,
-          cancelUrl
+          cancelUrl,
+          priceId // Pass custom priceId if provided
         );
 
         res.json({
