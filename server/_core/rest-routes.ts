@@ -25,9 +25,9 @@ export function setupRestRoutes(app: express.Application) {
 
   // Create routers
   const authRoutes = createAuthRoutes(authService);
-  const paymentRoutes = createPaymentRoutes(stripeService);
-  const usageRoutes = createUsageRoutes(usageLimitService);
-  const broadcastRoutes = createBroadcastRoutes(broadcastTrackingService);
+  const paymentRoutes = createPaymentRoutes(stripeService, authService);
+  const usageRoutes = createUsageRoutes(usageLimitService, authService);
+  const broadcastRoutes = createBroadcastRoutes(broadcastTrackingService, authService);
 
   // Mount routes
   app.use('/api/auth', authRoutes);
