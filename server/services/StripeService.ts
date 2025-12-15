@@ -174,6 +174,72 @@ export class StripeService {
   }
 
   /**
+   * Create subscription with manual invoicing (for PIX and other manual payment methods)
+   * This uses Stripe Invoicing with collection_method: 'send_invoice'
+   */
+  async createInvoiceSubscription(
+    userId: string,
+    plan: 'pro' | 'enterprise',
+    billingPeriod: 'monthly' | 'yearly'
+  ): Promise<any> {
+    if (!stripe) {
+      throw new Error('Stripe not configured');
+    }
+
+    // Get or create Stripe customer
+    const [user] = await this.db.query(
+      'SELECT email, name, stripe_customer_id FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    let customerId = user.stripe_customer_id;
+    if (!customerId) {
+      customerId = await this.createCustomer(userId, user.email, user.name);
+    }
+
+    const planConfig = PLANS[plan];
+    if (!planConfig || !planConfig.stripePriceId) {
+      throw new Error('Invalid plan');
+    }
+
+    // Create subscription with manual invoicing
+    const subscription = await stripe.subscriptions.create({
+      customer: customerId,
+      items: [
+        {
+          price: planConfig.stripePriceId,
+        },
+      ],
+      collection_method: 'send_invoice', // Manual payment - invoice sent to customer
+      days_until_due: 7, // Customer has 7 days to pay
+      payment_settings: {
+        payment_method_types: ['card', 'customer_balance'], // Allow various payment methods
+      },
+      metadata: {
+        userId,
+        plan,
+        billingPeriod,
+      },
+    });
+
+    // Update user's plan in database
+    await this.db.query(
+      'UPDATE users SET plan = ?, stripe_subscription_id = ? WHERE id = ?',
+      [plan, subscription.id, userId]
+    );
+
+    return {
+      subscriptionId: subscription.id,
+      status: subscription.status,
+      invoiceUrl: subscription.latest_invoice,
+    };
+  }
+
+  /**
    * Create portal session for managing subscription
    */
   async createPortalSession(

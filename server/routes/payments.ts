@@ -69,6 +69,44 @@ export function createPaymentRoutes(
   );
 
   /**
+   * POST /api/payments/create-invoice-subscription
+   * Create subscription with manual invoicing (for PIX and other manual payment methods)
+   */
+  router.post(
+    '/create-invoice-subscription',
+    authMiddleware(authService),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = (req as any).userId;
+        const { plan, billingPeriod } = req.body;
+
+        if (!plan || (plan !== 'pro' && plan !== 'enterprise')) {
+          return res.status(400).json({
+            error: 'Invalid plan',
+          });
+        }
+
+        const subscription = await stripeService.createInvoiceSubscription(
+          userId,
+          plan,
+          billingPeriod || 'monthly'
+        );
+
+        res.json({
+          success: true,
+          subscription,
+          message: 'Subscription created! You will receive an invoice via email.',
+        });
+      } catch (error: any) {
+        console.error('Create invoice subscription error:', error);
+        res.status(500).json({
+          error: error.message || 'Failed to create invoice subscription',
+        });
+      }
+    }
+  );
+
+  /**
    * POST /api/payments/create-portal
    * Create Stripe customer portal session
    */
