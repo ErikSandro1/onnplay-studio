@@ -477,4 +477,89 @@ export class StripeService {
     );
     return subscription || null;
   }
+
+  /**
+   * Get payment history for user
+   */
+  async getPaymentHistory(userId: string): Promise<any[]> {
+    if (!stripe) {
+      throw new Error('Stripe not configured');
+    }
+    const [user] = await this.db.query(
+      'SELECT stripe_customer_id FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (!user || !user.stripe_customer_id) {
+      return [];
+    }
+
+    // Get invoices from Stripe
+    const invoices = await stripe.invoices.list({
+      customer: user.stripe_customer_id,
+      limit: 10, // Last 10 invoices
+    });
+
+    return invoices.data.map((invoice) => ({
+      id: invoice.id,
+      amount: invoice.amount_paid / 100, // Convert from cents to dollars
+      currency: invoice.currency.toUpperCase(),
+      status: invoice.status,
+      date: new Date(invoice.created * 1000),
+      invoice_pdf: invoice.invoice_pdf,
+      hosted_invoice_url: invoice.hosted_invoice_url,
+    }));
+  }
+
+  /**
+   * Change subscription plan (upgrade/downgrade)
+   */
+  async changeSubscriptionPlan(
+    userId: string,
+    newPlan: 'pro' | 'enterprise'
+  ): Promise<void> {
+    if (!stripe) {
+      throw new Error('Stripe not configured');
+    }
+    const [subscription] = await this.db.query(
+      'SELECT stripe_subscription_id FROM subscriptions WHERE user_id = ? AND status = "active"',
+      [userId]
+    );
+
+    if (!subscription) {
+      throw new Error('No active subscription found');
+    }
+
+    const planConfig = PLANS[newPlan];
+    if (!planConfig || !planConfig.stripePriceId) {
+      throw new Error('Invalid plan');
+    }
+
+    // Get current subscription from Stripe
+    const stripeSubscription = await stripe.subscriptions.retrieve(
+      subscription.stripe_subscription_id
+    );
+
+    // Update subscription with new price
+    await stripe.subscriptions.update(subscription.stripe_subscription_id, {
+      items: [
+        {
+          id: stripeSubscription.items.data[0].id,
+          price: planConfig.stripePriceId,
+        },
+      ],
+      proration_behavior: 'create_prorations', // Calculate proration
+    });
+
+    // Update database
+    await this.db.query(
+      'UPDATE subscriptions SET plan = ?, stripe_price_id = ?, updated_at = NOW() WHERE stripe_subscription_id = ?',
+      [newPlan, planConfig.stripePriceId, subscription.stripe_subscription_id]
+    );
+
+    await this.db.query(
+      'UPDATE users SET plan = ?, updated_at = NOW() WHERE id = ?',
+      [newPlan, userId]
+    );
+  }
 }

@@ -207,5 +207,64 @@ export function createPaymentRoutes(
     }
   );
 
+  /**
+   * GET /api/payments/history
+   * Get payment history
+   */
+  router.get(
+    '/history',
+    authMiddleware(authService),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = (req as any).userId;
+
+        const history = await stripeService.getPaymentHistory(userId);
+
+        res.json({
+          success: true,
+          history,
+        });
+      } catch (error: any) {
+        console.error('Get payment history error:', error);
+        res.status(500).json({
+          error: 'Failed to get payment history',
+        });
+      }
+    }
+  );
+
+  /**
+   * POST /api/payments/change-plan
+   * Change subscription plan (upgrade/downgrade)
+   */
+  router.post(
+    '/change-plan',
+    authMiddleware(authService),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = (req as any).userId;
+        const { plan } = req.body;
+
+        if (!plan || (plan !== 'pro' && plan !== 'enterprise')) {
+          return res.status(400).json({
+            error: 'Invalid plan',
+          });
+        }
+
+        await stripeService.changeSubscriptionPlan(userId, plan);
+
+        res.json({
+          success: true,
+          message: 'Plan changed successfully',
+        });
+      } catch (error: any) {
+        console.error('Change plan error:', error);
+        res.status(400).json({
+          error: error.message || 'Failed to change plan',
+        });
+      }
+    }
+  );
+
   return router;
 }

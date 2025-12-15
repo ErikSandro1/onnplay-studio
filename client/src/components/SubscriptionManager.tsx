@@ -3,9 +3,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Crown, Loader2, ExternalLink, AlertCircle } from 'lucide-react';
+import { Crown, Loader2, ExternalLink, AlertCircle, Download, FileText, ArrowUpCircle, ArrowDownCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { UpgradeModal } from './UpgradeModal';
+import { ChangePlanModal } from './ChangePlanModal';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
@@ -17,15 +18,29 @@ interface Subscription {
   cancelAtPeriodEnd: boolean;
 }
 
+interface PaymentHistory {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  date: string;
+  invoice_pdf: string | null;
+  hosted_invoice_url: string | null;
+}
+
 export function SubscriptionManager() {
   const { user, token } = useAuth();
   const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [paymentHistory, setPaymentHistory] = useState<PaymentHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showChangePlan, setShowChangePlan] = useState(false);
 
   useEffect(() => {
     fetchSubscription();
+    fetchPaymentHistory();
   }, []);
 
   const fetchSubscription = async () => {
@@ -44,6 +59,23 @@ export function SubscriptionManager() {
       console.error('Error fetching subscription:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPaymentHistory = async () => {
+    try {
+      const response = await fetch(`${API_URL}/payments/history`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPaymentHistory(data.history || []);
+      }
+    } catch (error) {
+      console.error('Error fetching payment history:', error);
     }
   };
 
@@ -123,6 +155,40 @@ export function SubscriptionManager() {
       fetchSubscription();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao reativar assinatura');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleChangePlan = async (newPlan: 'pro' | 'enterprise') => {
+    if (!confirm(`Tem certeza que deseja trocar para o plano ${newPlan.toUpperCase()}?`)) {
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/payments/change-plan`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ plan: newPlan }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to change plan');
+      }
+
+      toast.success('Plano alterado com sucesso');
+      fetchSubscription();
+      setShowChangePlan(false);
+      // Reload to update user context
+      window.location.reload();
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao trocar plano');
     } finally {
       setActionLoading(false);
     }
@@ -316,6 +382,28 @@ export function SubscriptionManager() {
             )}
           </div>
 
+          {/* Additional Actions */}
+          {isPro && (
+            <div className="space-y-2 pt-4 border-t">
+              <Button
+                onClick={() => setShowChangePlan(true)}
+                variant="ghost"
+                className="w-full justify-start"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Trocar Plano
+              </Button>
+              <Button
+                onClick={() => setShowHistory(!showHistory)}
+                variant="ghost"
+                className="w-full justify-start"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                {showHistory ? 'Ocultar' : 'Ver'} Histórico de Pagamentos
+              </Button>
+            </div>
+          )}
+
           {/* Help Text */}
           <p className="text-xs text-gray-500 dark:text-gray-400 text-center pt-2">
             Precisa de ajuda?{' '}
@@ -326,9 +414,68 @@ export function SubscriptionManager() {
         </CardContent>
       </Card>
 
+      {/* Payment History */}
+      {isPro && showHistory && paymentHistory.length > 0 && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>Histórico de Pagamentos</CardTitle>
+            <CardDescription>
+              Seus últimos pagamentos e faturas
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {paymentHistory.map((payment) => (
+                <div
+                  key={payment.id}
+                  className="flex items-center justify-between p-4 border rounded-lg"
+                >
+                  <div className="flex-1">
+                    <p className="font-medium">
+                      ${(payment.amount / 100).toFixed(2)} {payment.currency.toUpperCase()}
+                    </p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      {new Date(payment.date).toLocaleDateString('pt-BR', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                      })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={payment.status === 'paid' ? 'default' : 'secondary'}
+                    >
+                      {payment.status === 'paid' ? 'Pago' : payment.status}
+                    </Badge>
+                    {payment.invoice_pdf && (
+                      <a
+                        href={payment.invoice_pdf}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                      >
+                        <Download className="w-4 h-4" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <UpgradeModal
         isOpen={showUpgradeModal}
         onClose={() => setShowUpgradeModal(false)}
+      />
+
+      <ChangePlanModal
+        isOpen={showChangePlan}
+        onClose={() => setShowChangePlan(false)}
+        currentPlan={user?.plan || 'free'}
+        onChangePlan={handleChangePlan}
       />
     </>
   );
