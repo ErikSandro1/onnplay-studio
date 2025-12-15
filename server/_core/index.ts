@@ -39,6 +39,19 @@ async function startServer() {
 
   const app = express();
   const server = createServer(app);
+
+  // Boot logs to verify Railway is running the correct version
+  console.log("BOOT VERSION:", process.env.npm_package_version);
+  console.log("BOOT COMMIT:", process.env.RAILWAY_GIT_COMMIT_SHA);
+
+  // Version endpoint to check if Railway is serving the correct build
+  app.get("/__version", (req, res) => {
+    res.json({
+      version: process.env.npm_package_version,
+      commit: process.env.RAILWAY_GIT_COMMIT_SHA,
+      time: new Date().toISOString(),
+    });
+  });
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
