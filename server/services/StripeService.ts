@@ -143,27 +143,16 @@ export class StripeService {
       throw new Error('Invalid plan');
     }
 
-    // Create checkout session with automatic payment methods
-    console.log('🔍 Creating checkout session with config:', {
-      mode: 'payment',
-      payment_method_configuration: process.env.STRIPE_PAYMENT_METHOD_CONFIG_ID || 'pmc_1SeSFyRpAyWqLoUotneQgibD',
-      billing_address_collection: 'required',
-      stripePriceId: planConfig.stripePriceId,
-    });
+    // Create checkout session - simplified version
+    console.log('🔍 Creating checkout session for user:', userId, 'plan:', plan);
     
     const session = await stripe.checkout.sessions.create({
-      // REMOVED customer_email to test if it's preventing billing address collection
-      // customer_email: user.email,
+      customer: customerId,
       mode: 'payment',
-      // REMOVED payment_method_configuration to test if it's causing the issue
-      // payment_method_configuration: process.env.STRIPE_PAYMENT_METHOD_CONFIG_ID || 'pmc_1SeSFyRpAyWqLoUotneQgibD',
-      // Collect billing address to enable local payment methods like PIX
-      billing_address_collection: 'required',
-      // Enable automatic tax calculation (may force billing address collection)
-      automatic_tax: { enabled: true },
+      payment_method_types: ['card'],
       line_items: [
         {
-          price: customPriceId || planConfig.stripePriceId, // Use custom price if provided
+          price: customPriceId || planConfig.stripePriceId,
           quantity: 1,
         },
       ],
