@@ -151,8 +151,8 @@ export class StripeService {
     });
     
     const session = await stripe.checkout.sessions.create({
-      // Use customer_email instead of customer to force billing address collection
-      customer_email: user.email,
+      // REMOVED customer_email to test if it's preventing billing address collection
+      // customer_email: user.email,
       mode: 'payment',
       // REMOVED payment_method_configuration to test if it's causing the issue
       // payment_method_configuration: process.env.STRIPE_PAYMENT_METHOD_CONFIG_ID || 'pmc_1SeSFyRpAyWqLoUotneQgibD',
