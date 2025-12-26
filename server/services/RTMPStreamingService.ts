@@ -1,19 +1,20 @@
 /**
- * RTMPStreamingService - Professional YouTube Edition
+ * RTMPStreamingService - Relay Edition
  * 
- * Receives JPEG frames from browser and converts to RTMP stream.
- * Uses YouTube-recommended settings for reliable streaming.
+ * This service receives encoded video chunks from the browser (via MediaRecorder)
+ * and relays them to RTMP destinations using FFmpeg.
  * 
- * YouTube Requirements:
- * - Codec: H.264 with CBR
- * - Bitrate: 3000-4000 Kbps for 720p@30fps
- * - Keyframe: Every 2 seconds
- * - Frame rate: 24-30 fps
+ * The browser does the encoding, so the server just needs to:
+ * 1. Receive WebM/H264 chunks via WebSocket
+ * 2. Pipe them to FFmpeg
+ * 3. FFmpeg remuxes (no re-encoding) and sends to RTMP
+ * 
+ * This is the same architecture used by StreamYard, Restream, etc.
  */
 
+import { spawn, ChildProcess } from 'child_process';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
-import { spawn, ChildProcess } from 'child_process';
 
 interface StreamDestination {
   id: string;
@@ -32,359 +33,291 @@ interface StreamConfig {
 }
 
 interface ActiveStream {
-  socketId: string;
+  socket: Socket;
   destinations: StreamDestination[];
-  config: StreamConfig;
   ffmpegProcesses: Map<string, ChildProcess>;
-  startTime: Date;
-  frameCount: number;
-  lastFrameTime: number;
+  config: StreamConfig;
+  bytesReceived: number;
+  chunksReceived: number;
+  startTime: number;
 }
 
 export class RTMPStreamingService {
   private io: SocketIOServer | null = null;
   private activeStreams: Map<string, ActiveStream> = new Map();
 
+  constructor() {
+    console.log('[RTMPStreamingService] Relay service initialized');
+  }
+
   /**
    * Initialize the Socket.IO server for streaming
    */
   initialize(httpServer: HTTPServer): void {
-    console.log('[RTMPStreamingService] Initializing Socket.IO server...');
-    
     this.io = new SocketIOServer(httpServer, {
       path: '/socket.io/stream',
       cors: {
         origin: '*',
         methods: ['GET', 'POST'],
       },
-      transports: ['polling', 'websocket'],
-      allowUpgrades: true,
+      maxHttpBufferSize: 10 * 1024 * 1024, // 10MB max for video chunks
       pingTimeout: 60000,
       pingInterval: 25000,
-      maxHttpBufferSize: 10 * 1024 * 1024, // 10MB for larger frames
     });
 
     this.io.on('connection', (socket: Socket) => {
-      console.log(`[RTMPStreamingService] ✅ New Socket.IO connection: ${socket.id}`);
+      console.log('[RTMPStreamingService] Client connected:', socket.id);
       
-      socket.emit('connected', { message: 'Connected to RTMP streaming service' });
+      // Acknowledge connection
+      socket.emit('connected', { message: 'Connected to streaming server' });
 
-      socket.on('start', (data: { destinations: StreamDestination[]; config: StreamConfig }) => {
-        this.handleStart(socket, data);
-      });
-
+      // Handle relay start (MediaRecorder mode)
       socket.on('start-relay', (data: { destinations: StreamDestination[]; config: StreamConfig }) => {
-        this.handleStart(socket, data);
+        this.handleStartRelay(socket, data.destinations, data.config);
       });
 
-      socket.on('frame', (data: { frameNumber: number; data: ArrayBuffer; timestamp: number }) => {
-        this.handleFrame(socket, data);
+      // Handle video chunks from MediaRecorder
+      socket.on('video-chunk', (chunk: ArrayBuffer) => {
+        this.handleVideoChunk(socket.id, chunk);
       });
 
-      socket.on('video-chunk', (data: { data: ArrayBuffer; timestamp: number }) => {
-        const activeStream = this.activeStreams.get(socket.id);
-        if (activeStream) {
-          this.handleFrame(socket, { 
-            frameNumber: activeStream.frameCount + 1, 
-            data: data.data, 
-            timestamp: data.timestamp 
-          });
-        }
-      });
-
+      // Handle stop
       socket.on('stop', () => {
-        this.handleStop(socket);
+        this.handleStop(socket.id);
       });
 
+      // Handle disconnect
       socket.on('disconnect', (reason: string) => {
-        console.log(`[RTMPStreamingService] Socket disconnected: ${socket.id}, reason: ${reason}`);
-        this.handleStop(socket);
+        console.log('[RTMPStreamingService] Client disconnected:', socket.id, reason);
+        this.handleStop(socket.id);
       });
     });
 
-    console.log('[RTMPStreamingService] ✅ Socket.IO server initialized');
+    console.log('[RTMPStreamingService] Socket.IO server initialized');
   }
 
   /**
-   * Handle start streaming request
+   * Handle start relay request
    */
-  private handleStart(socket: Socket, data: { destinations: StreamDestination[]; config: StreamConfig }): void {
-    console.log(`[RTMPStreamingService] Start request from: ${socket.id}`);
-    
-    if (!data || !data.destinations || !Array.isArray(data.destinations)) {
-      console.error(`[RTMPStreamingService] Invalid data: destinations is missing`);
-      socket.emit('error', { message: 'Invalid data: destinations is required' });
-      return;
-    }
-    
-    console.log(`[RTMPStreamingService] Config:`, JSON.stringify(data.config));
-    console.log(`[RTMPStreamingService] Targets: ${data.destinations.length}`);
+  private handleStartRelay(socket: Socket, destinations: StreamDestination[], config: StreamConfig): void {
+    console.log('[RTMPStreamingService] Starting relay for', destinations.length, 'destinations');
+    console.log('[RTMPStreamingService] Config:', config);
 
-    // Clean up any existing stream
-    this.handleStop(socket);
-
-    // Use YouTube-recommended defaults
+    // Create active stream entry
     const activeStream: ActiveStream = {
-      socketId: socket.id,
-      destinations: data.destinations,
-      config: data.config || { 
-        width: 1280, 
-        height: 720, 
-        frameRate: 30, 
-        videoBitrate: 4000000, // 4 Mbps
-        audioBitrate: 128000 
-      },
+      socket,
+      destinations,
       ffmpegProcesses: new Map(),
-      startTime: new Date(),
-      frameCount: 0,
-      lastFrameTime: Date.now(),
+      config,
+      bytesReceived: 0,
+      chunksReceived: 0,
+      startTime: Date.now(),
     };
 
-    // Start FFmpeg process for each destination
-    for (const dest of data.destinations) {
-      this.startFFmpegProcess(socket, activeStream, dest);
+    // Start FFmpeg relay process for each destination
+    for (const dest of destinations) {
+      const ffmpeg = this.startRelayProcess(dest, config, socket);
+      if (ffmpeg) {
+        activeStream.ffmpegProcesses.set(dest.id, ffmpeg);
+      }
     }
 
     this.activeStreams.set(socket.id, activeStream);
-    socket.emit('started', { message: `Streaming started to ${data.destinations.length} destinations` });
+    
+    socket.emit('relay-started', { 
+      message: `Relay started to ${destinations.length} destinations` 
+    });
   }
 
   /**
-   * Start FFmpeg process with YouTube-recommended settings
-   * Based on: https://support.google.com/youtube/answer/2853702
+   * Start FFmpeg relay process for a destination
+   * FFmpeg receives WebM from stdin and remuxes to RTMP (minimal CPU usage)
    */
-  private startFFmpegProcess(socket: Socket, activeStream: ActiveStream, dest: StreamDestination): void {
-    const rtmpFullUrl = `${dest.rtmpUrl}/${dest.streamKey}`;
-    console.log(`[RTMPStreamingService] Starting FFmpeg for ${dest.platform}...`);
-    console.log(`[RTMPStreamingService] RTMP URL: ${dest.rtmpUrl}/${dest.streamKey.substring(0, 10)}...`);
+  private startRelayProcess(dest: StreamDestination, config: StreamConfig, socket: Socket): ChildProcess | null {
+    const rtmpUrl = `${dest.rtmpUrl}/${dest.streamKey}`;
+    console.log(`[RTMPStreamingService] Starting relay to ${dest.platform}: ${dest.rtmpUrl}/****`);
 
-    const { config } = activeStream;
-    
-    // YouTube requirements:
-    // - 720p@30fps: 3-4 Mbps
-    // - 1080p@30fps: 3-8 Mbps (recommended 10 Mbps)
-    // - Keyframe every 2 seconds
-    // - CBR encoding
-    
-    const targetFps = config.frameRate || 30;
-    const targetWidth = config.width || 1280;
-    const targetHeight = config.height || 720;
-    
-    // Calculate bitrate based on resolution
-    let targetBitrate = '4000k'; // Default for 720p
-    if (targetHeight >= 1080) {
-      targetBitrate = '6000k';
-    } else if (targetHeight >= 720) {
-      targetBitrate = '4000k';
-    } else {
-      targetBitrate = '2500k';
-    }
-    
-    const keyframeInterval = targetFps * 2; // Keyframe every 2 seconds
-
-    // YouTube-recommended FFmpeg settings
+    // FFmpeg arguments for relay (remux, no re-encoding when possible)
     const ffmpegArgs = [
-      // Logging
-      '-loglevel', 'warning',
-      '-stats',
-      
-      // Input: JPEG frames from stdin
-      '-f', 'image2pipe',
-      '-framerate', String(targetFps),
+      // Input from stdin (WebM from MediaRecorder)
       '-i', 'pipe:0',
       
-      // Video codec - YouTube recommended H.264 settings
+      // Try to copy video codec if compatible, otherwise transcode
       '-c:v', 'libx264',
-      '-preset', 'veryfast',          // Good balance of speed/quality
-      '-tune', 'zerolatency',         // Low latency for live
-      '-profile:v', 'high',           // High profile for better quality
-      '-level', '4.1',                // Level 4.1 for 1080p
-      '-pix_fmt', 'yuv420p',          // Required for compatibility
+      '-preset', 'veryfast',
+      '-tune', 'zerolatency',
       
-      // Bitrate - CBR mode (YouTube requirement)
-      '-b:v', targetBitrate,          // Target bitrate
-      '-minrate', targetBitrate,      // Minimum = target for CBR
-      '-maxrate', targetBitrate,      // Maximum = target for CBR
-      '-bufsize', `${parseInt(targetBitrate) * 2}k`, // 2x bitrate buffer
+      // Video settings for YouTube
+      '-b:v', `${config.videoBitrate}`,
+      '-maxrate', `${config.videoBitrate}`,
+      '-bufsize', `${config.videoBitrate * 2}`,
       
-      // Keyframe settings (YouTube: 2 seconds, max 4 seconds)
-      '-g', String(keyframeInterval), // Keyframe every 2 seconds
-      '-keyint_min', String(keyframeInterval),
-      '-sc_threshold', '0',           // Disable scene change detection
+      // Keyframe settings (YouTube requires keyframe every 2 seconds)
+      '-g', `${config.frameRate * 2}`,
+      '-keyint_min', `${config.frameRate * 2}`,
+      '-sc_threshold', '0',
       
-      // B-frames and references (YouTube recommended)
-      '-bf', '2',                     // 2 B-frames
-      '-refs', '3',                   // 3 reference frames
+      // H.264 profile for YouTube compatibility
+      '-profile:v', 'high',
+      '-level', '4.1',
+      '-bf', '2',
       
-      // Entropy coding
-      '-coder', '1',                  // CABAC
+      // Pixel format
+      '-pix_fmt', 'yuv420p',
       
-      // Threading
-      '-threads', '0',                // Auto-detect threads
-      
-      // Scaling
-      '-vf', `scale=${targetWidth}:${targetHeight}:flags=lanczos,format=yuv420p`,
+      // Audio settings
+      '-c:a', 'aac',
+      '-b:a', '128k',
+      '-ar', '44100',
+      '-ac', '2',
       
       // Output format
       '-f', 'flv',
       
       // RTMP output
-      rtmpFullUrl,
+      rtmpUrl,
     ];
 
-    console.log(`[RTMPStreamingService] FFmpeg command: ffmpeg ${ffmpegArgs.join(' ')}`);
-    console.log(`[RTMPStreamingService] Target: ${targetWidth}x${targetHeight} @ ${targetFps}fps, ${targetBitrate}`);
+    console.log(`[FFmpeg Relay ${dest.platform}] Starting with args:`, ffmpegArgs.slice(0, 10).join(' '), '...');
 
     const ffmpeg = spawn('ffmpeg', ffmpegArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
-    activeStream.ffmpegProcesses.set(dest.id, ffmpeg);
-
+    // Handle FFmpeg stdout (progress info)
     ffmpeg.stdout?.on('data', (data: Buffer) => {
-      const output = data.toString().trim();
-      if (output) {
-        console.log(`[FFmpeg ${dest.platform}] ${output}`);
-      }
+      // Usually empty for FFmpeg
     });
 
+    // Handle FFmpeg stderr (logs and progress)
     ffmpeg.stderr?.on('data', (data: Buffer) => {
-      const output = data.toString().trim();
-      if (output) {
-        // Log speed info
-        if (output.includes('speed=')) {
-          const speedMatch = output.match(/speed=\s*([\d.]+)x/);
-          const fpsMatch = output.match(/fps=\s*([\d.]+)/);
-          const bitrateMatch = output.match(/bitrate=\s*([\d.]+)kbits/);
-          
-          if (speedMatch) {
-            const speed = parseFloat(speedMatch[1]);
-            const fps = fpsMatch ? parseFloat(fpsMatch[1]) : 0;
-            const bitrate = bitrateMatch ? parseFloat(bitrateMatch[1]) : 0;
-            
-            if (speed < 0.9) {
-              console.warn(`[FFmpeg ${dest.platform}] ⚠️ Speed ${speed}x (fps=${fps}, bitrate=${bitrate}kbps) - TOO SLOW!`);
-            } else {
-              console.log(`[FFmpeg ${dest.platform}] ✅ Speed ${speed}x (fps=${fps}, bitrate=${bitrate}kbps)`);
-            }
-          }
-        }
-        // Log errors
-        if (output.toLowerCase().includes('error')) {
-          console.error(`[FFmpeg ${dest.platform} ERROR] ${output}`);
-        }
-      }
-    });
-
-    ffmpeg.on('close', (code: number | null) => {
-      console.log(`[RTMPStreamingService] FFmpeg closed for ${dest.platform} with code ${code}`);
-      activeStream.ffmpegProcesses.delete(dest.id);
+      const output = data.toString();
       
-      if (code !== 0 && code !== null) {
-        socket.emit('error', { message: `FFmpeg for ${dest.platform} exited with code ${code}` });
+      // Parse progress info
+      const speedMatch = output.match(/speed=\s*([\d.]+)x/);
+      const fpsMatch = output.match(/fps=\s*([\d.]+)/);
+      const bitrateMatch = output.match(/bitrate=\s*([\d.]+)kbits/);
+      
+      if (speedMatch || fpsMatch) {
+        const speed = speedMatch ? parseFloat(speedMatch[1]) : 0;
+        const fps = fpsMatch ? parseFloat(fpsMatch[1]) : 0;
+        const bitrate = bitrateMatch ? bitrateMatch[1] : '0';
+        
+        if (speed >= 0.9) {
+          console.log(`[FFmpeg Relay ${dest.platform}] ✅ Speed ${speed}x (fps=${fps}, bitrate=${bitrate}kbps) - OK`);
+        } else if (speed > 0) {
+          console.log(`[FFmpeg Relay ${dest.platform}] ⚠️ Speed ${speed}x (fps=${fps}, bitrate=${bitrate}kbps) - SLOW`);
+        }
+        
+        // Send status to client
+        socket.emit('status', {
+          target: dest.id,
+          status: speed >= 0.9 ? 'streaming' : 'slow',
+          speed,
+          fps,
+          bitrate: parseFloat(bitrate),
+        });
+      }
+      
+      // Log errors
+      if (output.includes('Error') || output.includes('error')) {
+        console.error(`[FFmpeg Relay ${dest.platform}] Error:`, output.trim());
       }
     });
 
+    // Handle FFmpeg close
+    ffmpeg.on('close', (code: number | null) => {
+      console.log(`[FFmpeg Relay ${dest.platform}] Process closed with code ${code}`);
+      socket.emit('status', {
+        target: dest.id,
+        status: code === 0 ? 'stopped' : 'error',
+      });
+    });
+
+    // Handle FFmpeg error
     ffmpeg.on('error', (error: Error) => {
-      console.error(`[RTMPStreamingService] FFmpeg error for ${dest.platform}:`, error);
+      console.error(`[FFmpeg Relay ${dest.platform}] Process error:`, error.message);
       socket.emit('error', { message: `FFmpeg error: ${error.message}` });
     });
 
-    console.log(`[RTMPStreamingService] FFmpeg started for ${dest.platform}, PID: ${ffmpeg.pid}`);
-    console.log(`[RTMPStreamingService] ✅ Stream to ${dest.platform} started!`);
-    socket.emit('status', { target: dest.platform, status: 'streaming started' });
+    return ffmpeg;
   }
 
   /**
-   * Handle incoming JPEG frame
+   * Handle incoming video chunk from MediaRecorder
    */
-  private handleFrame(socket: Socket, data: { frameNumber: number; data: ArrayBuffer; timestamp: number }): void {
-    const activeStream = this.activeStreams.get(socket.id);
+  private handleVideoChunk(socketId: string, chunk: ArrayBuffer): void {
+    const activeStream = this.activeStreams.get(socketId);
     if (!activeStream) {
       return;
     }
 
-    activeStream.frameCount++;
-    activeStream.lastFrameTime = Date.now();
-    const frameBuffer = Buffer.from(data.data);
+    const buffer = Buffer.from(chunk);
+    activeStream.bytesReceived += buffer.length;
+    activeStream.chunksReceived++;
 
-    // Log every 30 frames (once per second at 30fps)
-    if (activeStream.frameCount % 30 === 0) {
-      const elapsed = (Date.now() - activeStream.startTime.getTime()) / 1000;
-      const fps = activeStream.frameCount / elapsed;
-      console.log(`[RTMPStreamingService] Frame ${data.frameNumber}: ${(frameBuffer.length / 1024).toFixed(1)} KB, avg ${fps.toFixed(1)} fps`);
+    // Log progress periodically
+    if (activeStream.chunksReceived % 100 === 0) {
+      const elapsed = (Date.now() - activeStream.startTime) / 1000;
+      const mbReceived = activeStream.bytesReceived / 1024 / 1024;
+      const bitrate = (activeStream.bytesReceived * 8 / elapsed / 1000).toFixed(0);
+      console.log(`[RTMPStreamingService] Received ${activeStream.chunksReceived} chunks, ${mbReceived.toFixed(2)} MB, ${bitrate} Kbps`);
     }
 
-    // Send frame to all FFmpeg processes
+    // Write chunk to all FFmpeg processes
     for (const [destId, ffmpeg] of activeStream.ffmpegProcesses) {
       if (ffmpeg.stdin && !ffmpeg.stdin.destroyed) {
         try {
-          const written = ffmpeg.stdin.write(frameBuffer);
-          if (!written) {
-            // Buffer full, wait for drain
-            ffmpeg.stdin.once('drain', () => {
-              // Buffer drained, can continue
-            });
-          }
-        } catch (error) {
-          console.error(`[RTMPStreamingService] Error writing frame to FFmpeg ${destId}:`, error);
+          ffmpeg.stdin.write(buffer);
+        } catch (e) {
+          console.error(`[RTMPStreamingService] Error writing to FFmpeg ${destId}:`, e);
         }
       }
     }
   }
 
   /**
-   * Handle stop streaming request
+   * Handle stop request
    */
-  private handleStop(socket: Socket): void {
-    const activeStream = this.activeStreams.get(socket.id);
+  private handleStop(socketId: string): void {
+    const activeStream = this.activeStreams.get(socketId);
     if (!activeStream) {
       return;
     }
 
-    console.log(`[RTMPStreamingService] Stopping stream for socket: ${socket.id}`);
-    console.log(`[RTMPStreamingService] Total frames sent: ${activeStream.frameCount}`);
+    console.log('[RTMPStreamingService] Stopping stream for', socketId);
 
-    // Stop all FFmpeg processes
+    // Close all FFmpeg processes
     for (const [destId, ffmpeg] of activeStream.ffmpegProcesses) {
-      console.log(`[RTMPStreamingService] Stopping FFmpeg for ${destId}...`);
+      console.log(`[RTMPStreamingService] Closing FFmpeg for ${destId}`);
       
       if (ffmpeg.stdin && !ffmpeg.stdin.destroyed) {
         ffmpeg.stdin.end();
       }
       
+      // Give FFmpeg time to finish, then kill
       setTimeout(() => {
         if (!ffmpeg.killed) {
           ffmpeg.kill('SIGTERM');
         }
-      }, 1000);
+      }, 2000);
     }
 
-    this.activeStreams.delete(socket.id);
-    socket.emit('status', { target: 'all', status: 'stopped' });
+    // Log final stats
+    const elapsed = (Date.now() - activeStream.startTime) / 1000;
+    const mbReceived = activeStream.bytesReceived / 1024 / 1024;
+    console.log(`[RTMPStreamingService] Stream ended. Duration: ${elapsed.toFixed(0)}s, Data: ${mbReceived.toFixed(2)} MB`);
+
+    this.activeStreams.delete(socketId);
   }
 
   /**
-   * Stop all active streams
+   * Get active streams count
    */
-  stopAllStreams(): void {
-    console.log('[RTMPStreamingService] Stopping all streams...');
-    
-    for (const [socketId, activeStream] of this.activeStreams) {
-      for (const [destId, ffmpeg] of activeStream.ffmpegProcesses) {
-        if (ffmpeg.stdin && !ffmpeg.stdin.destroyed) {
-          ffmpeg.stdin.end();
-        }
-        if (!ffmpeg.killed) {
-          ffmpeg.kill('SIGTERM');
-        }
-      }
-    }
-    
-    this.activeStreams.clear();
+  getActiveStreamsCount(): number {
+    return this.activeStreams.size;
   }
 }
 
 // Export singleton instance
 export const rtmpStreamingService = new RTMPStreamingService();
-export default rtmpStreamingService;
