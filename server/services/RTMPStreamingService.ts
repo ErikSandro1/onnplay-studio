@@ -32,6 +32,7 @@ interface ActiveStream {
   startTime: Date;
   bytesReceived: number;
   chunksReceived: number;
+  lastLogTime: number;
 }
 
 interface ClientData {
@@ -154,8 +155,12 @@ export class RTMPStreamingService {
       const stream = this.activeStreams.get(streamId);
       if (stream) {
         stream.chunksReceived = (stream.chunksReceived || 0) + 1;
-        if (stream.chunksReceived % 100 === 0) {
-          console.log(`[RTMPStreamingService] Chunks received: ${stream.chunksReceived}, bytes: ${stream.bytesReceived}`);
+        
+        // Log a cada 5 segundos
+        const now = Date.now();
+        if (now - stream.lastLogTime > 5000) {
+          console.log(`[RTMPStreamingService] Stats: chunks=${stream.chunksReceived}, bytes=${stream.bytesReceived}, rate=${Math.round(stream.bytesReceived / ((now - stream.startTime.getTime()) / 1000) / 1024)}KB/s`);
+          stream.lastLogTime = now;
         }
       }
       
@@ -175,46 +180,58 @@ export class RTMPStreamingService {
     console.log(`[RTMPStreamingService] FFmpeg target: ${target.platform}`);
     console.log(`[RTMPStreamingService] RTMP URL: ${rtmpUrl.substring(0, 60)}...`);
 
-    // Argumentos do FFmpeg otimizados para WebM input
+    // Argumentos do FFmpeg otimizados para WebM streaming via pipe
     // O navegador envia WebM com VP9/Opus, precisamos converter para H.264/AAC para RTMP
     const ffmpegArgs = [
-      // Logging
-      '-loglevel', 'warning',
+      // Logging - mais verboso para debug
+      '-loglevel', 'info',
       '-stats',
       
-      // Input - WebM from stdin
-      '-f', 'webm',                         // Força formato WebM
-      '-i', 'pipe:0',                       // Ler de stdin
+      // Opções de input para streaming via pipe
+      '-fflags', '+genpts+discardcorrupt',   // Gerar timestamps e descartar dados corrompidos
+      '-probesize', '10M',                    // Aumentar tamanho de probe para melhor detecção
+      '-analyzeduration', '10M',              // Aumentar duração de análise
+      
+      // Input - WebM from stdin (live streaming)
+      '-f', 'webm',                           // Força formato WebM
+      '-live_start_index', '0',               // Para live streaming
+      '-i', 'pipe:0',                         // Ler de stdin
+      
+      // Mapeamento de streams
+      '-map', '0:v:0?',                       // Mapear primeiro stream de vídeo (opcional)
+      '-map', '0:a:0?',                       // Mapear primeiro stream de áudio (opcional)
       
       // Video codec - converter VP9 para H.264
-      '-c:v', 'libx264',                    // Codec H.264
-      '-preset', 'ultrafast',               // Preset mais rápido para streaming
-      '-tune', 'zerolatency',               // Otimizar para streaming
-      '-profile:v', 'baseline',             // Perfil mais compatível
+      '-c:v', 'libx264',                      // Codec H.264
+      '-preset', 'ultrafast',                 // Preset mais rápido para streaming
+      '-tune', 'zerolatency',                 // Otimizar para streaming
+      '-profile:v', 'baseline',               // Perfil mais compatível
       '-level', '3.1',
-      '-b:v', `${Math.min(config.videoBitrate, 4500000)}`, // Max 4.5Mbps
-      '-maxrate', `${Math.min(config.videoBitrate, 4500000)}`,
-      '-bufsize', `${Math.min(config.videoBitrate * 2, 9000000)}`,
-      '-pix_fmt', 'yuv420p',                // Formato de pixel compatível
-      '-g', '60',                           // GOP = 2 segundos a 30fps
-      '-keyint_min', '30',
+      '-b:v', '2500k',                        // Bitrate fixo de 2.5Mbps (mais estável)
+      '-maxrate', '2500k',
+      '-bufsize', '5000k',
+      '-pix_fmt', 'yuv420p',                  // Formato de pixel compatível
+      '-g', '60',                             // GOP = 2 segundos a 30fps
+      '-keyint_min', '60',                    // Keyframe mínimo
+      '-sc_threshold', '0',                   // Desabilitar detecção de cena
+      '-r', '30',                             // Forçar 30fps
       
       // Video scaling - garantir resolução correta
-      '-vf', `scale=${config.width}:${config.height}:force_original_aspect_ratio=decrease,pad=${config.width}:${config.height}:(ow-iw)/2:(oh-ih)/2,fps=${config.frameRate}`,
+      '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p',
       
       // Audio codec - converter Opus para AAC
-      '-c:a', 'aac',                        // Codec AAC
-      '-b:a', '128k',                       // Bitrate de áudio fixo
-      '-ar', '44100',                       // Sample rate
-      '-ac', '2',                           // Stereo
+      '-c:a', 'aac',                          // Codec AAC
+      '-b:a', '128k',                         // Bitrate de áudio fixo
+      '-ar', '44100',                         // Sample rate
+      '-ac', '2',                             // Stereo
       
       // Output
-      '-f', 'flv',                          // Formato FLV para RTMP
+      '-f', 'flv',                            // Formato FLV para RTMP
       '-flvflags', 'no_duration_filesize',
       rtmpUrl,
     ];
 
-    console.log(`[RTMPStreamingService] FFmpeg command: ffmpeg ${ffmpegArgs.join(' ').substring(0, 200)}...`);
+    console.log(`[RTMPStreamingService] FFmpeg command: ffmpeg ${ffmpegArgs.slice(0, 20).join(' ')}...`);
 
     return new Promise((resolve, reject) => {
       const ffmpeg = spawn('ffmpeg', ffmpegArgs, {
@@ -225,28 +242,30 @@ export class RTMPStreamingService {
 
       // Capturar stdout (stats)
       ffmpeg.stdout.on('data', (data: Buffer) => {
-        console.log(`[FFmpeg ${target.platform} stdout]`, data.toString().trim());
+        const output = data.toString().trim();
+        if (output) {
+          console.log(`[FFmpeg ${target.platform} stdout]`, output);
+        }
       });
 
       // Capturar stderr (logs e erros)
       ffmpeg.stderr.on('data', (data: Buffer) => {
         const output = data.toString().trim();
         
-        // Log todas as mensagens para debug
         if (output.length > 0) {
-          // Filtrar mensagens muito longas
           const lines = output.split('\n');
           for (const line of lines) {
+            // Log de progresso
             if (line.includes('frame=') || line.includes('fps=') || line.includes('bitrate=')) {
-              // Log de progresso - mostrar apenas a cada 5 segundos
-              const stream = this.activeStreams.get(streamId);
-              if (stream && Date.now() - stream.startTime.getTime() > 5000) {
-                console.log(`[FFmpeg ${target.platform}] ${line.substring(0, 150)}`);
-              }
-            } else if (line.includes('Error') || line.includes('error') || line.includes('failed')) {
+              console.log(`[FFmpeg ${target.platform}] ${line.substring(0, 200)}`);
+            } 
+            // Erros
+            else if (line.includes('Error') || line.includes('error') || line.includes('failed') || line.includes('Invalid')) {
               console.error(`[FFmpeg ${target.platform} ERROR]`, line);
-            } else if (line.includes('Output') || line.includes('Stream mapping') || line.includes('Press')) {
-              console.log(`[FFmpeg ${target.platform}]`, line.substring(0, 150));
+            }
+            // Info importante
+            else if (line.includes('Output') || line.includes('Stream') || line.includes('Input') || line.includes('Duration')) {
+              console.log(`[FFmpeg ${target.platform}]`, line.substring(0, 200));
             }
           }
         }
@@ -281,6 +300,7 @@ export class RTMPStreamingService {
         startTime: new Date(),
         bytesReceived: 0,
         chunksReceived: 0,
+        lastLogTime: Date.now(),
       });
       
       // Resolver após um curto delay para permitir que FFmpeg inicie
