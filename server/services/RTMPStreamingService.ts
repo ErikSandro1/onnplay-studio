@@ -1,19 +1,15 @@
 /**
- * RTMPStreamingService
+ * RTMPStreamingService - Relay Edition
  * 
- * Handles RTMP streaming from browser to YouTube/Twitch/Facebook/Custom RTMP servers.
- * Receives JPEG frames from frontend via Socket.IO and uses FFmpeg to convert to H.264 RTMP stream.
+ * Receives pre-encoded WebM chunks from browser and relays to RTMP destinations.
+ * Uses FFmpeg only to remux (copy) the stream, NOT to re-encode.
  * 
- * Uses Socket.IO for better proxy compatibility (Railway, etc.)
- * Uses JPEG frame input for better FFmpeg compatibility.
+ * This is extremely lightweight - server just passes data through.
  */
 
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
 import { spawn, ChildProcess } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
 
 interface StreamDestination {
   id: string;
@@ -31,24 +27,24 @@ interface StreamConfig {
   audioBitrate: number;
 }
 
-interface ActiveStream {
+interface ActiveRelay {
   socketId: string;
   destinations: StreamDestination[];
   config: StreamConfig;
   ffmpegProcesses: Map<string, ChildProcess>;
   startTime: Date;
-  frameCount: number;
+  bytesReceived: number;
 }
 
 export class RTMPStreamingService {
   private io: SocketIOServer | null = null;
-  private activeStreams: Map<string, ActiveStream> = new Map();
+  private activeRelays: Map<string, ActiveRelay> = new Map();
 
   /**
    * Initialize the Socket.IO server for streaming
    */
   initialize(httpServer: HTTPServer): void {
-    console.log('[RTMPStreamingService] Initializing Socket.IO server...');
+    console.log('[RTMPStreamingService] Initializing Socket.IO server (Relay Mode)...');
     
     this.io = new SocketIOServer(httpServer, {
       path: '/socket.io/stream',
@@ -60,19 +56,32 @@ export class RTMPStreamingService {
       allowUpgrades: true,
       pingTimeout: 60000,
       pingInterval: 25000,
+      maxHttpBufferSize: 10 * 1024 * 1024, // 10MB for video chunks
     });
 
     this.io.on('connection', (socket: Socket) => {
       console.log(`[RTMPStreamingService] ✅ New Socket.IO connection: ${socket.id}`);
       
-      socket.emit('connected', { message: 'Connected to RTMP streaming service' });
+      socket.emit('connected', { message: 'Connected to RTMP relay service' });
 
-      socket.on('start', (data: { destinations: StreamDestination[]; config: StreamConfig }) => {
-        this.handleStart(socket, data);
+      // Handle relay start (new method for pre-encoded streams)
+      socket.on('start-relay', (data: { destinations: StreamDestination[]; config: StreamConfig }) => {
+        this.handleStartRelay(socket, data);
       });
 
+      // Handle legacy start (for backwards compatibility)
+      socket.on('start', (data: { destinations: StreamDestination[]; config: StreamConfig }) => {
+        this.handleStartRelay(socket, data);
+      });
+
+      // Handle video chunks from MediaRecorder
+      socket.on('video-chunk', (data: { data: ArrayBuffer; timestamp: number }) => {
+        this.handleVideoChunk(socket, data);
+      });
+
+      // Handle legacy frame (for backwards compatibility)
       socket.on('frame', (data: { frameNumber: number; data: ArrayBuffer; timestamp: number }) => {
-        this.handleFrame(socket, data);
+        this.handleVideoChunk(socket, { data: data.data, timestamp: data.timestamp });
       });
 
       socket.on('stop', () => {
@@ -85,99 +94,70 @@ export class RTMPStreamingService {
       });
     });
 
-    console.log('[RTMPStreamingService] ✅ Socket.IO server initialized on path /socket.io/stream');
+    console.log('[RTMPStreamingService] ✅ Socket.IO server initialized (Relay Mode)');
   }
 
   /**
-   * Handle start streaming request
+   * Handle start relay request
    */
-  private handleStart(socket: Socket, data: { destinations: StreamDestination[]; config: StreamConfig }): void {
-    console.log(`[RTMPStreamingService] Start request from: ${socket.id}`);
-    console.log(`[RTMPStreamingService] Raw data received:`, JSON.stringify(data));
+  private handleStartRelay(socket: Socket, data: { destinations: StreamDestination[]; config: StreamConfig }): void {
+    console.log(`[RTMPStreamingService] Start relay request from: ${socket.id}`);
     
-    // Validate data
     if (!data || !data.destinations || !Array.isArray(data.destinations)) {
-      console.error(`[RTMPStreamingService] Invalid data: destinations is missing or not an array`);
+      console.error(`[RTMPStreamingService] Invalid data: destinations is missing`);
       socket.emit('error', { message: 'Invalid data: destinations is required' });
-      return;
-    }
-    
-    if (!data.config) {
-      console.error(`[RTMPStreamingService] Invalid data: config is missing`);
-      socket.emit('error', { message: 'Invalid data: config is required' });
       return;
     }
     
     console.log(`[RTMPStreamingService] Config:`, JSON.stringify(data.config));
     console.log(`[RTMPStreamingService] Targets: ${data.destinations.length}`);
 
-    // Clean up any existing stream for this socket
+    // Clean up any existing relay
     this.handleStop(socket);
 
-    const activeStream: ActiveStream = {
+    const activeRelay: ActiveRelay = {
       socketId: socket.id,
       destinations: data.destinations,
-      config: data.config,
+      config: data.config || { width: 1280, height: 720, frameRate: 30, videoBitrate: 2500000, audioBitrate: 128000 },
       ffmpegProcesses: new Map(),
       startTime: new Date(),
-      frameCount: 0,
+      bytesReceived: 0,
     };
 
-    // Start FFmpeg process for each destination
+    // Start FFmpeg relay process for each destination
     for (const dest of data.destinations) {
-      this.startFFmpegProcess(socket, activeStream, dest);
+      this.startRelayProcess(socket, activeRelay, dest);
     }
 
-    this.activeStreams.set(socket.id, activeStream);
-    socket.emit('started', { message: `Streaming started to ${data.destinations.length} destinations` });
+    this.activeRelays.set(socket.id, activeRelay);
+    socket.emit('started', { message: `Relay started to ${data.destinations.length} destinations` });
   }
 
   /**
-   * Start FFmpeg process for a destination
+   * Start FFmpeg relay process (copy mode - no re-encoding)
    */
-  private startFFmpegProcess(socket: Socket, activeStream: ActiveStream, dest: StreamDestination): void {
+  private startRelayProcess(socket: Socket, activeRelay: ActiveRelay, dest: StreamDestination): void {
     const rtmpFullUrl = `${dest.rtmpUrl}/${dest.streamKey}`;
-    console.log(`[RTMPStreamingService] Starting FFmpeg for ${dest.platform}...`);
+    console.log(`[RTMPStreamingService] Starting FFmpeg relay for ${dest.platform}...`);
     console.log(`[RTMPStreamingService] RTMP URL: ${dest.rtmpUrl}/${dest.streamKey.substring(0, 10)}...`);
 
-    const { config } = activeStream;
-
-    // FFmpeg command to convert JPEG frames to H.264 RTMP stream
-    // Input: JPEG frames from stdin (image2pipe)
-    // Output: H.264 video to RTMP
-    // OPTIMIZED for real-time processing on limited CPU
+    // FFmpeg command to RELAY (not re-encode) WebM to RTMP
+    // This is extremely fast because it just copies the data
     const ffmpegArgs = [
       // Logging
-      '-loglevel', 'warning',
+      '-loglevel', 'info',
       '-stats',
       
-      // Input: JPEG frames from stdin
-      '-f', 'image2pipe',
-      '-framerate', String(config.frameRate),
+      // Input: WebM from stdin (already encoded by browser)
+      '-f', 'webm',
       '-i', 'pipe:0',
       
-      // Video codec settings - OPTIMIZED for speed
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',      // Fastest preset
-      '-tune', 'zerolatency',      // Minimize latency
-      '-profile:v', 'baseline',    // Simplest profile
-      '-level', '3.1',             // Lower level for compatibility
-      '-pix_fmt', 'yuv420p',
+      // Copy video codec (NO re-encoding!)
+      '-c:v', 'copy',
       
-      // Use CRF instead of bitrate for faster encoding
-      '-crf', '35',                // Quality level (higher = faster, lower quality) - AGGRESSIVE
-      '-maxrate', '1000k',         // Max bitrate cap - REDUCED
-      '-bufsize', '2000k',         // Buffer size - REDUCED
-      
-      // Reduce complexity - AGGRESSIVE
-      '-refs', '1',                // Single reference frame
-      '-bf', '0',                  // No B-frames
-      '-threads', '1',             // Single thread for less overhead
-      
-      // GOP and keyframe settings for streaming
-      '-g', String(config.frameRate * 2), // Keyframe every 2 seconds
-      '-keyint_min', String(config.frameRate),
-      '-sc_threshold', '0',
+      // Copy audio codec (NO re-encoding!)
+      '-c:a', 'aac',
+      '-b:a', '128k',
       
       // Output format
       '-f', 'flv',
@@ -186,108 +166,99 @@ export class RTMPStreamingService {
       rtmpFullUrl,
     ];
 
-    console.log(`[RTMPStreamingService] FFmpeg command: ffmpeg ${ffmpegArgs.join(' ')}`);
+    console.log(`[RTMPStreamingService] FFmpeg relay command: ffmpeg ${ffmpegArgs.join(' ')}`);
 
     const ffmpeg = spawn('ffmpeg', ffmpegArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
-    activeStream.ffmpegProcesses.set(dest.id, ffmpeg);
+    activeRelay.ffmpegProcesses.set(dest.id, ffmpeg);
 
     ffmpeg.stdout?.on('data', (data: Buffer) => {
       const output = data.toString().trim();
       if (output) {
-        console.log(`[FFmpeg ${dest.platform}] ${output}`);
+        console.log(`[FFmpeg Relay ${dest.platform}] ${output}`);
       }
     });
 
     ffmpeg.stderr?.on('data', (data: Buffer) => {
       const output = data.toString().trim();
       if (output) {
-        // Filter out progress stats (frame=, fps=, etc.)
-        if (output.includes('frame=') || output.includes('fps=')) {
-          // Log progress every 30 frames
-          if (activeStream.frameCount % 30 === 0) {
-            console.log(`[FFmpeg ${dest.platform}] ${output}`);
-          }
-        } else if (output.toLowerCase().includes('error')) {
-          console.error(`[FFmpeg ${dest.platform} ERROR] ${output}`);
-        } else {
-          console.log(`[FFmpeg ${dest.platform}] ${output}`);
-        }
+        // Log all output for debugging
+        console.log(`[FFmpeg Relay ${dest.platform}] ${output}`);
       }
     });
 
     ffmpeg.on('close', (code: number | null) => {
-      console.log(`[RTMPStreamingService] FFmpeg closed for ${dest.platform} with code ${code}`);
-      activeStream.ffmpegProcesses.delete(dest.id);
+      console.log(`[RTMPStreamingService] FFmpeg relay closed for ${dest.platform} with code ${code}`);
+      activeRelay.ffmpegProcesses.delete(dest.id);
       
       if (code !== 0 && code !== null) {
-        socket.emit('error', { message: `FFmpeg process for ${dest.platform} exited with code ${code}` });
+        socket.emit('error', { message: `FFmpeg relay for ${dest.platform} exited with code ${code}` });
       }
     });
 
     ffmpeg.on('error', (error: Error) => {
-      console.error(`[RTMPStreamingService] FFmpeg error for ${dest.platform}:`, error);
-      socket.emit('error', { message: `FFmpeg error: ${error.message}` });
+      console.error(`[RTMPStreamingService] FFmpeg relay error for ${dest.platform}:`, error);
+      socket.emit('error', { message: `FFmpeg relay error: ${error.message}` });
     });
 
-    console.log(`[RTMPStreamingService] FFmpeg process started for ${dest.platform}, PID: ${ffmpeg.pid}`);
-    console.log(`[RTMPStreamingService] ✅ Stream to ${dest.platform} started!`);
-    socket.emit('status', { target: dest.platform, status: 'streaming started' });
+    console.log(`[RTMPStreamingService] FFmpeg relay started for ${dest.platform}, PID: ${ffmpeg.pid}`);
+    console.log(`[RTMPStreamingService] ✅ Relay to ${dest.platform} started!`);
+    socket.emit('status', { target: dest.platform, status: 'relay started' });
   }
 
   /**
-   * Handle incoming JPEG frame
+   * Handle incoming video chunk (pre-encoded WebM)
    */
-  private handleFrame(socket: Socket, data: { frameNumber: number; data: ArrayBuffer; timestamp: number }): void {
-    const activeStream = this.activeStreams.get(socket.id);
-    if (!activeStream) {
+  private handleVideoChunk(socket: Socket, data: { data: ArrayBuffer; timestamp: number }): void {
+    const activeRelay = this.activeRelays.get(socket.id);
+    if (!activeRelay) {
       return;
     }
 
-    activeStream.frameCount++;
-    const frameBuffer = Buffer.from(data.data);
+    const chunkBuffer = Buffer.from(data.data);
+    activeRelay.bytesReceived += chunkBuffer.length;
 
-    // Log every 30 frames (1 second at 30fps)
-    if (activeStream.frameCount % 30 === 0) {
-      console.log(`[RTMPStreamingService] Received frame ${data.frameNumber}: ${frameBuffer.length} bytes`);
+    // Log every 1MB received
+    if (activeRelay.bytesReceived % (1024 * 1024) < chunkBuffer.length) {
+      const mbReceived = (activeRelay.bytesReceived / (1024 * 1024)).toFixed(2);
+      console.log(`[RTMPStreamingService] Received ${mbReceived} MB total`);
     }
 
-    // Send frame to all FFmpeg processes
-    for (const [destId, ffmpeg] of activeStream.ffmpegProcesses) {
+    // Send chunk to all FFmpeg relay processes
+    for (const [destId, ffmpeg] of activeRelay.ffmpegProcesses) {
       if (ffmpeg.stdin && !ffmpeg.stdin.destroyed) {
         try {
-          ffmpeg.stdin.write(frameBuffer);
+          ffmpeg.stdin.write(chunkBuffer);
         } catch (error) {
-          console.error(`[RTMPStreamingService] Error writing frame to FFmpeg ${destId}:`, error);
+          console.error(`[RTMPStreamingService] Error writing chunk to FFmpeg ${destId}:`, error);
         }
       }
     }
   }
 
   /**
-   * Handle stop streaming request
+   * Handle stop request
    */
   private handleStop(socket: Socket): void {
-    const activeStream = this.activeStreams.get(socket.id);
-    if (!activeStream) {
+    const activeRelay = this.activeRelays.get(socket.id);
+    if (!activeRelay) {
       return;
     }
 
-    console.log(`[RTMPStreamingService] Stopping stream for socket: ${socket.id}`);
-    console.log(`[RTMPStreamingService] Total frames sent: ${activeStream.frameCount}`);
+    console.log(`[RTMPStreamingService] Stopping relay for socket: ${socket.id}`);
+    const mbReceived = (activeRelay.bytesReceived / (1024 * 1024)).toFixed(2);
+    console.log(`[RTMPStreamingService] Total data relayed: ${mbReceived} MB`);
 
     // Stop all FFmpeg processes
-    for (const [destId, ffmpeg] of activeStream.ffmpegProcesses) {
-      console.log(`[RTMPStreamingService] Stopping FFmpeg for ${destId}...`);
+    for (const [destId, ffmpeg] of activeRelay.ffmpegProcesses) {
+      console.log(`[RTMPStreamingService] Stopping FFmpeg relay for ${destId}...`);
       
-      // Close stdin to signal end of input
       if (ffmpeg.stdin && !ffmpeg.stdin.destroyed) {
         ffmpeg.stdin.end();
       }
       
-      // Kill the process after a short delay
       setTimeout(() => {
         if (!ffmpeg.killed) {
           ffmpeg.kill('SIGTERM');
@@ -295,18 +266,18 @@ export class RTMPStreamingService {
       }, 1000);
     }
 
-    this.activeStreams.delete(socket.id);
+    this.activeRelays.delete(socket.id);
     socket.emit('status', { target: 'all', status: 'stopped' });
   }
 
   /**
-   * Stop all active streams (for cleanup)
+   * Stop all active relays
    */
   stopAllStreams(): void {
-    console.log('[RTMPStreamingService] Stopping all streams...');
+    console.log('[RTMPStreamingService] Stopping all relays...');
     
-    for (const [socketId, activeStream] of this.activeStreams) {
-      for (const [destId, ffmpeg] of activeStream.ffmpegProcesses) {
+    for (const [socketId, activeRelay] of this.activeRelays) {
+      for (const [destId, ffmpeg] of activeRelay.ffmpegProcesses) {
         if (ffmpeg.stdin && !ffmpeg.stdin.destroyed) {
           ffmpeg.stdin.end();
         }
@@ -316,7 +287,7 @@ export class RTMPStreamingService {
       }
     }
     
-    this.activeStreams.clear();
+    this.activeRelays.clear();
   }
 }
 
