@@ -1,17 +1,21 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Menu, LogOut, Settings } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocation } from 'wouter';
+import { UsageIndicator } from './UsageIndicator';
+import { UpgradeModal } from './UpgradeModal';
 
 interface MainHeaderProps {
   onMenuClick?: () => void;
+  isLive?: boolean;
 }
 
-const MainHeader: React.FC<MainHeaderProps> = ({ onMenuClick }) => {
+const MainHeader: React.FC<MainHeaderProps> = ({ onMenuClick, isLive = false }) => {
   const { logout, user } = useAuth();
   const [, setLocation] = useLocation();
-  const [showUserMenu, setShowUserMenu] = React.useState(false);
-  const [showMainMenu, setShowMainMenu] = React.useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showMainMenu, setShowMainMenu] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -48,6 +52,14 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onMenuClick }) => {
 
       {/* Actions */}
       <div className="flex items-center gap-4">
+        {/* Usage Indicator */}
+        {user && (
+          <UsageIndicator 
+            isLive={isLive} 
+            onUpgradeClick={() => setShowUpgradeModal(true)} 
+          />
+        )}
+
         {/* User Profile */}
         {user && (
           <div className="relative">
@@ -150,6 +162,13 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onMenuClick }) => {
           )}
         </div>
       </div>
+
+      {/* Upgrade Modal */}
+      <UpgradeModal 
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        currentPlan={user?.plan || 'free'}
+      />
     </div>
   );
 };
