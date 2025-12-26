@@ -1,15 +1,15 @@
 /**
  * RTMPStreamingService - Backend service para streaming RTMP
  * 
- * Recebe chunks de vídeo via WebSocket do frontend e envia para
+ * Recebe chunks de vídeo via Socket.IO do frontend e envia para
  * destinos RTMP (YouTube, Twitch, Facebook) usando FFmpeg
+ * 
+ * Usa Socket.IO para melhor compatibilidade com proxies (Railway, etc.)
  */
 
 import { spawn, ChildProcess } from 'child_process';
-import { WebSocket, WebSocketServer } from 'ws';
-import { IncomingMessage } from 'http';
+import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server } from 'http';
-import { Socket } from 'net';
 
 interface StreamTarget {
   id: string;
@@ -30,161 +30,136 @@ interface ActiveStream {
   target: StreamTarget;
   ffmpeg: ChildProcess;
   startTime: Date;
+  bytesReceived: number;
+}
+
+interface ClientData {
+  config?: StreamConfig;
+  targets?: StreamTarget[];
 }
 
 export class RTMPStreamingService {
-  private wss: WebSocketServer | null = null;
+  private io: SocketIOServer | null = null;
   private activeStreams: Map<string, ActiveStream> = new Map();
-  private clients: Map<WebSocket, { config?: StreamConfig; targets?: StreamTarget[] }> = new Map();
+  private clients: Map<string, ClientData> = new Map();
 
   /**
-   * Inicializa o WebSocket server com upgrade manual
+   * Inicializa o Socket.IO server
    */
   initialize(server: Server) {
-    console.log('[RTMPStreamingService] Initializing WebSocket server...');
+    console.log('[RTMPStreamingService] Initializing Socket.IO server...');
     
-    // Criar WebSocket server sem path (vamos fazer upgrade manual)
-    this.wss = new WebSocketServer({ noServer: true });
-    
-    // Handle upgrade requests manualmente
-    server.on('upgrade', (request: IncomingMessage, socket: Socket, head: Buffer) => {
-      const pathname = request.url || '';
-      
-      console.log('[RTMPStreamingService] Upgrade request for:', pathname);
-      
-      if (pathname === '/api/stream/ws') {
-        console.log('[RTMPStreamingService] Handling WebSocket upgrade...');
-        
-        this.wss!.handleUpgrade(request, socket, head, (ws) => {
-          console.log('[RTMPStreamingService] WebSocket upgrade successful!');
-          this.wss!.emit('connection', ws, request);
-        });
-      } else {
-        // Não é para nós, deixar passar (ou destruir se não houver outro handler)
-        console.log('[RTMPStreamingService] Ignoring upgrade for:', pathname);
-      }
+    // Criar Socket.IO server com configuração para proxies
+    this.io = new SocketIOServer(server, {
+      path: '/socket.io/stream',
+      cors: {
+        origin: process.env.CLIENT_URL || '*',
+        methods: ['GET', 'POST'],
+        credentials: true,
+      },
+      transports: ['websocket', 'polling'], // Fallback para polling se WebSocket falhar
+      pingTimeout: 60000,
+      pingInterval: 25000,
+      maxHttpBufferSize: 10e6, // 10MB para chunks de vídeo
     });
 
-    this.wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-      console.log('[RTMPStreamingService] ✅ New WebSocket connection established!');
-      this.clients.set(ws, {});
+    this.io.on('connection', (socket: Socket) => {
+      console.log('[RTMPStreamingService] ✅ New Socket.IO connection:', socket.id);
+      this.clients.set(socket.id, {});
 
       // Enviar confirmação de conexão
-      ws.send(JSON.stringify({ type: 'connected', message: 'WebSocket connected to RTMP service' }));
+      socket.emit('connected', { message: 'Connected to RTMP streaming service' });
 
-      ws.on('message', (data: Buffer | string) => {
-        this.handleMessage(ws, data);
+      // Handlers de eventos
+      socket.on('start', (data) => this.handleStart(socket, data));
+      socket.on('stop', () => this.handleStop(socket));
+      socket.on('chunk', (data) => this.handleChunk(socket, data));
+      socket.on('ping', () => socket.emit('pong'));
+
+      socket.on('disconnect', (reason) => {
+        console.log('[RTMPStreamingService] Socket disconnected:', socket.id, reason);
+        this.stopAllStreamsForClient(socket.id);
+        this.clients.delete(socket.id);
       });
 
-      ws.on('close', () => {
-        console.log('[RTMPStreamingService] WebSocket closed');
-        this.stopAllStreamsForClient(ws);
-        this.clients.delete(ws);
-      });
-
-      ws.on('error', (error) => {
-        console.error('[RTMPStreamingService] WebSocket error:', error);
+      socket.on('error', (error) => {
+        console.error('[RTMPStreamingService] Socket error:', error);
       });
     });
 
-    this.wss.on('error', (error) => {
-      console.error('[RTMPStreamingService] WebSocket Server error:', error);
+    this.io.on('error', (error) => {
+      console.error('[RTMPStreamingService] Socket.IO Server error:', error);
     });
 
-    console.log('[RTMPStreamingService] WebSocket server initialized (manual upgrade on /api/stream/ws)');
+    console.log('[RTMPStreamingService] ✅ Socket.IO server initialized on path /socket.io/stream');
   }
 
   /**
-   * Processa mensagens do cliente
+   * Handler para iniciar streaming
    */
-  private handleMessage(ws: WebSocket, data: Buffer | string) {
-    // Se for string, é uma mensagem de controle JSON
-    if (typeof data === 'string') {
-      try {
-        const message = JSON.parse(data);
-        this.handleControlMessage(ws, message);
-      } catch (e) {
-        console.error('[RTMPStreamingService] Invalid JSON message:', e);
-      }
-      return;
-    }
+  private async handleStart(socket: Socket, data: { config: StreamConfig; targets: StreamTarget[] }) {
+    console.log('[RTMPStreamingService] Start request from:', socket.id);
+    console.log('[RTMPStreamingService] Config:', JSON.stringify(data.config));
+    console.log('[RTMPStreamingService] Targets:', data.targets.length);
 
-    // Se for Buffer, é um chunk de vídeo
-    const clientData = this.clients.get(ws);
-    if (clientData?.targets) {
-      this.forwardToFFmpeg(data, clientData.targets);
-    }
-  }
-
-  /**
-   * Processa mensagens de controle
-   */
-  private handleControlMessage(ws: WebSocket, message: any) {
-    console.log('[RTMPStreamingService] Control message:', message.type);
-
-    switch (message.type) {
-      case 'start':
-        this.startStreaming(ws, message.config, message.targets);
-        break;
-      case 'stop':
-        this.stopAllStreamsForClient(ws);
-        ws.send(JSON.stringify({ type: 'stopped', message: 'All streams stopped' }));
-        break;
-      case 'ping':
-        ws.send(JSON.stringify({ type: 'pong' }));
-        break;
-      default:
-        console.warn('[RTMPStreamingService] Unknown message type:', message.type);
-    }
-  }
-
-  /**
-   * Inicia streaming para os destinos
-   */
-  private async startStreaming(ws: WebSocket, config: StreamConfig, targets: StreamTarget[]) {
-    console.log('[RTMPStreamingService] Starting stream to', targets.length, 'targets');
-    console.log('[RTMPStreamingService] Config:', JSON.stringify(config));
-    
     // Salvar configuração do cliente
-    this.clients.set(ws, { config, targets });
+    this.clients.set(socket.id, { config: data.config, targets: data.targets });
 
     // Iniciar FFmpeg para cada destino
-    for (const target of targets) {
+    for (const target of data.targets) {
       try {
         console.log(`[RTMPStreamingService] Starting FFmpeg for ${target.platform}...`);
-        await this.startFFmpegProcess(target, config);
+        await this.startFFmpegProcess(target, data.config, socket.id);
         
-        ws.send(JSON.stringify({
-          type: 'status',
+        socket.emit('status', {
           targetId: target.id,
           status: 'streaming',
           message: `Streaming to ${target.platform} started`,
-        }));
+        });
         
-        console.log(`[RTMPStreamingService] ✅ Stream to ${target.platform} started successfully!`);
+        console.log(`[RTMPStreamingService] ✅ Stream to ${target.platform} started!`);
       } catch (error) {
         console.error(`[RTMPStreamingService] ❌ Failed to start stream to ${target.platform}:`, error);
         
-        ws.send(JSON.stringify({
-          type: 'error',
+        socket.emit('error', {
           targetId: target.id,
           error: error instanceof Error ? error.message : 'Failed to start stream',
-        }));
+        });
       }
+    }
+  }
+
+  /**
+   * Handler para parar streaming
+   */
+  private handleStop(socket: Socket) {
+    console.log('[RTMPStreamingService] Stop request from:', socket.id);
+    this.stopAllStreamsForClient(socket.id);
+    socket.emit('stopped', { message: 'All streams stopped' });
+  }
+
+  /**
+   * Handler para chunks de vídeo
+   */
+  private handleChunk(socket: Socket, data: ArrayBuffer | Buffer) {
+    const clientData = this.clients.get(socket.id);
+    if (clientData?.targets) {
+      const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+      this.forwardToFFmpeg(buffer, clientData.targets);
     }
   }
 
   /**
    * Inicia processo FFmpeg para um destino
    */
-  private async startFFmpegProcess(target: StreamTarget, config: StreamConfig): Promise<void> {
+  private async startFFmpegProcess(target: StreamTarget, config: StreamConfig, clientId: string): Promise<void> {
     // Construir URL RTMP completa
     const rtmpUrl = target.rtmpUrl.endsWith('/') 
       ? `${target.rtmpUrl}${target.streamKey}`
       : `${target.rtmpUrl}/${target.streamKey}`;
 
     console.log(`[RTMPStreamingService] FFmpeg target: ${target.platform}`);
-    console.log(`[RTMPStreamingService] RTMP URL: ${rtmpUrl.substring(0, 50)}...`);
+    console.log(`[RTMPStreamingService] RTMP URL: ${rtmpUrl.substring(0, 60)}...`);
 
     // Argumentos do FFmpeg
     // Recebe WebM via stdin e converte para FLV/H.264 para RTMP
@@ -225,13 +200,7 @@ export class RTMPStreamingService {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
 
-      // Timeout para conexão inicial
-      const timeout = setTimeout(() => {
-        if (!this.activeStreams.has(target.id)) {
-          ffmpeg.kill();
-          reject(new Error('FFmpeg connection timeout'));
-        }
-      }, 30000);
+      const streamId = `${clientId}:${target.id}`;
 
       ffmpeg.stderr.on('data', (data: Buffer) => {
         const output = data.toString();
@@ -240,47 +209,29 @@ export class RTMPStreamingService {
         if (output.includes('frame=') || output.includes('Error') || output.includes('error')) {
           console.log(`[FFmpeg ${target.platform}]`, output.trim().substring(0, 200));
         }
-
-        // Detectar quando a conexão foi estabelecida
-        if (output.includes('Output #0') || output.includes('frame=')) {
-          clearTimeout(timeout);
-          
-          if (!this.activeStreams.has(target.id)) {
-            this.activeStreams.set(target.id, {
-              target,
-              ffmpeg,
-              startTime: new Date(),
-            });
-            resolve();
-          }
-        }
       });
 
       ffmpeg.on('error', (error) => {
-        clearTimeout(timeout);
         console.error(`[RTMPStreamingService] FFmpeg error for ${target.platform}:`, error);
-        this.activeStreams.delete(target.id);
+        this.activeStreams.delete(streamId);
         reject(error);
       });
 
       ffmpeg.on('close', (code) => {
-        clearTimeout(timeout);
         console.log(`[RTMPStreamingService] FFmpeg closed for ${target.platform} with code ${code}`);
-        this.activeStreams.delete(target.id);
+        this.activeStreams.delete(streamId);
       });
 
-      // Marcar como ativo imediatamente para começar a receber dados
-      this.activeStreams.set(target.id, {
+      // Marcar como ativo
+      this.activeStreams.set(streamId, {
         target,
         ffmpeg,
         startTime: new Date(),
+        bytesReceived: 0,
       });
       
       // Resolver após um curto delay para permitir que FFmpeg inicie
-      setTimeout(() => {
-        clearTimeout(timeout);
-        resolve();
-      }, 2000);
+      setTimeout(() => resolve(), 1000);
     });
   }
 
@@ -289,12 +240,18 @@ export class RTMPStreamingService {
    */
   private forwardToFFmpeg(data: Buffer, targets: StreamTarget[]) {
     for (const target of targets) {
-      const stream = this.activeStreams.get(target.id);
-      if (stream?.ffmpeg.stdin && !stream.ffmpeg.stdin.destroyed) {
-        try {
-          stream.ffmpeg.stdin.write(data);
-        } catch (e) {
-          console.error(`[RTMPStreamingService] Error writing to FFmpeg for ${target.platform}:`, e);
+      // Procurar stream ativo para este target
+      for (const [streamId, stream] of this.activeStreams) {
+        if (stream.target.id === target.id) {
+          if (stream.ffmpeg.stdin && !stream.ffmpeg.stdin.destroyed) {
+            try {
+              stream.ffmpeg.stdin.write(data);
+              stream.bytesReceived += data.length;
+            } catch (e) {
+              console.error(`[RTMPStreamingService] Error writing to FFmpeg for ${target.platform}:`, e);
+            }
+          }
+          break;
         }
       }
     }
@@ -303,22 +260,26 @@ export class RTMPStreamingService {
   /**
    * Para todos os streams de um cliente
    */
-  private stopAllStreamsForClient(ws: WebSocket) {
-    const clientData = this.clients.get(ws);
-    if (clientData?.targets) {
-      for (const target of clientData.targets) {
-        this.stopStream(target.id);
+  private stopAllStreamsForClient(clientId: string) {
+    const toDelete: string[] = [];
+    
+    this.activeStreams.forEach((stream, streamId) => {
+      if (streamId.startsWith(clientId)) {
+        this.stopStreamById(streamId);
+        toDelete.push(streamId);
       }
-    }
+    });
+    
+    toDelete.forEach(id => this.activeStreams.delete(id));
   }
 
   /**
-   * Para um stream específico
+   * Para um stream específico por ID
    */
-  stopStream(targetId: string) {
-    const stream = this.activeStreams.get(targetId);
+  private stopStreamById(streamId: string) {
+    const stream = this.activeStreams.get(streamId);
     if (stream) {
-      console.log(`[RTMPStreamingService] Stopping stream to ${stream.target.platform}`);
+      console.log(`[RTMPStreamingService] Stopping stream: ${streamId}`);
       
       // Fechar stdin para sinalizar fim do stream
       if (stream.ffmpeg.stdin && !stream.ffmpeg.stdin.destroyed) {
@@ -331,8 +292,19 @@ export class RTMPStreamingService {
           stream.ffmpeg.kill('SIGTERM');
         }
       }, 2000);
-      
-      this.activeStreams.delete(targetId);
+    }
+  }
+
+  /**
+   * Para um stream específico por target ID
+   */
+  stopStream(targetId: string) {
+    for (const [streamId, stream] of this.activeStreams) {
+      if (stream.target.id === targetId) {
+        this.stopStreamById(streamId);
+        this.activeStreams.delete(streamId);
+        break;
+      }
     }
   }
 
@@ -341,7 +313,10 @@ export class RTMPStreamingService {
    */
   stopAllStreams() {
     const ids = Array.from(this.activeStreams.keys());
-    ids.forEach(id => this.stopStream(id));
+    ids.forEach(id => {
+      this.stopStreamById(id);
+      this.activeStreams.delete(id);
+    });
   }
 
   /**
@@ -356,6 +331,7 @@ export class RTMPStreamingService {
         id,
         platform: stream.target.platform,
         duration: Math.floor(duration / 1000),
+        bytesReceived: stream.bytesReceived,
         status: 'streaming',
       });
     });

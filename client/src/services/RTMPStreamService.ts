@@ -2,9 +2,13 @@
  * RTMPStreamService
  * 
  * Manages real RTMP streaming to YouTube, Facebook, Twitch, and custom RTMP servers.
- * Captures canvas from PROGRAM monitor and streams via WebSocket to backend.
+ * Captures canvas from PROGRAM monitor and streams via Socket.IO to backend.
  * Backend uses FFmpeg to push to RTMP destinations.
+ * 
+ * Uses Socket.IO for better proxy compatibility (Railway, etc.)
  */
+
+import { io, Socket } from 'socket.io-client';
 
 export type StreamPlatform = 'youtube' | 'facebook' | 'twitch' | 'custom';
 
@@ -33,7 +37,7 @@ class RTMPStreamService {
   private programCanvas: HTMLCanvasElement | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private mediaStream: MediaStream | null = null;
-  private websocket: WebSocket | null = null;
+  private socket: Socket | null = null;
   private isStreaming: boolean = false;
   private destinations: StreamDestination[] = [];
   private callbacks: Set<StreamCallback> = new Set();
@@ -43,6 +47,7 @@ class RTMPStreamService {
   private bytesSent: number = 0;
   private audioContext: AudioContext | null = null;
   private audioDestination: MediaStreamAudioDestinationNode | null = null;
+  private statsInterval: number | null = null;
   
   // Stats
   private stats: StreamStats = {
@@ -180,8 +185,8 @@ class RTMPStreamService {
       // 2. Create media stream from canvas
       await this.createMediaStream();
 
-      // 3. Connect to backend WebSocket
-      await this.connectWebSocket(enabledDestinations);
+      // 3. Connect to backend via Socket.IO
+      await this.connectSocket(enabledDestinations);
 
       // 4. Start MediaRecorder
       this.startRecording();
@@ -292,29 +297,35 @@ class RTMPStreamService {
   }
 
   /**
-   * Connect to backend WebSocket
+   * Connect to backend via Socket.IO
    */
-  private async connectWebSocket(destinations: StreamDestination[]): Promise<void> {
+  private async connectSocket(destinations: StreamDestination[]): Promise<void> {
     return new Promise((resolve, reject) => {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/api/stream/ws`;
+      // Determinar URL base
+      const baseUrl = window.location.origin;
       
-      console.log('[RTMPStreamService] Connecting to WebSocket:', wsUrl);
+      console.log('[RTMPStreamService] Connecting to Socket.IO at:', baseUrl);
       
-      this.websocket = new WebSocket(wsUrl);
-      this.websocket.binaryType = 'arraybuffer';
+      this.socket = io(baseUrl, {
+        path: '/socket.io/stream',
+        transports: ['websocket', 'polling'],
+        timeout: 20000,
+        reconnection: true,
+        reconnectionAttempts: 3,
+        reconnectionDelay: 1000,
+      });
 
       const timeout = setTimeout(() => {
-        reject(new Error('WebSocket connection timeout'));
-      }, 15000);
+        this.socket?.disconnect();
+        reject(new Error('Socket.IO connection timeout'));
+      }, 20000);
 
-      this.websocket.onopen = () => {
+      this.socket.on('connect', () => {
         clearTimeout(timeout);
-        console.log('[RTMPStreamService] WebSocket connected');
+        console.log('[RTMPStreamService] ✅ Socket.IO connected!');
         
         // Send start command with configuration
-        this.websocket!.send(JSON.stringify({
-          type: 'start',
+        this.socket!.emit('start', {
           config: this.config,
           targets: destinations.map(d => ({
             id: d.id,
@@ -322,39 +333,40 @@ class RTMPStreamService {
             rtmpUrl: d.rtmpUrl,
             streamKey: d.streamKey,
           })),
-        }));
+        });
 
         resolve();
-      };
+      });
 
-      this.websocket.onerror = (error) => {
+      this.socket.on('connect_error', (error) => {
         clearTimeout(timeout);
-        console.error('[RTMPStreamService] WebSocket error:', error);
-        reject(new Error('WebSocket connection failed'));
-      };
+        console.error('[RTMPStreamService] Socket.IO connect error:', error);
+        reject(new Error(`Connection failed: ${error.message}`));
+      });
 
-      this.websocket.onclose = () => {
-        console.log('[RTMPStreamService] WebSocket closed');
+      this.socket.on('connected', (data) => {
+        console.log('[RTMPStreamService] Server confirmed connection:', data);
+      });
+
+      this.socket.on('status', (data) => {
+        console.log('[RTMPStreamService] Stream status:', data);
+      });
+
+      this.socket.on('error', (data) => {
+        console.error('[RTMPStreamService] Stream error:', data);
+        this.updateStatus('error', data.error);
+      });
+
+      this.socket.on('stopped', () => {
+        console.log('[RTMPStreamService] Stream stopped by server');
+      });
+
+      this.socket.on('disconnect', (reason) => {
+        console.log('[RTMPStreamService] Socket.IO disconnected:', reason);
         if (this.isStreaming) {
           this.updateStatus('error', 'Connection lost');
-          this.stopStreaming();
         }
-      };
-
-      this.websocket.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          console.log('[RTMPStreamService] Server message:', message);
-          
-          if (message.type === 'error') {
-            this.updateStatus('error', message.error);
-          } else if (message.type === 'status') {
-            console.log('[RTMPStreamService] Server status:', message.status);
-          }
-        } catch (e) {
-          // Binary message or non-JSON
-        }
-      };
+      });
     });
   }
 
@@ -362,27 +374,28 @@ class RTMPStreamService {
    * Start MediaRecorder to capture and send chunks
    */
   private startRecording(): void {
-    if (!this.mediaStream || !this.websocket) {
-      throw new Error('MediaStream or WebSocket not ready');
+    if (!this.mediaStream) {
+      throw new Error('Media stream not ready');
     }
 
-    // Determine supported codec
+    // Determine best codec
     const mimeType = this.getSupportedMimeType();
-    console.log('[RTMPStreamService] Using codec:', mimeType);
+    console.log('[RTMPStreamService] Using MIME type:', mimeType);
 
-    const options: MediaRecorderOptions = {
+    this.mediaRecorder = new MediaRecorder(this.mediaStream, {
       mimeType,
       videoBitsPerSecond: this.config.videoBitrate,
       audioBitsPerSecond: this.config.audioBitrate,
-    };
-
-    this.mediaRecorder = new MediaRecorder(this.mediaStream, options);
+    });
 
     this.mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0 && this.websocket?.readyState === WebSocket.OPEN) {
-        this.websocket.send(event.data);
-        this.bytesSent += event.data.size;
-        this.frameCount++;
+      if (event.data.size > 0 && this.socket?.connected) {
+        // Convert Blob to ArrayBuffer and send
+        event.data.arrayBuffer().then(buffer => {
+          this.socket!.emit('chunk', buffer);
+          this.bytesSent += buffer.byteLength;
+          this.frameCount++;
+        });
       }
     };
 
@@ -391,21 +404,21 @@ class RTMPStreamService {
       this.updateStatus('error', 'Recording error');
     };
 
-    // Capture in 1-second intervals
-    this.mediaRecorder.start(1000);
+    // Start recording with 100ms chunks for low latency
+    this.mediaRecorder.start(100);
     console.log('[RTMPStreamService] MediaRecorder started');
   }
 
   /**
-   * Get supported MIME type
+   * Get supported MIME type for MediaRecorder
    */
   private getSupportedMimeType(): string {
     const types = [
       'video/webm;codecs=vp9,opus',
       'video/webm;codecs=vp8,opus',
-      'video/webm;codecs=vp9',
-      'video/webm;codecs=vp8',
+      'video/webm;codecs=h264,opus',
       'video/webm',
+      'video/mp4',
     ];
 
     for (const type of types) {
@@ -418,29 +431,44 @@ class RTMPStreamService {
   }
 
   /**
+   * Start stats update interval
+   */
+  private startStatsUpdate(): void {
+    this.statsInterval = window.setInterval(() => {
+      if (!this.isStreaming) return;
+
+      const now = Date.now();
+      const duration = Math.floor((now - this.startTime) / 1000);
+      const elapsed = (now - this.startTime) / 1000;
+      
+      this.stats = {
+        bitrate: elapsed > 0 ? Math.round((this.bytesSent * 8) / elapsed / 1000) : 0, // Kbps
+        fps: elapsed > 0 ? Math.round(this.frameCount / elapsed) : 0,
+        droppedFrames: 0,
+        duration,
+        status: 'streaming',
+      };
+
+      this.notifyCallbacks();
+    }, 1000);
+  }
+
+  /**
    * Stop streaming
    */
   async stopStreaming(): Promise<void> {
-    if (!this.isStreaming) {
-      return;
-    }
-
     console.log('[RTMPStreamService] Stopping stream...');
+
+    // Stop stats update
+    if (this.statsInterval) {
+      clearInterval(this.statsInterval);
+      this.statsInterval = null;
+    }
 
     // Stop MediaRecorder
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       this.mediaRecorder.stop();
-    }
-
-    // Send stop command and close WebSocket
-    if (this.websocket) {
-      try {
-        this.websocket.send(JSON.stringify({ type: 'stop' }));
-      } catch (e) {
-        // Ignore errors when sending stop
-      }
-      this.websocket.close();
-      this.websocket = null;
+      this.mediaRecorder = null;
     }
 
     // Stop media stream tracks
@@ -449,47 +477,51 @@ class RTMPStreamService {
       this.mediaStream = null;
     }
 
-    this.mediaRecorder = null;
+    // Send stop command and disconnect socket
+    if (this.socket) {
+      this.socket.emit('stop');
+      this.socket.disconnect();
+      this.socket = null;
+    }
+
     this.isStreaming = false;
     this.updateStatus('idle');
-
-    console.log('✅ [RTMPStreamService] Streaming stopped');
+    
+    console.log('[RTMPStreamService] Stream stopped');
   }
 
   /**
-   * Start stats update loop
+   * Update status and notify callbacks
    */
-  private startStatsUpdate(): void {
-    const updateStats = () => {
-      if (!this.isStreaming) return;
-
-      const now = Date.now();
-      const duration = Math.floor((now - this.startTime) / 1000);
-      const bitrate = duration > 0 ? Math.round((this.bytesSent * 8) / duration / 1000) : 0; // Kbps
-
-      this.stats = {
-        ...this.stats,
-        bitrate,
-        fps: this.config.frameRate,
-        droppedFrames: 0,
-        duration,
-      };
-
-      this.notifyCallbacks();
-
-      setTimeout(updateStats, 1000);
-    };
-
-    updateStats();
-  }
-
-  /**
-   * Update status and notify listeners
-   */
-  private updateStatus(status: 'idle' | 'connecting' | 'streaming' | 'error', error?: string): void {
-    this.stats = { ...this.stats, status, error };
+  private updateStatus(status: StreamStats['status'], error?: string): void {
+    this.stats.status = status;
+    this.stats.error = error;
+    
     this.statusCallbacks.forEach(cb => cb(status, error));
     this.notifyCallbacks();
+  }
+
+  /**
+   * Notify all stats callbacks
+   */
+  private notifyCallbacks(): void {
+    this.callbacks.forEach(cb => cb({ ...this.stats }));
+  }
+
+  /**
+   * Subscribe to stats updates
+   */
+  onStats(callback: StreamCallback): () => void {
+    this.callbacks.add(callback);
+    return () => this.callbacks.delete(callback);
+  }
+
+  /**
+   * Subscribe to status changes
+   */
+  onStatusChange(callback: StatusCallback): () => void {
+    this.statusCallbacks.add(callback);
+    return () => this.statusCallbacks.delete(callback);
   }
 
   /**
@@ -500,44 +532,14 @@ class RTMPStreamService {
   }
 
   /**
-   * Check if streaming
+   * Check if currently streaming
    */
-  getIsStreaming(): boolean {
+  isCurrentlyStreaming(): boolean {
     return this.isStreaming;
   }
 
   /**
-   * Get current status
-   */
-  getStatus(): 'idle' | 'connecting' | 'streaming' | 'error' {
-    return this.stats.status;
-  }
-
-  /**
-   * Subscribe to stats updates
-   */
-  subscribe(callback: StreamCallback): () => void {
-    this.callbacks.add(callback);
-    return () => this.callbacks.delete(callback);
-  }
-
-  /**
-   * Subscribe to status updates
-   */
-  onStatusChange(callback: StatusCallback): () => void {
-    this.statusCallbacks.add(callback);
-    return () => this.statusCallbacks.delete(callback);
-  }
-
-  /**
-   * Notify all callbacks
-   */
-  private notifyCallbacks(): void {
-    this.callbacks.forEach(callback => callback(this.stats));
-  }
-
-  /**
-   * Update stream configuration
+   * Set stream configuration
    */
   setConfig(config: Partial<typeof this.config>): void {
     this.config = { ...this.config, ...config };
@@ -549,16 +551,7 @@ class RTMPStreamService {
   getConfig(): typeof this.config {
     return { ...this.config };
   }
-
-  /**
-   * Cleanup
-   */
-  destroy(): void {
-    this.stopStreaming();
-    this.callbacks.clear();
-    this.statusCallbacks.clear();
-  }
 }
 
-// Singleton instance
+// Export singleton instance
 export const rtmpStreamService = new RTMPStreamService();
