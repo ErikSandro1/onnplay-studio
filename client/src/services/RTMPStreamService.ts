@@ -38,6 +38,8 @@ type StatusCallback = (status: 'idle' | 'connecting' | 'streaming' | 'error', er
 
 class RTMPStreamService {
   private programCanvas: HTMLCanvasElement | null = null;
+  private programVideo: HTMLVideoElement | null = null;
+  private canvasDrawInterval: number | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private mediaStream: MediaStream | null = null;
   private socket: Socket | null = null;
@@ -219,43 +221,137 @@ class RTMPStreamService {
 
   /**
    * Setup canvas for capturing
+   * Finds the video element in PROGRAM monitor and creates a canvas that mirrors it
    */
   private async setupCanvas(): Promise<void> {
-    // Try to find PROGRAM monitor canvas
-    if (!this.programCanvas) {
-      const programMonitor = document.querySelector('[data-monitor="program"] canvas') as HTMLCanvasElement;
-      if (programMonitor) {
-        this.programCanvas = programMonitor;
-      } else {
-        // Create a fallback canvas
-        const programElement = document.querySelector('[data-monitor="program"]') as HTMLElement;
-        if (programElement) {
-          // Create canvas from element
-          this.programCanvas = document.createElement('canvas');
-          this.programCanvas.width = this.config.width;
-          this.programCanvas.height = this.config.height;
-          
-          // Draw placeholder
-          const ctx = this.programCanvas.getContext('2d');
-          if (ctx) {
-            ctx.fillStyle = '#1a1a2e';
-            ctx.fillRect(0, 0, this.config.width, this.config.height);
-            ctx.fillStyle = '#d4a853';
-            ctx.font = 'bold 72px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('OnnPlay Studio', this.config.width / 2, this.config.height / 2);
-            ctx.font = '36px Arial';
-            ctx.fillText('LIVE', this.config.width / 2, this.config.height / 2 + 60);
-          }
-        }
+    // Try to find PROGRAM monitor video element
+    const programMonitor = document.querySelector('[data-monitor="program"]') as HTMLElement;
+    
+    if (!programMonitor) {
+      throw new Error('Could not find PROGRAM monitor element');
+    }
+
+    // Look for video element inside PROGRAM monitor
+    const videoElement = programMonitor.querySelector('video') as HTMLVideoElement;
+    
+    if (videoElement && videoElement.srcObject) {
+      // Found a video element with a stream - use it directly
+      console.log('[RTMPStreamService] Found video element in PROGRAM monitor');
+      this.programVideo = videoElement;
+      
+      // Create a canvas that will mirror the video
+      this.programCanvas = document.createElement('canvas');
+      this.programCanvas.width = this.config.width;
+      this.programCanvas.height = this.config.height;
+      
+      // Start drawing video to canvas continuously
+      this.startCanvasDrawLoop();
+      
+      // Wait a bit for the first frame to be drawn
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      console.log('[RTMPStreamService] Canvas created from video:', this.config.width, 'x', this.config.height);
+    } else {
+      // No video element - capture the entire PROGRAM monitor area
+      console.log('[RTMPStreamService] No video element found, capturing PROGRAM monitor div');
+      
+      // Create canvas and draw the current state of the PROGRAM monitor
+      this.programCanvas = document.createElement('canvas');
+      this.programCanvas.width = this.config.width;
+      this.programCanvas.height = this.config.height;
+      
+      // Draw placeholder or try to capture the div content
+      const ctx = this.programCanvas.getContext('2d');
+      if (ctx) {
+        // Draw a gradient background similar to the placeholder
+        const gradient = ctx.createLinearGradient(0, 0, this.config.width, this.config.height);
+        gradient.addColorStop(0, '#1e3a5f');
+        gradient.addColorStop(1, '#0d1b2a');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, this.config.width, this.config.height);
+        
+        // Draw OnnPlay logo/text
+        ctx.fillStyle = '#FF6B00';
+        ctx.font = 'bold 120px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('OnnPlay', this.config.width / 2, this.config.height / 2 - 50);
+        
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 60px Arial';
+        ctx.fillText('STUDIO', this.config.width / 2, this.config.height / 2 + 50);
+        
+        ctx.font = '30px Arial';
+        ctx.fillStyle = '#7A8BA3';
+        ctx.fillText('Conecte uma câmera para transmitir', this.config.width / 2, this.config.height / 2 + 150);
       }
+      
+      console.log('[RTMPStreamService] Fallback canvas created:', this.config.width, 'x', this.config.height);
     }
 
     if (!this.programCanvas) {
       throw new Error('Could not find or create PROGRAM canvas');
     }
+  }
 
-    console.log('[RTMPStreamService] Canvas ready:', this.programCanvas.width, 'x', this.programCanvas.height);
+  /**
+   * Start continuous loop to draw video frames to canvas
+   */
+  private startCanvasDrawLoop(): void {
+    if (!this.programCanvas || !this.programVideo) return;
+    
+    const ctx = this.programCanvas.getContext('2d');
+    if (!ctx) return;
+    
+    const drawFrame = () => {
+      if (!this.isStreaming || !this.programVideo || !this.programCanvas) {
+        return;
+      }
+      
+      // Draw the video frame to canvas
+      try {
+        // Clear canvas
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, this.programCanvas.width, this.programCanvas.height);
+        
+        // Calculate scaling to fit video in canvas while maintaining aspect ratio
+        const videoWidth = this.programVideo.videoWidth || 1920;
+        const videoHeight = this.programVideo.videoHeight || 1080;
+        const canvasWidth = this.programCanvas.width;
+        const canvasHeight = this.programCanvas.height;
+        
+        const scale = Math.min(canvasWidth / videoWidth, canvasHeight / videoHeight);
+        const scaledWidth = videoWidth * scale;
+        const scaledHeight = videoHeight * scale;
+        const offsetX = (canvasWidth - scaledWidth) / 2;
+        const offsetY = (canvasHeight - scaledHeight) / 2;
+        
+        // Draw video frame
+        ctx.drawImage(this.programVideo, offsetX, offsetY, scaledWidth, scaledHeight);
+        
+        // Add LIVE indicator
+        ctx.fillStyle = '#FF0000';
+        ctx.beginPath();
+        ctx.arc(50, 50, 15, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText('LIVE', 75, 58);
+      } catch (e) {
+        console.warn('[RTMPStreamService] Error drawing video frame:', e);
+      }
+      
+      // Request next frame
+      if (this.isStreaming) {
+        requestAnimationFrame(drawFrame);
+      }
+    };
+    
+    // Start the draw loop
+    requestAnimationFrame(drawFrame);
+    console.log('[RTMPStreamService] Canvas draw loop started');
   }
 
   /**
@@ -567,6 +663,10 @@ class RTMPStreamService {
       this.mediaStream.getTracks().forEach(track => track.stop());
       this.mediaStream = null;
     }
+
+    // Clear canvas and video references
+    this.programCanvas = null;
+    this.programVideo = null;
 
     // Send stop command and disconnect socket
     if (this.socket) {
