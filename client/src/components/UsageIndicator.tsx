@@ -130,10 +130,10 @@ export function UsageIndicator({ isLive = false, onUpgradeClick }: UsageIndicato
     );
   }
 
-  const totalUsed = usage.usage.streamingMinutes + sessionMinutes;
-  const limit = usage.limits.streamingMinutes;
+  const totalUsed = (usage.usage?.streamingMinutes ?? 0) + sessionMinutes;
+  const limit = usage.limits?.streamingMinutes ?? 300; // Default 5 hours = 300 minutes
   const remaining = Math.max(0, limit - totalUsed);
-  const percentUsed = Math.min(100, (totalUsed / limit) * 100);
+  const percentUsed = limit > 0 ? Math.min(100, (totalUsed / limit) * 100) : 0;
   const isNearLimit = percentUsed >= 80;
   const isLimitReached = totalUsed >= limit;
 
