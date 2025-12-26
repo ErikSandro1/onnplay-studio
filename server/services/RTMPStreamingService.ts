@@ -9,6 +9,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { WebSocket, WebSocketServer } from 'ws';
 import { IncomingMessage } from 'http';
 import { Server } from 'http';
+import { Socket } from 'net';
 
 interface StreamTarget {
   id: string;
@@ -37,17 +38,39 @@ export class RTMPStreamingService {
   private clients: Map<WebSocket, { config?: StreamConfig; targets?: StreamTarget[] }> = new Map();
 
   /**
-   * Inicializa o WebSocket server
+   * Inicializa o WebSocket server com upgrade manual
    */
   initialize(server: Server) {
-    this.wss = new WebSocketServer({ 
-      server,
-      path: '/api/stream/ws'
+    console.log('[RTMPStreamingService] Initializing WebSocket server...');
+    
+    // Criar WebSocket server sem path (vamos fazer upgrade manual)
+    this.wss = new WebSocketServer({ noServer: true });
+    
+    // Handle upgrade requests manualmente
+    server.on('upgrade', (request: IncomingMessage, socket: Socket, head: Buffer) => {
+      const pathname = request.url || '';
+      
+      console.log('[RTMPStreamingService] Upgrade request for:', pathname);
+      
+      if (pathname === '/api/stream/ws') {
+        console.log('[RTMPStreamingService] Handling WebSocket upgrade...');
+        
+        this.wss!.handleUpgrade(request, socket, head, (ws) => {
+          console.log('[RTMPStreamingService] WebSocket upgrade successful!');
+          this.wss!.emit('connection', ws, request);
+        });
+      } else {
+        // Não é para nós, deixar passar (ou destruir se não houver outro handler)
+        console.log('[RTMPStreamingService] Ignoring upgrade for:', pathname);
+      }
     });
 
     this.wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-      console.log('[RTMPStreamingService] New WebSocket connection');
+      console.log('[RTMPStreamingService] ✅ New WebSocket connection established!');
       this.clients.set(ws, {});
+
+      // Enviar confirmação de conexão
+      ws.send(JSON.stringify({ type: 'connected', message: 'WebSocket connected to RTMP service' }));
 
       ws.on('message', (data: Buffer | string) => {
         this.handleMessage(ws, data);
@@ -64,7 +87,11 @@ export class RTMPStreamingService {
       });
     });
 
-    console.log('[RTMPStreamingService] WebSocket server initialized on /api/stream/ws');
+    this.wss.on('error', (error) => {
+      console.error('[RTMPStreamingService] WebSocket Server error:', error);
+    });
+
+    console.log('[RTMPStreamingService] WebSocket server initialized (manual upgrade on /api/stream/ws)');
   }
 
   /**
@@ -101,6 +128,10 @@ export class RTMPStreamingService {
         break;
       case 'stop':
         this.stopAllStreamsForClient(ws);
+        ws.send(JSON.stringify({ type: 'stopped', message: 'All streams stopped' }));
+        break;
+      case 'ping':
+        ws.send(JSON.stringify({ type: 'pong' }));
         break;
       default:
         console.warn('[RTMPStreamingService] Unknown message type:', message.type);
@@ -112,6 +143,7 @@ export class RTMPStreamingService {
    */
   private async startStreaming(ws: WebSocket, config: StreamConfig, targets: StreamTarget[]) {
     console.log('[RTMPStreamingService] Starting stream to', targets.length, 'targets');
+    console.log('[RTMPStreamingService] Config:', JSON.stringify(config));
     
     // Salvar configuração do cliente
     this.clients.set(ws, { config, targets });
@@ -119,15 +151,19 @@ export class RTMPStreamingService {
     // Iniciar FFmpeg para cada destino
     for (const target of targets) {
       try {
+        console.log(`[RTMPStreamingService] Starting FFmpeg for ${target.platform}...`);
         await this.startFFmpegProcess(target, config);
         
         ws.send(JSON.stringify({
           type: 'status',
           targetId: target.id,
           status: 'streaming',
+          message: `Streaming to ${target.platform} started`,
         }));
+        
+        console.log(`[RTMPStreamingService] ✅ Stream to ${target.platform} started successfully!`);
       } catch (error) {
-        console.error(`[RTMPStreamingService] Failed to start stream to ${target.platform}:`, error);
+        console.error(`[RTMPStreamingService] ❌ Failed to start stream to ${target.platform}:`, error);
         
         ws.send(JSON.stringify({
           type: 'error',
@@ -147,8 +183,8 @@ export class RTMPStreamingService {
       ? `${target.rtmpUrl}${target.streamKey}`
       : `${target.rtmpUrl}/${target.streamKey}`;
 
-    console.log(`[RTMPStreamingService] Starting FFmpeg for ${target.platform}`);
-    console.log(`[RTMPStreamingService] RTMP URL: ${target.rtmpUrl.substring(0, 30)}...`);
+    console.log(`[RTMPStreamingService] FFmpeg target: ${target.platform}`);
+    console.log(`[RTMPStreamingService] RTMP URL: ${rtmpUrl.substring(0, 50)}...`);
 
     // Argumentos do FFmpeg
     // Recebe WebM via stdin e converte para FLV/H.264 para RTMP
