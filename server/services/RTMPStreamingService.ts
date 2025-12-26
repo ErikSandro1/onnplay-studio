@@ -1,8 +1,14 @@
 /**
- * RTMPStreamingService - Ultra-Optimized JPEG Edition
+ * RTMPStreamingService - Professional YouTube Edition
  * 
  * Receives JPEG frames from browser and converts to RTMP stream.
- * Uses extreme FFmpeg optimizations for real-time processing on limited CPU.
+ * Uses YouTube-recommended settings for reliable streaming.
+ * 
+ * YouTube Requirements:
+ * - Codec: H.264 with CBR
+ * - Bitrate: 3000-4000 Kbps for 720p@30fps
+ * - Keyframe: Every 2 seconds
+ * - Frame rate: 24-30 fps
  */
 
 import { Server as SocketIOServer, Socket } from 'socket.io';
@@ -55,7 +61,7 @@ export class RTMPStreamingService {
       allowUpgrades: true,
       pingTimeout: 60000,
       pingInterval: 25000,
-      maxHttpBufferSize: 5 * 1024 * 1024, // 5MB for frames
+      maxHttpBufferSize: 10 * 1024 * 1024, // 10MB for larger frames
     });
 
     this.io.on('connection', (socket: Socket) => {
@@ -76,7 +82,6 @@ export class RTMPStreamingService {
       });
 
       socket.on('video-chunk', (data: { data: ArrayBuffer; timestamp: number }) => {
-        // Convert video-chunk to frame format for compatibility
         const activeStream = this.activeStreams.get(socket.id);
         if (activeStream) {
           this.handleFrame(socket, { 
@@ -118,10 +123,17 @@ export class RTMPStreamingService {
     // Clean up any existing stream
     this.handleStop(socket);
 
+    // Use YouTube-recommended defaults
     const activeStream: ActiveStream = {
       socketId: socket.id,
       destinations: data.destinations,
-      config: data.config || { width: 640, height: 360, frameRate: 10, videoBitrate: 800000, audioBitrate: 64000 },
+      config: data.config || { 
+        width: 1280, 
+        height: 720, 
+        frameRate: 30, 
+        videoBitrate: 4000000, // 4 Mbps
+        audioBitrate: 128000 
+      },
       ffmpegProcesses: new Map(),
       startTime: new Date(),
       frameCount: 0,
@@ -138,7 +150,8 @@ export class RTMPStreamingService {
   }
 
   /**
-   * Start FFmpeg process with EXTREME optimizations for Railway
+   * Start FFmpeg process with YouTube-recommended settings
+   * Based on: https://support.google.com/youtube/answer/2853702
    */
   private startFFmpegProcess(socket: Socket, activeStream: ActiveStream, dest: StreamDestination): void {
     const rtmpFullUrl = `${dest.rtmpUrl}/${dest.streamKey}`;
@@ -147,50 +160,80 @@ export class RTMPStreamingService {
 
     const { config } = activeStream;
     
-    // Use higher framerate for AWS with more CPU
-    const targetFps = Math.min(config.frameRate || 24, 30);
+    // YouTube requirements:
+    // - 720p@30fps: 3-4 Mbps
+    // - 1080p@30fps: 3-8 Mbps (recommended 10 Mbps)
+    // - Keyframe every 2 seconds
+    // - CBR encoding
+    
+    const targetFps = config.frameRate || 30;
+    const targetWidth = config.width || 1280;
+    const targetHeight = config.height || 720;
+    
+    // Calculate bitrate based on resolution
+    let targetBitrate = '4000k'; // Default for 720p
+    if (targetHeight >= 1080) {
+      targetBitrate = '6000k';
+    } else if (targetHeight >= 720) {
+      targetBitrate = '4000k';
+    } else {
+      targetBitrate = '2500k';
+    }
+    
+    const keyframeInterval = targetFps * 2; // Keyframe every 2 seconds
 
-    // EXTREME optimization FFmpeg args for Railway
+    // YouTube-recommended FFmpeg settings
     const ffmpegArgs = [
-      // Minimal logging
+      // Logging
       '-loglevel', 'warning',
+      '-stats',
       
       // Input: JPEG frames from stdin
       '-f', 'image2pipe',
       '-framerate', String(targetFps),
       '-i', 'pipe:0',
       
-      // Video codec - EXTREME speed settings
+      // Video codec - YouTube recommended H.264 settings
       '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-tune', 'zerolatency',
-      '-profile:v', 'baseline',
-      '-level', '3.0',
-      '-pix_fmt', 'yuv420p',
+      '-preset', 'veryfast',          // Good balance of speed/quality
+      '-tune', 'zerolatency',         // Low latency for live
+      '-profile:v', 'high',           // High profile for better quality
+      '-level', '4.1',                // Level 4.1 for 1080p
+      '-pix_fmt', 'yuv420p',          // Required for compatibility
       
-      // Quality/speed tradeoff - balanced for YouTube
-      '-crf', '28',              // Good quality
-      '-maxrate', '2500k',       // YouTube minimum for 720p
-      '-bufsize', '5000k',
+      // Bitrate - CBR mode (YouTube requirement)
+      '-b:v', targetBitrate,          // Target bitrate
+      '-minrate', targetBitrate,      // Minimum = target for CBR
+      '-maxrate', targetBitrate,      // Maximum = target for CBR
+      '-bufsize', `${parseInt(targetBitrate) * 2}k`, // 2x bitrate buffer
       
-      // Minimize complexity
-      '-refs', '1',
-      '-bf', '0',
-      '-g', String(targetFps * 2),  // Keyframe every 2 seconds
-      '-sc_threshold', '0',
+      // Keyframe settings (YouTube: 2 seconds, max 4 seconds)
+      '-g', String(keyframeInterval), // Keyframe every 2 seconds
+      '-keyint_min', String(keyframeInterval),
+      '-sc_threshold', '0',           // Disable scene change detection
       
-      // Use 2 threads for AWS
-      '-threads', '2',
+      // B-frames and references (YouTube recommended)
+      '-bf', '2',                     // 2 B-frames
+      '-refs', '3',                   // 3 reference frames
       
-      // Fast scaling if needed
-      '-vf', `scale=${config.width || 640}:${config.height || 360}:flags=fast_bilinear`,
+      // Entropy coding
+      '-coder', '1',                  // CABAC
       
-      // Output
+      // Threading
+      '-threads', '0',                // Auto-detect threads
+      
+      // Scaling
+      '-vf', `scale=${targetWidth}:${targetHeight}:flags=lanczos,format=yuv420p`,
+      
+      // Output format
       '-f', 'flv',
+      
+      // RTMP output
       rtmpFullUrl,
     ];
 
     console.log(`[RTMPStreamingService] FFmpeg command: ffmpeg ${ffmpegArgs.join(' ')}`);
+    console.log(`[RTMPStreamingService] Target: ${targetWidth}x${targetHeight} @ ${targetFps}fps, ${targetBitrate}`);
 
     const ffmpeg = spawn('ffmpeg', ffmpegArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -211,12 +254,18 @@ export class RTMPStreamingService {
         // Log speed info
         if (output.includes('speed=')) {
           const speedMatch = output.match(/speed=\s*([\d.]+)x/);
+          const fpsMatch = output.match(/fps=\s*([\d.]+)/);
+          const bitrateMatch = output.match(/bitrate=\s*([\d.]+)kbits/);
+          
           if (speedMatch) {
             const speed = parseFloat(speedMatch[1]);
+            const fps = fpsMatch ? parseFloat(fpsMatch[1]) : 0;
+            const bitrate = bitrateMatch ? parseFloat(bitrateMatch[1]) : 0;
+            
             if (speed < 0.9) {
-              console.warn(`[FFmpeg ${dest.platform}] ⚠️ Speed ${speed}x - encoding too slow!`);
+              console.warn(`[FFmpeg ${dest.platform}] ⚠️ Speed ${speed}x (fps=${fps}, bitrate=${bitrate}kbps) - TOO SLOW!`);
             } else {
-              console.log(`[FFmpeg ${dest.platform}] ✅ Speed ${speed}x`);
+              console.log(`[FFmpeg ${dest.platform}] ✅ Speed ${speed}x (fps=${fps}, bitrate=${bitrate}kbps)`);
             }
           }
         }
@@ -259,11 +308,11 @@ export class RTMPStreamingService {
     activeStream.lastFrameTime = Date.now();
     const frameBuffer = Buffer.from(data.data);
 
-    // Log every 50 frames
-    if (activeStream.frameCount % 50 === 0) {
+    // Log every 30 frames (once per second at 30fps)
+    if (activeStream.frameCount % 30 === 0) {
       const elapsed = (Date.now() - activeStream.startTime.getTime()) / 1000;
       const fps = activeStream.frameCount / elapsed;
-      console.log(`[RTMPStreamingService] Frame ${data.frameNumber}: ${frameBuffer.length} bytes, avg ${fps.toFixed(1)} fps`);
+      console.log(`[RTMPStreamingService] Frame ${data.frameNumber}: ${(frameBuffer.length / 1024).toFixed(1)} KB, avg ${fps.toFixed(1)} fps`);
     }
 
     // Send frame to all FFmpeg processes
@@ -272,8 +321,10 @@ export class RTMPStreamingService {
         try {
           const written = ffmpeg.stdin.write(frameBuffer);
           if (!written) {
-            // Buffer full, skip frame
-            console.warn(`[RTMPStreamingService] Buffer full for ${destId}, skipping frame`);
+            // Buffer full, wait for drain
+            ffmpeg.stdin.once('drain', () => {
+              // Buffer drained, can continue
+            });
           }
         } catch (error) {
           console.error(`[RTMPStreamingService] Error writing frame to FFmpeg ${destId}:`, error);

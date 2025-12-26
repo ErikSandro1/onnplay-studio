@@ -49,13 +49,14 @@ class RTMPStreamService {
   private callbacks: Set<StreamCallback> = new Set();
   private statusCallbacks: Set<StatusCallback> = new Set();
   
-  // Config - Optimized for AWS with more CPU
+  // Config - YouTube Professional Settings
+  // Based on: https://support.google.com/youtube/answer/2853702
   private config = {
     width: 1280,
     height: 720,
-    frameRate: 24,
-    jpegQuality: 0.7,
-    videoBitrate: 2500000,
+    frameRate: 30,           // YouTube requires stable 24-30 fps
+    jpegQuality: 0.85,       // Higher quality for better encoding
+    videoBitrate: 4000000,   // 4 Mbps (YouTube minimum for 720p is 3 Mbps)
     audioBitrate: 128000,
   };
 
