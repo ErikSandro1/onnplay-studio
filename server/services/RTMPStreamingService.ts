@@ -137,20 +137,28 @@ export class RTMPStreamingService {
     const rtmpUrl = `${dest.rtmpUrl}/${dest.streamKey}`;
     console.log(`[RTMPStreamingService] Starting relay to ${dest.platform}: ${dest.rtmpUrl}/****`);
 
-    // FFmpeg arguments for relay (remux, no re-encoding when possible)
+    // Force minimum bitrate for YouTube (3000k minimum)
+    const minBitrate = 3000000; // 3 Mbps minimum
+    const targetBitrate = Math.max(config.videoBitrate || minBitrate, minBitrate);
+    const bitrateStr = `${Math.floor(targetBitrate / 1000)}k`;
+    
+    console.log(`[FFmpeg Relay ${dest.platform}] Target bitrate: ${bitrateStr}`);
+    
+    // FFmpeg arguments for relay with proper YouTube settings
     const ffmpegArgs = [
       // Input from stdin (WebM from MediaRecorder)
       '-i', 'pipe:0',
       
-      // Try to copy video codec if compatible, otherwise transcode
+      // Re-encode video with proper bitrate for YouTube
       '-c:v', 'libx264',
       '-preset', 'veryfast',
       '-tune', 'zerolatency',
       
-      // Video settings for YouTube
-      '-b:v', `${config.videoBitrate}`,
-      '-maxrate', `${config.videoBitrate}`,
-      '-bufsize', `${config.videoBitrate * 2}`,
+      // Video settings for YouTube - FORCE HIGH BITRATE
+      '-b:v', bitrateStr,
+      '-minrate', bitrateStr,
+      '-maxrate', bitrateStr,
+      '-bufsize', `${Math.floor(targetBitrate * 2 / 1000)}k`,
       
       // Keyframe settings (YouTube requires keyframe every 2 seconds)
       '-g', `${config.frameRate * 2}`,
