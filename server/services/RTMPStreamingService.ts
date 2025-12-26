@@ -145,6 +145,7 @@ export class RTMPStreamingService {
     // FFmpeg command to convert JPEG frames to H.264 RTMP stream
     // Input: JPEG frames from stdin (image2pipe)
     // Output: H.264 video to RTMP
+    // OPTIMIZED for real-time processing on limited CPU
     const ffmpegArgs = [
       // Logging
       '-loglevel', 'warning',
@@ -155,18 +156,23 @@ export class RTMPStreamingService {
       '-framerate', String(config.frameRate),
       '-i', 'pipe:0',
       
-      // Video codec settings
+      // Video codec settings - OPTIMIZED for speed
       '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-tune', 'zerolatency',
-      '-profile:v', 'baseline',
-      '-level', '4.0',
+      '-preset', 'ultrafast',      // Fastest preset
+      '-tune', 'zerolatency',      // Minimize latency
+      '-profile:v', 'baseline',    // Simplest profile
+      '-level', '3.1',             // Lower level for compatibility
       '-pix_fmt', 'yuv420p',
       
-      // Bitrate control
-      '-b:v', `${Math.round(config.videoBitrate / 1000)}k`,
-      '-maxrate', `${Math.round(config.videoBitrate * 1.2 / 1000)}k`,
-      '-bufsize', `${Math.round(config.videoBitrate * 2 / 1000)}k`,
+      // Use CRF instead of bitrate for faster encoding
+      '-crf', '28',                // Quality level (higher = faster, lower quality)
+      '-maxrate', '2000k',         // Max bitrate cap
+      '-bufsize', '4000k',         // Buffer size
+      
+      // Reduce complexity
+      '-refs', '1',                // Single reference frame
+      '-bf', '0',                  // No B-frames
+      '-threads', '2',             // Limit threads
       
       // GOP and keyframe settings for streaming
       '-g', String(config.frameRate * 2), // Keyframe every 2 seconds

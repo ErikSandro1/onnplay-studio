@@ -65,12 +65,12 @@ class RTMPStreamService {
 
   // Stream configuration
   private config = {
-    width: 1920,
-    height: 1080,
-    frameRate: 30,
-    videoBitrate: 4500000, // 4.5 Mbps
+    width: 1280,           // 720p for faster processing
+    height: 720,
+    frameRate: 15,         // 15fps for real-time processing on limited CPU
+    videoBitrate: 2500000, // 2.5 Mbps
     audioBitrate: 128000,  // 128 Kbps
-    jpegQuality: 0.85,     // JPEG quality (0-1)
+    jpegQuality: 0.6,      // Lower quality for smaller files and faster processing
   };
 
   constructor() {
