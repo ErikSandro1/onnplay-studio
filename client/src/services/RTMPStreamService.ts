@@ -1,8 +1,8 @@
 /**
- * RTMPStreamService - Ultra-Optimized Client
+ * RTMPStreamService - DOM Capture Edition
  * 
- * Captures canvas and sends JPEG frames to server for RTMP streaming.
- * Optimized for low bandwidth and server CPU usage.
+ * Captures the PROGRAM monitor DOM element and streams to RTMP destinations.
+ * Uses html2canvas or direct video element capture.
  */
 
 import { io, Socket } from 'socket.io-client';
@@ -34,9 +34,11 @@ class RTMPStreamService {
   private socket: Socket | null = null;
   private isStreaming = false;
   private destinations: StreamDestination[] = [];
-  private canvas: HTMLCanvasElement | null = null;
+  private captureCanvas: HTMLCanvasElement | null = null;
+  private captureCtx: CanvasRenderingContext2D | null = null;
   private frameInterval: NodeJS.Timeout | null = null;
   private statsInterval: NodeJS.Timeout | null = null;
+  private videoElement: HTMLVideoElement | null = null;
   
   // Stats
   private framesSent = 0;
@@ -47,13 +49,13 @@ class RTMPStreamService {
   private callbacks: Set<StreamCallback> = new Set();
   private statusCallbacks: Set<StatusCallback> = new Set();
   
-  // Config - ULTRA LOW for Railway
+  // Config - Optimized for Railway
   private config = {
     width: 640,
     height: 360,
-    frameRate: 8,        // Very low FPS for Railway
-    jpegQuality: 0.4,    // Low quality for smaller files
-    videoBitrate: 600000,
+    frameRate: 8,
+    jpegQuality: 0.5,
+    videoBitrate: 800000,
     audioBitrate: 64000,
   };
 
@@ -67,11 +69,15 @@ class RTMPStreamService {
     status: 'idle',
   };
 
-  /**
-   * Set the canvas element to capture
-   */
-  setCanvas(canvas: HTMLCanvasElement): void {
-    this.canvas = canvas;
+  constructor() {
+    // Create capture canvas
+    this.captureCanvas = document.createElement('canvas');
+    this.captureCanvas.width = this.config.width;
+    this.captureCanvas.height = this.config.height;
+    this.captureCtx = this.captureCanvas.getContext('2d', { alpha: false });
+    if (this.captureCtx) {
+      this.captureCtx.imageSmoothingEnabled = false;
+    }
   }
 
   /**
@@ -105,6 +111,10 @@ class RTMPStreamService {
    */
   updateConfig(config: Partial<typeof this.config>): void {
     this.config = { ...this.config, ...config };
+    if (this.captureCanvas) {
+      this.captureCanvas.width = this.config.width;
+      this.captureCanvas.height = this.config.height;
+    }
   }
 
   /**
@@ -112,6 +122,66 @@ class RTMPStreamService {
    */
   getConfig(): typeof this.config {
     return { ...this.config };
+  }
+
+  /**
+   * Find the video element to capture
+   */
+  private findVideoElement(): HTMLVideoElement | null {
+    // Try to find video element in PROGRAM monitor
+    // Look for video elements that are playing
+    const videos = document.querySelectorAll('video');
+    for (const video of videos) {
+      if (!video.paused && video.readyState >= 2) {
+        console.log('[RTMPStreamService] Found playing video element');
+        return video;
+      }
+    }
+    
+    // If no playing video, try to find any video
+    if (videos.length > 0) {
+      console.log('[RTMPStreamService] Using first video element');
+      return videos[0] as HTMLVideoElement;
+    }
+    
+    return null;
+  }
+
+  /**
+   * Find the PROGRAM monitor element
+   */
+  private findProgramElement(): HTMLElement | null {
+    // Try multiple selectors to find the PROGRAM monitor
+    const selectors = [
+      '[data-program="true"]',
+      '.program-monitor',
+      '[class*="program"]',
+      // Look for the orange-bordered monitor (PROGRAM has orange border)
+      'div[style*="border"][style*="FF6B00"]',
+    ];
+    
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (element) {
+        console.log('[RTMPStreamService] Found PROGRAM element with selector:', selector);
+        return element as HTMLElement;
+      }
+    }
+    
+    // Fallback: find by text content
+    const headers = document.querySelectorAll('h2');
+    for (const header of headers) {
+      if (header.textContent?.includes('PROGRAM')) {
+        // Get the parent container
+        const container = header.closest('div')?.parentElement;
+        if (container) {
+          console.log('[RTMPStreamService] Found PROGRAM by header text');
+          return container as HTMLElement;
+        }
+      }
+    }
+    
+    return null;
   }
 
   /**
@@ -131,24 +201,18 @@ class RTMPStreamService {
     console.log('[RTMPStreamService] Starting stream to', enabledDestinations.length, 'destinations');
     this.updateStatus('connecting');
 
-    // Find the program canvas
-    if (!this.canvas) {
-      this.canvas = document.querySelector('canvas[data-program="true"]') as HTMLCanvasElement;
-      if (!this.canvas) {
-        // Try to find any canvas in the program monitor
-        const programMonitor = document.querySelector('[class*="program"]');
-        if (programMonitor) {
-          this.canvas = programMonitor.querySelector('canvas') as HTMLCanvasElement;
-        }
+    // Find video element first (preferred)
+    this.videoElement = this.findVideoElement();
+    
+    if (!this.videoElement) {
+      // Try to find PROGRAM element as fallback
+      const programElement = this.findProgramElement();
+      if (!programElement) {
+        throw new Error('No canvas element found for streaming');
       }
-      if (!this.canvas) {
-        // Last resort: find any visible canvas
-        this.canvas = document.querySelector('canvas') as HTMLCanvasElement;
-      }
-    }
-
-    if (!this.canvas) {
-      throw new Error('No canvas element found for streaming');
+      console.log('[RTMPStreamService] Will capture PROGRAM DOM element');
+    } else {
+      console.log('[RTMPStreamService] Will capture video element');
     }
 
     // Connect to server
@@ -241,33 +305,36 @@ class RTMPStreamService {
    * Start capturing and sending frames
    */
   private startFrameCapture(): void {
-    if (!this.canvas || !this.socket) return;
-
-    // Create a smaller canvas for encoding
-    const captureCanvas = document.createElement('canvas');
-    captureCanvas.width = this.config.width;
-    captureCanvas.height = this.config.height;
-    const ctx = captureCanvas.getContext('2d', { alpha: false });
-
-    if (!ctx) {
-      console.error('[RTMPStreamService] Failed to get canvas context');
-      return;
-    }
-
-    // Disable image smoothing for speed
-    ctx.imageSmoothingEnabled = false;
+    if (!this.captureCanvas || !this.captureCtx || !this.socket) return;
 
     const captureFrame = () => {
-      if (!this.isStreaming || !this.canvas || !this.socket?.connected) {
+      if (!this.isStreaming || !this.socket?.connected || !this.captureCtx || !this.captureCanvas) {
         return;
       }
 
       try {
-        // Draw the source canvas to our smaller capture canvas
-        ctx.drawImage(this.canvas, 0, 0, this.config.width, this.config.height);
+        // Try to capture video element first
+        if (this.videoElement && !this.videoElement.paused && this.videoElement.readyState >= 2) {
+          this.captureCtx.drawImage(
+            this.videoElement, 
+            0, 0, 
+            this.config.width, 
+            this.config.height
+          );
+        } else {
+          // Fallback: draw a colored rectangle with text (placeholder)
+          this.captureCtx.fillStyle = '#1a1a2e';
+          this.captureCtx.fillRect(0, 0, this.config.width, this.config.height);
+          this.captureCtx.fillStyle = '#FF6B00';
+          this.captureCtx.font = 'bold 48px Arial';
+          this.captureCtx.textAlign = 'center';
+          this.captureCtx.fillText('LIVE', this.config.width / 2, this.config.height / 2);
+          this.captureCtx.font = '24px Arial';
+          this.captureCtx.fillText('OnnPlay Studio', this.config.width / 2, this.config.height / 2 + 40);
+        }
 
         // Convert to JPEG blob
-        captureCanvas.toBlob(
+        this.captureCanvas.toBlob(
           (blob) => {
             if (blob && this.socket?.connected) {
               blob.arrayBuffer().then(buffer => {
