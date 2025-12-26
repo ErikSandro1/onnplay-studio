@@ -165,14 +165,14 @@ export class RTMPStreamingService {
       '-pix_fmt', 'yuv420p',
       
       // Use CRF instead of bitrate for faster encoding
-      '-crf', '28',                // Quality level (higher = faster, lower quality)
-      '-maxrate', '2000k',         // Max bitrate cap
-      '-bufsize', '4000k',         // Buffer size
+      '-crf', '35',                // Quality level (higher = faster, lower quality) - AGGRESSIVE
+      '-maxrate', '1000k',         // Max bitrate cap - REDUCED
+      '-bufsize', '2000k',         // Buffer size - REDUCED
       
-      // Reduce complexity
+      // Reduce complexity - AGGRESSIVE
       '-refs', '1',                // Single reference frame
       '-bf', '0',                  // No B-frames
-      '-threads', '2',             // Limit threads
+      '-threads', '1',             // Single thread for less overhead
       
       // GOP and keyframe settings for streaming
       '-g', String(config.frameRate * 2), // Keyframe every 2 seconds

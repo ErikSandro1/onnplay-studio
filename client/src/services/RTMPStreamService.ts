@@ -63,14 +63,14 @@ class RTMPStreamService {
     status: 'idle',
   };
 
-  // Stream configuration
+  // Stream configuration - AGGRESSIVE OPTIMIZATION for real-time processing
   private config = {
-    width: 1280,           // 720p for faster processing
-    height: 720,
-    frameRate: 15,         // 15fps for real-time processing on limited CPU
-    videoBitrate: 2500000, // 2.5 Mbps
-    audioBitrate: 128000,  // 128 Kbps
-    jpegQuality: 0.6,      // Lower quality for smaller files and faster processing
+    width: 640,            // 360p for fastest processing
+    height: 360,
+    frameRate: 10,         // 10fps for real-time processing on limited CPU
+    videoBitrate: 1000000, // 1 Mbps
+    audioBitrate: 96000,   // 96 Kbps
+    jpegQuality: 0.4,      // Low quality for smallest files and fastest processing
   };
 
   constructor() {
