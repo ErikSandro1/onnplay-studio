@@ -57,10 +57,12 @@ export class RTMPStreamingService {
         methods: ['GET', 'POST'],
         credentials: true,
       },
-      transports: ['websocket', 'polling'], // Fallback para polling se WebSocket falhar
+      transports: ['polling', 'websocket'], // Polling first for better proxy compatibility
+      allowUpgrades: true,
       pingTimeout: 60000,
       pingInterval: 25000,
       maxHttpBufferSize: 10e6, // 10MB para chunks de vídeo
+      allowEIO3: true, // Allow Engine.IO v3 clients
     });
 
     this.io.on('connection', (socket: Socket) => {

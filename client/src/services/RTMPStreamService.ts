@@ -308,11 +308,13 @@ class RTMPStreamService {
       
       this.socket = io(baseUrl, {
         path: '/socket.io/stream',
-        transports: ['websocket', 'polling'],
-        timeout: 20000,
+        transports: ['polling', 'websocket'], // Polling first for better proxy compatibility
+        timeout: 30000,
         reconnection: true,
-        reconnectionAttempts: 3,
+        reconnectionAttempts: 5,
         reconnectionDelay: 1000,
+        upgrade: true, // Allow upgrade to websocket after polling connects
+        forceNew: true,
       });
 
       const timeout = setTimeout(() => {
