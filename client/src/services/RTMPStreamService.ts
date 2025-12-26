@@ -471,6 +471,14 @@ class RTMPStreamService {
   }
 
   /**
+   * Subscribe to stats updates (alias for backwards compatibility)
+   */
+  subscribe(callback: StreamCallback): () => void {
+    this.callbacks.add(callback);
+    return () => this.callbacks.delete(callback);
+  }
+
+  /**
    * Subscribe to stats updates
    */
   onStatsUpdate(callback: StreamCallback): () => void {
