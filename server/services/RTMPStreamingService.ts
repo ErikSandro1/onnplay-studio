@@ -147,8 +147,8 @@ export class RTMPStreamingService {
 
     const { config } = activeStream;
     
-    // Use very low framerate for Railway's limited CPU
-    const targetFps = Math.min(config.frameRate || 10, 10);
+    // Use higher framerate for AWS with more CPU
+    const targetFps = Math.min(config.frameRate || 24, 30);
 
     // EXTREME optimization FFmpeg args for Railway
     const ffmpegArgs = [
@@ -168,10 +168,10 @@ export class RTMPStreamingService {
       '-level', '3.0',
       '-pix_fmt', 'yuv420p',
       
-      // Quality/speed tradeoff - prioritize speed
-      '-crf', '40',              // Very high CRF = fast encoding, lower quality
-      '-maxrate', '600k',        // Low bitrate
-      '-bufsize', '1200k',
+      // Quality/speed tradeoff - balanced for YouTube
+      '-crf', '28',              // Good quality
+      '-maxrate', '2500k',       // YouTube minimum for 720p
+      '-bufsize', '5000k',
       
       // Minimize complexity
       '-refs', '1',
@@ -179,8 +179,8 @@ export class RTMPStreamingService {
       '-g', String(targetFps * 2),  // Keyframe every 2 seconds
       '-sc_threshold', '0',
       
-      // Single thread to avoid overhead
-      '-threads', '1',
+      // Use 2 threads for AWS
+      '-threads', '2',
       
       // Fast scaling if needed
       '-vf', `scale=${config.width || 640}:${config.height || 360}:flags=fast_bilinear`,

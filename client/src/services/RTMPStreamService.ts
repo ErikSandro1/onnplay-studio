@@ -49,14 +49,14 @@ class RTMPStreamService {
   private callbacks: Set<StreamCallback> = new Set();
   private statusCallbacks: Set<StatusCallback> = new Set();
   
-  // Config - Optimized for Railway
+  // Config - Optimized for AWS with more CPU
   private config = {
-    width: 640,
-    height: 360,
-    frameRate: 8,
-    jpegQuality: 0.5,
-    videoBitrate: 800000,
-    audioBitrate: 64000,
+    width: 1280,
+    height: 720,
+    frameRate: 24,
+    jpegQuality: 0.7,
+    videoBitrate: 2500000,
+    audioBitrate: 128000,
   };
 
   private stats: StreamStats = {
