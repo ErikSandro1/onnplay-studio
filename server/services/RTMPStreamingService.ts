@@ -93,6 +93,21 @@ export class RTMPStreamingService {
    */
   private handleStart(socket: Socket, data: { destinations: StreamDestination[]; config: StreamConfig }): void {
     console.log(`[RTMPStreamingService] Start request from: ${socket.id}`);
+    console.log(`[RTMPStreamingService] Raw data received:`, JSON.stringify(data));
+    
+    // Validate data
+    if (!data || !data.destinations || !Array.isArray(data.destinations)) {
+      console.error(`[RTMPStreamingService] Invalid data: destinations is missing or not an array`);
+      socket.emit('error', { message: 'Invalid data: destinations is required' });
+      return;
+    }
+    
+    if (!data.config) {
+      console.error(`[RTMPStreamingService] Invalid data: config is missing`);
+      socket.emit('error', { message: 'Invalid data: config is required' });
+      return;
+    }
+    
     console.log(`[RTMPStreamingService] Config:`, JSON.stringify(data.config));
     console.log(`[RTMPStreamingService] Targets: ${data.destinations.length}`);
 
