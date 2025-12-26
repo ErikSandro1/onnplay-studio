@@ -1,130 +1,96 @@
 /**
- * RTMPStreamService - Professional Edition
+ * RTMPStreamService - Ultra-Optimized Client
  * 
- * Uses MediaRecorder for browser-side encoding (H.264/WebM)
- * Server only relays the pre-encoded stream to RTMP destinations
- * 
- * This architecture:
- * - Encoding happens in the user's browser (uses their CPU/GPU)
- * - Server just relays data (minimal CPU usage)
- * - Scales to thousands of users
- * - Same approach used by StreamYard, Restream, etc.
+ * Captures canvas and sends JPEG frames to server for RTMP streaming.
+ * Optimized for low bandwidth and server CPU usage.
  */
 
 import { io, Socket } from 'socket.io-client';
 
-export type StreamPlatform = 'youtube' | 'facebook' | 'twitch' | 'custom';
-
 export interface StreamDestination {
   id: string;
-  platform: StreamPlatform;
+  platform: string;
   name: string;
   rtmpUrl: string;
   streamKey: string;
-  enabled: boolean;
+  enabled?: boolean;
 }
 
 export interface StreamStats {
+  isStreaming: boolean;
+  framesSent: number;
+  bytesSent: number;
   bitrate: number;
   fps: number;
-  droppedFrames: number;
   duration: number;
   status: 'idle' | 'connecting' | 'streaming' | 'error';
   error?: string;
 }
 
 type StreamCallback = (stats: StreamStats) => void;
-type StatusCallback = (status: 'idle' | 'connecting' | 'streaming' | 'error', error?: string) => void;
+type StatusCallback = (status: string, error?: string) => void;
 
 class RTMPStreamService {
   private socket: Socket | null = null;
-  private isStreaming: boolean = false;
+  private isStreaming = false;
   private destinations: StreamDestination[] = [];
-  private callbacks: Set<StreamCallback> = new Set();
-  private statusCallbacks: Set<StatusCallback> = new Set();
-  private startTime: number = 0;
-  private bytesSent: number = 0;
-  private statsInterval: number | null = null;
-  
-  // MediaRecorder for browser-side encoding
-  private mediaRecorder: MediaRecorder | null = null;
-  private canvasStream: MediaStream | null = null;
+  private canvas: HTMLCanvasElement | null = null;
+  private frameInterval: NodeJS.Timeout | null = null;
+  private statsInterval: NodeJS.Timeout | null = null;
   
   // Stats
+  private framesSent = 0;
+  private bytesSent = 0;
+  private startTime = 0;
+  
+  // Callbacks
+  private callbacks: Set<StreamCallback> = new Set();
+  private statusCallbacks: Set<StatusCallback> = new Set();
+  
+  // Config - ULTRA LOW for Railway
+  private config = {
+    width: 640,
+    height: 360,
+    frameRate: 8,        // Very low FPS for Railway
+    jpegQuality: 0.4,    // Low quality for smaller files
+    videoBitrate: 600000,
+    audioBitrate: 64000,
+  };
+
   private stats: StreamStats = {
+    isStreaming: false,
+    framesSent: 0,
+    bytesSent: 0,
     bitrate: 0,
     fps: 0,
-    droppedFrames: 0,
     duration: 0,
     status: 'idle',
   };
 
-  // Stream configuration - High quality since browser does encoding
-  private config = {
-    width: 1280,           // 720p
-    height: 720,
-    frameRate: 30,         // 30fps
-    videoBitrate: 2500000, // 2.5 Mbps
-    audioBitrate: 128000,  // 128 Kbps
-  };
-
-  constructor() {
-    this.loadDestinations();
+  /**
+   * Set the canvas element to capture
+   */
+  setCanvas(canvas: HTMLCanvasElement): void {
+    this.canvas = canvas;
   }
 
   /**
-   * Load destinations from localStorage
+   * Add a streaming destination
    */
-  private loadDestinations(): void {
-    try {
-      const saved = localStorage.getItem('onnplay_stream_destinations');
-      if (saved) {
-        this.destinations = JSON.parse(saved);
-      }
-    } catch (e) {
-      console.warn('[RTMPStreamService] Failed to load destinations:', e);
+  addDestination(dest: StreamDestination): void {
+    const existing = this.destinations.find(d => d.id === dest.id);
+    if (existing) {
+      Object.assign(existing, dest);
+    } else {
+      this.destinations.push(dest);
     }
   }
 
   /**
-   * Save destinations to localStorage
-   */
-  private saveDestinations(): void {
-    try {
-      localStorage.setItem('onnplay_stream_destinations', JSON.stringify(this.destinations));
-    } catch (e) {
-      console.warn('[RTMPStreamService] Failed to save destinations:', e);
-    }
-  }
-
-  /**
-   * Add streaming destination
-   */
-  addDestination(destination: StreamDestination): void {
-    this.destinations.push(destination);
-    this.saveDestinations();
-    this.notifyCallbacks();
-  }
-
-  /**
-   * Remove streaming destination
+   * Remove a streaming destination
    */
   removeDestination(id: string): void {
     this.destinations = this.destinations.filter(d => d.id !== id);
-    this.saveDestinations();
-    this.notifyCallbacks();
-  }
-
-  /**
-   * Update streaming destination
-   */
-  updateDestination(id: string, updates: Partial<StreamDestination>): void {
-    const index = this.destinations.findIndex(d => d.id === id);
-    if (index !== -1) {
-      this.destinations[index] = { ...this.destinations[index], ...updates };
-      this.saveDestinations();
-      this.notifyCallbacks();
-    }
   }
 
   /**
@@ -135,263 +101,225 @@ class RTMPStreamService {
   }
 
   /**
-   * Get enabled destinations
+   * Update streaming config
    */
-  getEnabledDestinations(): StreamDestination[] {
-    return this.destinations.filter(d => d.enabled);
+  updateConfig(config: Partial<typeof this.config>): void {
+    this.config = { ...this.config, ...config };
   }
 
   /**
-   * Start streaming using MediaRecorder (browser-side encoding)
+   * Get current config
+   */
+  getConfig(): typeof this.config {
+    return { ...this.config };
+  }
+
+  /**
+   * Start streaming to all enabled destinations
    */
   async startStreaming(): Promise<void> {
     if (this.isStreaming) {
-      throw new Error('Already streaming');
+      console.warn('[RTMPStreamService] Already streaming');
+      return;
     }
 
-    const enabledDestinations = this.getEnabledDestinations();
+    const enabledDestinations = this.destinations.filter(d => d.enabled !== false);
     if (enabledDestinations.length === 0) {
-      throw new Error('No destinations enabled');
+      throw new Error('No streaming destinations configured');
     }
 
+    console.log('[RTMPStreamService] Starting stream to', enabledDestinations.length, 'destinations');
     this.updateStatus('connecting');
 
-    try {
-      // 1. Get canvas stream from PROGRAM monitor
-      const canvas = await this.getCanvasStream();
-      
-      // 2. Connect to backend via Socket.IO
-      await this.connectSocket(enabledDestinations);
-
-      // 3. Start MediaRecorder with browser encoding
-      await this.startMediaRecorder(canvas);
-
-      this.isStreaming = true;
-      this.startTime = Date.now();
-      this.bytesSent = 0;
-      this.startStatsUpdate();
-
-      this.updateStatus('streaming');
-      console.log('✅ [RTMPStreamService] Streaming started with MediaRecorder to', enabledDestinations.length, 'destinations');
-    } catch (error) {
-      console.error('[RTMPStreamService] Failed to start streaming:', error);
-      this.updateStatus('error', error instanceof Error ? error.message : 'Failed to start streaming');
-      throw error;
-    }
-  }
-
-  /**
-   * Get canvas stream from PROGRAM monitor
-   */
-  private async getCanvasStream(): Promise<MediaStream> {
-    // Find PROGRAM monitor
-    const programMonitor = document.querySelector('[data-monitor="program"]') as HTMLElement;
-    
-    if (!programMonitor) {
-      throw new Error('Could not find PROGRAM monitor element');
-    }
-
-    // Look for video element
-    const videoElement = programMonitor.querySelector('video') as HTMLVideoElement;
-    
-    // Create canvas for capture
-    const canvas = document.createElement('canvas');
-    canvas.width = this.config.width;
-    canvas.height = this.config.height;
-    const ctx = canvas.getContext('2d')!;
-
-    // Create stream from canvas
-    this.canvasStream = canvas.captureStream(this.config.frameRate);
-
-    // Start drawing loop
-    const drawFrame = () => {
-      if (!this.isStreaming && !this.canvasStream) return;
-      
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      if (videoElement && videoElement.readyState >= 2) {
-        // Draw video maintaining aspect ratio
-        const videoAspect = videoElement.videoWidth / videoElement.videoHeight;
-        const canvasAspect = canvas.width / canvas.height;
-        
-        let drawWidth, drawHeight, drawX, drawY;
-        
-        if (videoAspect > canvasAspect) {
-          drawWidth = canvas.width;
-          drawHeight = canvas.width / videoAspect;
-          drawX = 0;
-          drawY = (canvas.height - drawHeight) / 2;
-        } else {
-          drawHeight = canvas.height;
-          drawWidth = canvas.height * videoAspect;
-          drawX = (canvas.width - drawWidth) / 2;
-          drawY = 0;
+    // Find the program canvas
+    if (!this.canvas) {
+      this.canvas = document.querySelector('canvas[data-program="true"]') as HTMLCanvasElement;
+      if (!this.canvas) {
+        // Try to find any canvas in the program monitor
+        const programMonitor = document.querySelector('[class*="program"]');
+        if (programMonitor) {
+          this.canvas = programMonitor.querySelector('canvas') as HTMLCanvasElement;
         }
-        
-        ctx.drawImage(videoElement, drawX, drawY, drawWidth, drawHeight);
-      } else {
-        // Draw OnnPlay placeholder
-        const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-        gradient.addColorStop(0, '#1e3a5f');
-        gradient.addColorStop(1, '#0d1b2a');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        ctx.fillStyle = '#FF6B00';
-        ctx.font = 'bold 80px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('OnnPlay', canvas.width / 2, canvas.height / 2 - 30);
-        
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 40px Arial';
-        ctx.fillText('STUDIO', canvas.width / 2, canvas.height / 2 + 30);
       }
-      
-      // Draw LIVE indicator
-      ctx.fillStyle = '#FF0000';
-      ctx.beginPath();
-      ctx.arc(60, 50, 12, 0, Math.PI * 2);
-      ctx.fill();
-      
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = 'bold 24px Arial';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('LIVE', 80, 50);
-      
-      if (this.isStreaming) {
-        requestAnimationFrame(drawFrame);
+      if (!this.canvas) {
+        // Last resort: find any visible canvas
+        this.canvas = document.querySelector('canvas') as HTMLCanvasElement;
       }
-    };
-    
-    // Start drawing
-    requestAnimationFrame(drawFrame);
-
-    // Try to add audio
-    try {
-      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      audioStream.getAudioTracks().forEach(track => {
-        this.canvasStream!.addTrack(track);
-      });
-      console.log('[RTMPStreamService] Audio track added');
-    } catch (e) {
-      console.warn('[RTMPStreamService] Could not get audio:', e);
     }
 
-    return this.canvasStream;
+    if (!this.canvas) {
+      throw new Error('No canvas element found for streaming');
+    }
+
+    // Connect to server
+    await this.connectToServer();
+
+    // Start the stream
+    this.socket!.emit('start', {
+      destinations: enabledDestinations.map(d => ({
+        id: d.id,
+        platform: d.platform,
+        name: d.name,
+        rtmpUrl: d.rtmpUrl,
+        streamKey: d.streamKey,
+      })),
+      config: this.config,
+    });
+
+    this.isStreaming = true;
+    this.framesSent = 0;
+    this.bytesSent = 0;
+    this.startTime = Date.now();
+
+    // Start capturing frames
+    this.startFrameCapture();
+    
+    // Start stats tracking
+    this.startStatsTracking();
+
+    this.updateStatus('streaming');
+    console.log('[RTMPStreamService] Stream started');
   }
 
   /**
-   * Connect to backend Socket.IO
+   * Connect to the streaming server
    */
-  private async connectSocket(destinations: StreamDestination[]): Promise<void> {
+  private async connectToServer(): Promise<void> {
     return new Promise((resolve, reject) => {
       const serverUrl = window.location.origin;
-      console.log('[RTMPStreamService] Connecting to:', serverUrl);
+      console.log('[RTMPStreamService] Connecting to server:', serverUrl);
 
       this.socket = io(serverUrl, {
         path: '/socket.io/stream',
         transports: ['polling', 'websocket'],
-        timeout: 30000,
-        reconnection: true,
-        reconnectionAttempts: 5,
+        timeout: 10000,
       });
 
       const timeout = setTimeout(() => {
         reject(new Error('Connection timeout'));
-      }, 30000);
+      }, 10000);
 
       this.socket.on('connect', () => {
-        console.log('[RTMPStreamService] ✅ Socket connected:', this.socket?.id);
+        console.log('[RTMPStreamService] Connected to server');
         clearTimeout(timeout);
+      });
 
-        // Send start command with destinations
-        this.socket!.emit('start-relay', {
-          destinations: destinations.map(d => ({
-            id: d.id,
-            platform: d.platform,
-            name: d.name,
-            rtmpUrl: d.rtmpUrl,
-            streamKey: d.streamKey,
-          })),
-          config: this.config,
-        });
-
+      this.socket.on('connected', () => {
+        console.log('[RTMPStreamService] Server acknowledged connection');
         resolve();
       });
 
-      this.socket.on('connect_error', (error) => {
-        console.error('[RTMPStreamService] Connection error:', error);
-        clearTimeout(timeout);
-        reject(error);
+      this.socket.on('started', (data: { message: string }) => {
+        console.log('[RTMPStreamService] Server started streaming:', data.message);
       });
 
-      this.socket.on('error', (data) => {
-        console.error('[RTMPStreamService] Server error:', data);
+      this.socket.on('status', (data: { target: string; status: string }) => {
+        console.log('[RTMPStreamService] Status update:', data);
+      });
+
+      this.socket.on('error', (data: { message: string }) => {
+        console.error('[RTMPStreamService] Server error:', data.message);
         this.updateStatus('error', data.message);
       });
 
-      this.socket.on('status', (data) => {
-        console.log('[RTMPStreamService] Status:', data);
+      this.socket.on('disconnect', (reason: string) => {
+        console.log('[RTMPStreamService] Disconnected:', reason);
+        if (this.isStreaming) {
+          this.updateStatus('error', `Disconnected: ${reason}`);
+        }
+      });
+
+      this.socket.on('connect_error', (error: Error) => {
+        console.error('[RTMPStreamService] Connection error:', error);
+        clearTimeout(timeout);
+        reject(error);
       });
     });
   }
 
   /**
-   * Start MediaRecorder for browser-side encoding
+   * Start capturing and sending frames
    */
-  private async startMediaRecorder(stream: MediaStream): Promise<void> {
-    // Determine best codec
-    const mimeTypes = [
-      'video/webm;codecs=h264',
-      'video/webm;codecs=vp9',
-      'video/webm;codecs=vp8',
-      'video/webm',
-    ];
+  private startFrameCapture(): void {
+    if (!this.canvas || !this.socket) return;
 
-    let selectedMimeType = '';
-    for (const mimeType of mimeTypes) {
-      if (MediaRecorder.isTypeSupported(mimeType)) {
-        selectedMimeType = mimeType;
-        break;
+    // Create a smaller canvas for encoding
+    const captureCanvas = document.createElement('canvas');
+    captureCanvas.width = this.config.width;
+    captureCanvas.height = this.config.height;
+    const ctx = captureCanvas.getContext('2d', { alpha: false });
+
+    if (!ctx) {
+      console.error('[RTMPStreamService] Failed to get canvas context');
+      return;
+    }
+
+    // Disable image smoothing for speed
+    ctx.imageSmoothingEnabled = false;
+
+    const captureFrame = () => {
+      if (!this.isStreaming || !this.canvas || !this.socket?.connected) {
+        return;
       }
-    }
 
-    if (!selectedMimeType) {
-      throw new Error('No supported video codec found');
-    }
+      try {
+        // Draw the source canvas to our smaller capture canvas
+        ctx.drawImage(this.canvas, 0, 0, this.config.width, this.config.height);
 
-    console.log('[RTMPStreamService] Using codec:', selectedMimeType);
-
-    this.mediaRecorder = new MediaRecorder(stream, {
-      mimeType: selectedMimeType,
-      videoBitsPerSecond: this.config.videoBitrate,
-      audioBitsPerSecond: this.config.audioBitrate,
-    });
-
-    this.mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0 && this.socket?.connected) {
-        // Send encoded chunk to server
-        event.data.arrayBuffer().then(buffer => {
-          this.socket!.emit('video-chunk', {
-            data: buffer,
-            timestamp: Date.now(),
-          });
-          this.bytesSent += buffer.byteLength;
-        });
+        // Convert to JPEG blob
+        captureCanvas.toBlob(
+          (blob) => {
+            if (blob && this.socket?.connected) {
+              blob.arrayBuffer().then(buffer => {
+                this.socket!.emit('frame', {
+                  frameNumber: this.framesSent + 1,
+                  data: buffer,
+                  timestamp: Date.now(),
+                });
+                this.framesSent++;
+                this.bytesSent += buffer.byteLength;
+              });
+            }
+          },
+          'image/jpeg',
+          this.config.jpegQuality
+        );
+      } catch (error) {
+        console.error('[RTMPStreamService] Frame capture error:', error);
       }
     };
 
-    this.mediaRecorder.onerror = (event) => {
-      console.error('[RTMPStreamService] MediaRecorder error:', event);
-      this.updateStatus('error', 'MediaRecorder error');
-    };
+    // Capture frames at configured rate
+    const intervalMs = 1000 / this.config.frameRate;
+    this.frameInterval = setInterval(captureFrame, intervalMs);
+    
+    console.log(`[RTMPStreamService] Frame capture started at ${this.config.frameRate} fps (${intervalMs}ms interval)`);
+  }
 
-    // Start recording with small timeslice for low latency
-    this.mediaRecorder.start(100); // Send data every 100ms
-    console.log('[RTMPStreamService] MediaRecorder started');
+  /**
+   * Start tracking stats
+   */
+  private startStatsTracking(): void {
+    this.statsInterval = setInterval(() => {
+      if (!this.isStreaming) return;
+
+      const duration = (Date.now() - this.startTime) / 1000;
+      const bitrate = duration > 0 ? Math.round((this.bytesSent * 8) / duration / 1000) : 0;
+      const fps = duration > 0 ? this.framesSent / duration : 0;
+
+      this.stats = {
+        ...this.stats,
+        isStreaming: true,
+        framesSent: this.framesSent,
+        bytesSent: this.bytesSent,
+        bitrate,
+        fps: Math.round(fps * 10) / 10,
+        duration: Math.round(duration),
+        status: 'streaming',
+      };
+
+      this.notifyCallbacks();
+    }, 1000);
   }
 
   /**
@@ -402,16 +330,16 @@ class RTMPStreamService {
     
     this.isStreaming = false;
 
-    // Stop MediaRecorder
-    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      this.mediaRecorder.stop();
-      this.mediaRecorder = null;
+    // Stop frame capture
+    if (this.frameInterval) {
+      clearInterval(this.frameInterval);
+      this.frameInterval = null;
     }
 
-    // Stop canvas stream tracks
-    if (this.canvasStream) {
-      this.canvasStream.getTracks().forEach(track => track.stop());
-      this.canvasStream = null;
+    // Stop stats tracking
+    if (this.statsInterval) {
+      clearInterval(this.statsInterval);
+      this.statsInterval = null;
     }
 
     // Notify server
@@ -421,33 +349,21 @@ class RTMPStreamService {
       this.socket = null;
     }
 
-    // Stop stats update
-    if (this.statsInterval) {
-      clearInterval(this.statsInterval);
-      this.statsInterval = null;
-    }
+    // Reset stats
+    this.stats = {
+      isStreaming: false,
+      framesSent: this.framesSent,
+      bytesSent: this.bytesSent,
+      bitrate: 0,
+      fps: 0,
+      duration: 0,
+      status: 'idle',
+    };
 
     this.updateStatus('idle');
+    this.notifyCallbacks();
+    
     console.log('[RTMPStreamService] Stream stopped');
-  }
-
-  /**
-   * Start stats update interval
-   */
-  private startStatsUpdate(): void {
-    this.statsInterval = window.setInterval(() => {
-      const duration = (Date.now() - this.startTime) / 1000;
-      const bitrate = duration > 0 ? (this.bytesSent * 8) / duration : 0;
-
-      this.stats = {
-        ...this.stats,
-        bitrate: Math.round(bitrate),
-        duration: Math.round(duration),
-        status: 'streaming',
-      };
-
-      this.notifyCallbacks();
-    }, 1000);
   }
 
   /**
