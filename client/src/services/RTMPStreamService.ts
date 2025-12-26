@@ -6,6 +6,9 @@
  * Backend uses FFmpeg to push to RTMP destinations.
  * 
  * Uses Socket.IO for better proxy compatibility (Railway, etc.)
+ * 
+ * IMPORTANT: Uses segmented recording approach to ensure each segment has valid WebM headers.
+ * This is necessary because FFmpeg cannot parse WebM chunks without headers.
  */
 
 import { io, Socket } from 'socket.io-client';
@@ -49,6 +52,12 @@ class RTMPStreamService {
   private audioDestination: MediaStreamAudioDestinationNode | null = null;
   private statsInterval: number | null = null;
   
+  // Segment recording
+  private segmentInterval: number | null = null;
+  private currentSegmentData: Blob[] = [];
+  private segmentNumber: number = 0;
+  private mimeType: string = 'video/webm';
+  
   // Stats
   private stats: StreamStats = {
     bitrate: 0,
@@ -65,6 +74,7 @@ class RTMPStreamService {
     frameRate: 30,
     videoBitrate: 4500000, // 4.5 Mbps
     audioBitrate: 128000,  // 128 Kbps
+    segmentDuration: 2000, // 2 seconds per segment
   };
 
   constructor() {
@@ -188,13 +198,14 @@ class RTMPStreamService {
       // 3. Connect to backend via Socket.IO
       await this.connectSocket(enabledDestinations);
 
-      // 4. Start MediaRecorder
-      this.startRecording();
+      // 4. Start segmented recording
+      this.startSegmentedRecording();
 
       this.isStreaming = true;
       this.startTime = Date.now();
       this.frameCount = 0;
       this.bytesSent = 0;
+      this.segmentNumber = 0;
       this.startStatsUpdate();
 
       this.updateStatus('streaming');
@@ -336,18 +347,18 @@ class RTMPStreamService {
             streamKey: d.streamKey,
           })),
         });
-
+        
         resolve();
-      });
-
-      this.socket.on('connect_error', (error) => {
-        clearTimeout(timeout);
-        console.error('[RTMPStreamService] Socket.IO connect error:', error);
-        reject(new Error(`Connection failed: ${error.message}`));
       });
 
       this.socket.on('connected', (data) => {
         console.log('[RTMPStreamService] Server confirmed connection:', data);
+      });
+
+      this.socket.on('connect_error', (error) => {
+        console.error('[RTMPStreamService] Socket.IO connection error:', error);
+        clearTimeout(timeout);
+        reject(new Error(`Connection failed: ${error.message}`));
       });
 
       this.socket.on('status', (data) => {
@@ -373,51 +384,121 @@ class RTMPStreamService {
   }
 
   /**
-   * Start MediaRecorder to capture and send chunks
+   * Start segmented recording - creates complete WebM files with headers
+   * Each segment is a complete WebM file that FFmpeg can process
    */
-  private startRecording(): void {
+  private startSegmentedRecording(): void {
     if (!this.mediaStream) {
       throw new Error('Media stream not ready');
     }
 
     // Determine best codec
-    const mimeType = this.getSupportedMimeType();
-    console.log('[RTMPStreamService] Using MIME type:', mimeType);
+    this.mimeType = this.getSupportedMimeType();
+    console.log('[RTMPStreamService] Using MIME type:', this.mimeType);
+    console.log('[RTMPStreamService] Segment duration:', this.config.segmentDuration, 'ms');
+
+    // Start first segment
+    this.startNewSegment();
+
+    // Set up interval to create new segments
+    this.segmentInterval = window.setInterval(() => {
+      if (this.isStreaming && this.mediaRecorder) {
+        this.finalizeAndStartNewSegment();
+      }
+    }, this.config.segmentDuration);
+  }
+
+  /**
+   * Start a new recording segment
+   */
+  private startNewSegment(): void {
+    if (!this.mediaStream) return;
+
+    this.currentSegmentData = [];
 
     this.mediaRecorder = new MediaRecorder(this.mediaStream, {
-      mimeType,
+      mimeType: this.mimeType,
       videoBitsPerSecond: this.config.videoBitrate,
       audioBitsPerSecond: this.config.audioBitrate,
     });
 
     this.mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0 && this.socket?.connected) {
-        // Convert Blob to ArrayBuffer and send
-        event.data.arrayBuffer().then(buffer => {
-          this.socket!.emit('chunk', buffer);
-          this.bytesSent += buffer.byteLength;
-          this.frameCount++;
-        });
+      if (event.data.size > 0) {
+        this.currentSegmentData.push(event.data);
       }
+    };
+
+    this.mediaRecorder.onstop = () => {
+      // When segment stops, send the complete segment
+      this.sendSegment();
     };
 
     this.mediaRecorder.onerror = (event) => {
       console.error('[RTMPStreamService] MediaRecorder error:', event);
-      this.updateStatus('error', 'Recording error');
     };
 
-    // Start recording with 100ms chunks for low latency
-    this.mediaRecorder.start(100);
-    console.log('[RTMPStreamService] MediaRecorder started');
+    // Request data frequently within the segment
+    this.mediaRecorder.start(100); // 100ms timeslice
+    console.log('[RTMPStreamService] Started segment', this.segmentNumber);
+  }
+
+  /**
+   * Finalize current segment and start a new one
+   */
+  private finalizeAndStartNewSegment(): void {
+    if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+      // Stop current recorder - this triggers onstop which sends the segment
+      this.mediaRecorder.stop();
+      
+      // Start new segment after a small delay
+      setTimeout(() => {
+        if (this.isStreaming) {
+          this.segmentNumber++;
+          this.startNewSegment();
+        }
+      }, 10);
+    }
+  }
+
+  /**
+   * Send completed segment to server
+   */
+  private sendSegment(): void {
+    if (this.currentSegmentData.length === 0 || !this.socket?.connected) {
+      return;
+    }
+
+    // Combine all chunks into a complete WebM file
+    const completeSegment = new Blob(this.currentSegmentData, { type: this.mimeType });
+    
+    console.log(`[RTMPStreamService] Sending segment ${this.segmentNumber}: ${completeSegment.size} bytes`);
+
+    // Convert to ArrayBuffer and send
+    completeSegment.arrayBuffer().then(buffer => {
+      // Send as a complete segment with metadata
+      this.socket!.emit('segment', {
+        segmentNumber: this.segmentNumber,
+        data: buffer,
+        mimeType: this.mimeType,
+        duration: this.config.segmentDuration,
+      });
+      
+      this.bytesSent += buffer.byteLength;
+      this.frameCount++;
+    });
+
+    // Clear segment data
+    this.currentSegmentData = [];
   }
 
   /**
    * Get supported MIME type for MediaRecorder
    */
   private getSupportedMimeType(): string {
+    // Prefer VP8 over VP9 for better compatibility
     const types = [
-      'video/webm;codecs=vp9,opus',
       'video/webm;codecs=vp8,opus',
+      'video/webm;codecs=vp9,opus',
       'video/webm;codecs=h264,opus',
       'video/webm',
       'video/mp4',
@@ -461,6 +542,14 @@ class RTMPStreamService {
   async stopStreaming(): Promise<void> {
     console.log('[RTMPStreamService] Stopping stream...');
 
+    this.isStreaming = false;
+
+    // Stop segment interval
+    if (this.segmentInterval) {
+      clearInterval(this.segmentInterval);
+      this.segmentInterval = null;
+    }
+
     // Stop stats update
     if (this.statsInterval) {
       clearInterval(this.statsInterval);
@@ -486,7 +575,6 @@ class RTMPStreamService {
       this.socket = null;
     }
 
-    this.isStreaming = false;
     this.updateStatus('idle');
     
     console.log('[RTMPStreamService] Stream stopped');

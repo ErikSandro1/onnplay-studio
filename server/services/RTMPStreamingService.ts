@@ -1,8 +1,11 @@
 /**
  * RTMPStreamingService - Backend service para streaming RTMP
  * 
- * Recebe chunks de vídeo via Socket.IO do frontend e envia para
+ * Recebe segmentos WebM completos via Socket.IO do frontend e envia para
  * destinos RTMP (YouTube, Twitch, Facebook) usando FFmpeg
+ * 
+ * Cada segmento é um arquivo WebM completo com headers válidos,
+ * permitindo que o FFmpeg processe corretamente.
  * 
  * Usa Socket.IO para melhor compatibilidade com proxies (Railway, etc.)
  */
@@ -10,6 +13,9 @@
 import { spawn, ChildProcess } from 'child_process';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server } from 'http';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 interface StreamTarget {
   id: string;
@@ -24,15 +30,26 @@ interface StreamConfig {
   frameRate: number;
   videoBitrate: number;
   audioBitrate: number;
+  segmentDuration: number;
+}
+
+interface SegmentData {
+  segmentNumber: number;
+  data: ArrayBuffer | Buffer;
+  mimeType: string;
+  duration: number;
 }
 
 interface ActiveStream {
   target: StreamTarget;
-  ffmpeg: ChildProcess;
+  ffmpeg: ChildProcess | null;
   startTime: Date;
   bytesReceived: number;
-  chunksReceived: number;
+  segmentsReceived: number;
   lastLogTime: number;
+  tempDir: string;
+  isProcessing: boolean;
+  segmentQueue: Buffer[];
 }
 
 interface ClientData {
@@ -63,7 +80,7 @@ export class RTMPStreamingService {
       allowUpgrades: true,
       pingTimeout: 60000,
       pingInterval: 25000,
-      maxHttpBufferSize: 10e6, // 10MB para chunks de vídeo
+      maxHttpBufferSize: 50e6, // 50MB para segmentos de vídeo
       allowEIO3: true, // Allow Engine.IO v3 clients
     });
 
@@ -77,7 +94,8 @@ export class RTMPStreamingService {
       // Handlers de eventos
       socket.on('start', (data) => this.handleStart(socket, data));
       socket.on('stop', () => this.handleStop(socket));
-      socket.on('chunk', (data) => this.handleChunk(socket, data));
+      socket.on('segment', (data) => this.handleSegment(socket, data));
+      socket.on('chunk', (data) => this.handleChunk(socket, data)); // Legacy support
       socket.on('ping', () => socket.emit('pong'));
 
       socket.on('disconnect', (reason) => {
@@ -109,11 +127,11 @@ export class RTMPStreamingService {
     // Salvar configuração do cliente
     this.clients.set(socket.id, { config: data.config, targets: data.targets });
 
-    // Iniciar FFmpeg para cada destino
+    // Iniciar stream para cada destino
     for (const target of data.targets) {
       try {
-        console.log(`[RTMPStreamingService] Starting FFmpeg for ${target.platform}...`);
-        await this.startFFmpegProcess(target, data.config, socket.id);
+        console.log(`[RTMPStreamingService] Setting up stream for ${target.platform}...`);
+        await this.setupStream(target, data.config, socket.id);
         
         socket.emit('status', {
           targetId: target.id,
@@ -121,13 +139,13 @@ export class RTMPStreamingService {
           message: `Streaming to ${target.platform} started`,
         });
         
-        console.log(`[RTMPStreamingService] ✅ Stream to ${target.platform} started!`);
+        console.log(`[RTMPStreamingService] ✅ Stream to ${target.platform} ready!`);
       } catch (error) {
-        console.error(`[RTMPStreamingService] ❌ Failed to start stream to ${target.platform}:`, error);
+        console.error(`[RTMPStreamingService] ❌ Failed to setup stream to ${target.platform}:`, error);
         
         socket.emit('error', {
           targetId: target.id,
-          error: error instanceof Error ? error.message : 'Failed to start stream',
+          error: error instanceof Error ? error.message : 'Failed to setup stream',
         });
       }
     }
@@ -143,200 +161,192 @@ export class RTMPStreamingService {
   }
 
   /**
-   * Handler para chunks de vídeo
+   * Handler para segmentos de vídeo completos
    */
-  private handleChunk(socket: Socket, data: ArrayBuffer | Buffer) {
+  private handleSegment(socket: Socket, data: SegmentData) {
     const clientData = this.clients.get(socket.id);
-    if (clientData?.targets) {
-      const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
-      
-      // Log a cada 100 chunks para debug
-      const streamId = `${socket.id}:${clientData.targets[0]?.id}`;
+    if (!clientData?.targets) return;
+
+    const buffer = Buffer.isBuffer(data.data) ? data.data : Buffer.from(data.data);
+    
+    console.log(`[RTMPStreamingService] Received segment ${data.segmentNumber}: ${buffer.length} bytes`);
+
+    // Processar segmento para cada destino
+    for (const target of clientData.targets) {
+      const streamId = `${socket.id}:${target.id}`;
       const stream = this.activeStreams.get(streamId);
-      if (stream) {
-        stream.chunksReceived = (stream.chunksReceived || 0) + 1;
-        
-        // Log a cada 5 segundos
-        const now = Date.now();
-        if (now - stream.lastLogTime > 5000) {
-          console.log(`[RTMPStreamingService] Stats: chunks=${stream.chunksReceived}, bytes=${stream.bytesReceived}, rate=${Math.round(stream.bytesReceived / ((now - stream.startTime.getTime()) / 1000) / 1024)}KB/s`);
-          stream.lastLogTime = now;
-        }
-      }
       
-      this.forwardToFFmpeg(buffer, clientData.targets);
+      if (stream) {
+        stream.bytesReceived += buffer.length;
+        stream.segmentsReceived++;
+        
+        // Adicionar segmento à fila
+        stream.segmentQueue.push(buffer);
+        
+        // Processar fila
+        this.processSegmentQueue(streamId, target, clientData.config!);
+      }
     }
   }
 
   /**
-   * Inicia processo FFmpeg para um destino
+   * Handler para chunks de vídeo (legacy - para compatibilidade)
    */
-  private async startFFmpegProcess(target: StreamTarget, config: StreamConfig, clientId: string): Promise<void> {
+  private handleChunk(socket: Socket, data: ArrayBuffer | Buffer) {
+    // Ignorar chunks individuais - agora usamos apenas segmentos completos
+    console.log('[RTMPStreamingService] Received legacy chunk, ignoring...');
+  }
+
+  /**
+   * Configura stream para um destino
+   */
+  private async setupStream(target: StreamTarget, config: StreamConfig, clientId: string): Promise<void> {
+    const streamId = `${clientId}:${target.id}`;
+    
+    // Criar diretório temporário para segmentos
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onnplay-'));
+    
+    // Registrar stream ativo
+    this.activeStreams.set(streamId, {
+      target,
+      ffmpeg: null,
+      startTime: new Date(),
+      bytesReceived: 0,
+      segmentsReceived: 0,
+      lastLogTime: Date.now(),
+      tempDir,
+      isProcessing: false,
+      segmentQueue: [],
+    });
+
+    console.log(`[RTMPStreamingService] Stream ${streamId} ready, temp dir: ${tempDir}`);
+  }
+
+  /**
+   * Processa fila de segmentos
+   */
+  private async processSegmentQueue(streamId: string, target: StreamTarget, config: StreamConfig) {
+    const stream = this.activeStreams.get(streamId);
+    if (!stream || stream.isProcessing || stream.segmentQueue.length === 0) {
+      return;
+    }
+
+    stream.isProcessing = true;
+
+    try {
+      while (stream.segmentQueue.length > 0) {
+        const segment = stream.segmentQueue.shift()!;
+        await this.processSegment(streamId, target, config, segment, stream.segmentsReceived);
+      }
+    } catch (error) {
+      console.error(`[RTMPStreamingService] Error processing segment queue:`, error);
+    } finally {
+      stream.isProcessing = false;
+    }
+  }
+
+  /**
+   * Processa um segmento individual
+   */
+  private async processSegment(
+    streamId: string, 
+    target: StreamTarget, 
+    config: StreamConfig, 
+    segmentData: Buffer,
+    segmentNumber: number
+  ): Promise<void> {
+    const stream = this.activeStreams.get(streamId);
+    if (!stream) return;
+
+    // Salvar segmento em arquivo temporário
+    const segmentPath = path.join(stream.tempDir, `segment_${segmentNumber}.webm`);
+    fs.writeFileSync(segmentPath, segmentData);
+
     // Construir URL RTMP completa
     const rtmpUrl = target.rtmpUrl.endsWith('/') 
       ? `${target.rtmpUrl}${target.streamKey}`
       : `${target.rtmpUrl}/${target.streamKey}`;
 
-    console.log(`[RTMPStreamingService] FFmpeg target: ${target.platform}`);
-    console.log(`[RTMPStreamingService] RTMP URL: ${rtmpUrl.substring(0, 60)}...`);
-
-    // Argumentos do FFmpeg otimizados para WebM streaming via pipe
-    // O navegador envia WebM com VP9/Opus, precisamos converter para H.264/AAC para RTMP
+    // Argumentos do FFmpeg para processar o segmento
     const ffmpegArgs = [
-      // Logging - mais verboso para debug
-      '-loglevel', 'info',
-      '-stats',
+      '-y', // Overwrite output
+      '-loglevel', 'warning',
       
-      // Opções de input para streaming via pipe
-      '-fflags', '+genpts+discardcorrupt',   // Gerar timestamps e descartar dados corrompidos
-      '-probesize', '10M',                    // Aumentar tamanho de probe para melhor detecção
-      '-analyzeduration', '10M',              // Aumentar duração de análise
+      // Input - arquivo WebM completo
+      '-i', segmentPath,
       
-      // Input - WebM from stdin (live streaming)
-      '-f', 'webm',                           // Força formato WebM
-      '-live_start_index', '0',               // Para live streaming
-      '-i', 'pipe:0',                         // Ler de stdin
-      
-      // Mapeamento de streams
-      '-map', '0:v:0?',                       // Mapear primeiro stream de vídeo (opcional)
-      '-map', '0:a:0?',                       // Mapear primeiro stream de áudio (opcional)
-      
-      // Video codec - converter VP9 para H.264
-      '-c:v', 'libx264',                      // Codec H.264
-      '-preset', 'ultrafast',                 // Preset mais rápido para streaming
-      '-tune', 'zerolatency',                 // Otimizar para streaming
-      '-profile:v', 'baseline',               // Perfil mais compatível
+      // Video codec - converter para H.264
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-tune', 'zerolatency',
+      '-profile:v', 'baseline',
       '-level', '3.1',
-      '-b:v', '2500k',                        // Bitrate fixo de 2.5Mbps (mais estável)
+      '-b:v', '2500k',
       '-maxrate', '2500k',
       '-bufsize', '5000k',
-      '-pix_fmt', 'yuv420p',                  // Formato de pixel compatível
-      '-g', '60',                             // GOP = 2 segundos a 30fps
-      '-keyint_min', '60',                    // Keyframe mínimo
-      '-sc_threshold', '0',                   // Desabilitar detecção de cena
-      '-r', '30',                             // Forçar 30fps
+      '-pix_fmt', 'yuv420p',
+      '-g', '60',
+      '-keyint_min', '60',
+      '-sc_threshold', '0',
+      '-r', '30',
       
-      // Video scaling - garantir resolução correta
+      // Video scaling
       '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p',
       
-      // Audio codec - converter Opus para AAC
-      '-c:a', 'aac',                          // Codec AAC
-      '-b:a', '128k',                         // Bitrate de áudio fixo
-      '-ar', '44100',                         // Sample rate
-      '-ac', '2',                             // Stereo
+      // Audio codec
+      '-c:a', 'aac',
+      '-b:a', '128k',
+      '-ar', '44100',
+      '-ac', '2',
       
       // Output
-      '-f', 'flv',                            // Formato FLV para RTMP
+      '-f', 'flv',
       '-flvflags', 'no_duration_filesize',
       rtmpUrl,
     ];
 
-    console.log(`[RTMPStreamingService] FFmpeg command: ffmpeg ${ffmpegArgs.slice(0, 20).join(' ')}...`);
-
     return new Promise((resolve, reject) => {
-      const ffmpeg = spawn('ffmpeg', ffmpegArgs, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
+      const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+      
+      let hasError = false;
 
-      const streamId = `${clientId}:${target.id}`;
-
-      // Capturar stdout (stats)
-      ffmpeg.stdout.on('data', (data: Buffer) => {
+      ffmpeg.stderr.on('data', (data: Buffer) => {
         const output = data.toString().trim();
-        if (output) {
-          console.log(`[FFmpeg ${target.platform} stdout]`, output);
+        if (output.includes('Error') || output.includes('error') || output.includes('Invalid')) {
+          console.error(`[FFmpeg ${target.platform} ERROR]`, output);
+          hasError = true;
+        } else if (output.includes('frame=') || output.includes('fps=')) {
+          // Log de progresso
+          const now = Date.now();
+          if (now - stream.lastLogTime > 5000) {
+            console.log(`[FFmpeg ${target.platform}] ${output.substring(0, 150)}`);
+            stream.lastLogTime = now;
+          }
         }
       });
 
-      // Capturar stderr (logs e erros)
-      ffmpeg.stderr.on('data', (data: Buffer) => {
-        const output = data.toString().trim();
-        
-        if (output.length > 0) {
-          const lines = output.split('\n');
-          for (const line of lines) {
-            // Log de progresso
-            if (line.includes('frame=') || line.includes('fps=') || line.includes('bitrate=')) {
-              console.log(`[FFmpeg ${target.platform}] ${line.substring(0, 200)}`);
-            } 
-            // Erros
-            else if (line.includes('Error') || line.includes('error') || line.includes('failed') || line.includes('Invalid')) {
-              console.error(`[FFmpeg ${target.platform} ERROR]`, line);
-            }
-            // Info importante
-            else if (line.includes('Output') || line.includes('Stream') || line.includes('Input') || line.includes('Duration')) {
-              console.log(`[FFmpeg ${target.platform}]`, line.substring(0, 200));
-            }
-          }
+      ffmpeg.on('close', (code) => {
+        // Limpar arquivo temporário
+        try {
+          fs.unlinkSync(segmentPath);
+        } catch (e) {
+          // Ignorar erro de limpeza
+        }
+
+        if (code === 0 || !hasError) {
+          console.log(`[RTMPStreamingService] Segment ${segmentNumber} sent to ${target.platform}`);
+          resolve();
+        } else {
+          console.error(`[RTMPStreamingService] FFmpeg exited with code ${code} for segment ${segmentNumber}`);
+          resolve(); // Continuar mesmo com erro
         }
       });
 
       ffmpeg.on('error', (error) => {
-        console.error(`[RTMPStreamingService] FFmpeg spawn error for ${target.platform}:`, error);
-        this.activeStreams.delete(streamId);
-        reject(error);
+        console.error(`[RTMPStreamingService] FFmpeg spawn error:`, error);
+        resolve(); // Continuar mesmo com erro
       });
-
-      ffmpeg.on('close', (code, signal) => {
-        const stream = this.activeStreams.get(streamId);
-        const duration = stream ? Math.floor((Date.now() - stream.startTime.getTime()) / 1000) : 0;
-        const bytes = stream?.bytesReceived || 0;
-        const chunks = stream?.chunksReceived || 0;
-        
-        console.log(`[RTMPStreamingService] FFmpeg closed for ${target.platform}:`);
-        console.log(`  - Exit code: ${code}`);
-        console.log(`  - Signal: ${signal}`);
-        console.log(`  - Duration: ${duration}s`);
-        console.log(`  - Bytes received: ${bytes}`);
-        console.log(`  - Chunks received: ${chunks}`);
-        
-        this.activeStreams.delete(streamId);
-      });
-
-      // Marcar como ativo
-      this.activeStreams.set(streamId, {
-        target,
-        ffmpeg,
-        startTime: new Date(),
-        bytesReceived: 0,
-        chunksReceived: 0,
-        lastLogTime: Date.now(),
-      });
-      
-      // Resolver após um curto delay para permitir que FFmpeg inicie
-      setTimeout(() => resolve(), 500);
     });
-  }
-
-  /**
-   * Encaminha chunks de vídeo para os processos FFmpeg
-   */
-  private forwardToFFmpeg(data: Buffer, targets: StreamTarget[]) {
-    for (const target of targets) {
-      // Procurar stream ativo para este target
-      for (const [streamId, stream] of this.activeStreams) {
-        if (stream.target.id === target.id) {
-          if (stream.ffmpeg.stdin && !stream.ffmpeg.stdin.destroyed) {
-            try {
-              const written = stream.ffmpeg.stdin.write(data);
-              stream.bytesReceived += data.length;
-              
-              if (!written) {
-                // Buffer cheio, aguardar drain
-                stream.ffmpeg.stdin.once('drain', () => {
-                  // Buffer drenado, pode continuar
-                });
-              }
-            } catch (e) {
-              console.error(`[RTMPStreamingService] Error writing to FFmpeg for ${target.platform}:`, e);
-            }
-          } else {
-            console.warn(`[RTMPStreamingService] FFmpeg stdin not available for ${target.platform}`);
-          }
-          break;
-        }
-      }
-    }
   }
 
   /**
@@ -347,7 +357,7 @@ export class RTMPStreamingService {
     
     this.activeStreams.forEach((stream, streamId) => {
       if (streamId.startsWith(clientId)) {
-        this.stopStreamById(streamId);
+        this.cleanupStream(streamId);
         toDelete.push(streamId);
       }
     });
@@ -356,25 +366,35 @@ export class RTMPStreamingService {
   }
 
   /**
-   * Para um stream específico por ID
+   * Limpa recursos de um stream
    */
-  private stopStreamById(streamId: string) {
+  private cleanupStream(streamId: string) {
     const stream = this.activeStreams.get(streamId);
-    if (stream) {
-      console.log(`[RTMPStreamingService] Stopping stream: ${streamId}`);
-      
-      // Fechar stdin para sinalizar fim do stream
-      if (stream.ffmpeg.stdin && !stream.ffmpeg.stdin.destroyed) {
-        stream.ffmpeg.stdin.end();
-      }
-      
-      // Matar processo após um delay
-      setTimeout(() => {
-        if (!stream.ffmpeg.killed) {
-          stream.ffmpeg.kill('SIGTERM');
-        }
-      }, 2000);
+    if (!stream) return;
+
+    console.log(`[RTMPStreamingService] Cleaning up stream: ${streamId}`);
+
+    // Matar processo FFmpeg se existir
+    if (stream.ffmpeg && !stream.ffmpeg.killed) {
+      stream.ffmpeg.kill('SIGTERM');
     }
+
+    // Limpar diretório temporário
+    try {
+      const files = fs.readdirSync(stream.tempDir);
+      for (const file of files) {
+        fs.unlinkSync(path.join(stream.tempDir, file));
+      }
+      fs.rmdirSync(stream.tempDir);
+    } catch (e) {
+      // Ignorar erros de limpeza
+    }
+
+    const duration = Math.floor((Date.now() - stream.startTime.getTime()) / 1000);
+    console.log(`[RTMPStreamingService] Stream ${streamId} cleaned up:`);
+    console.log(`  - Duration: ${duration}s`);
+    console.log(`  - Bytes received: ${stream.bytesReceived}`);
+    console.log(`  - Segments received: ${stream.segmentsReceived}`);
   }
 
   /**
@@ -383,7 +403,7 @@ export class RTMPStreamingService {
   stopStream(targetId: string) {
     for (const [streamId, stream] of this.activeStreams) {
       if (stream.target.id === targetId) {
-        this.stopStreamById(streamId);
+        this.cleanupStream(streamId);
         this.activeStreams.delete(streamId);
         break;
       }
@@ -396,7 +416,7 @@ export class RTMPStreamingService {
   stopAllStreams() {
     const ids = Array.from(this.activeStreams.keys());
     ids.forEach(id => {
-      this.stopStreamById(id);
+      this.cleanupStream(id);
       this.activeStreams.delete(id);
     });
   }
@@ -414,7 +434,7 @@ export class RTMPStreamingService {
         platform: stream.target.platform,
         duration: Math.floor(duration / 1000),
         bytesReceived: stream.bytesReceived,
-        chunksReceived: stream.chunksReceived,
+        segmentsReceived: stream.segmentsReceived,
         status: 'streaming',
       });
     });
