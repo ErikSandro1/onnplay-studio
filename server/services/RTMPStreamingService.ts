@@ -304,9 +304,8 @@ export class RTMPStreamingService {
    * Para todos os streams ativos
    */
   stopAllStreams() {
-    for (const [id] of this.activeStreams) {
-      this.stopStream(id);
-    }
+    const ids = Array.from(this.activeStreams.keys());
+    ids.forEach(id => this.stopStream(id));
   }
 
   /**
@@ -315,7 +314,7 @@ export class RTMPStreamingService {
   getStats() {
     const stats: any[] = [];
     
-    for (const [id, stream] of this.activeStreams) {
+    this.activeStreams.forEach((stream, id) => {
       const duration = Date.now() - stream.startTime.getTime();
       stats.push({
         id,
@@ -323,7 +322,7 @@ export class RTMPStreamingService {
         duration: Math.floor(duration / 1000),
         status: 'streaming',
       });
-    }
+    });
     
     return stats;
   }

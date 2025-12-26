@@ -99,7 +99,7 @@ async function startServer() {
     res.sendFile(path.join(staticPath, "index.html"));
   });
 
-  const port = process.env.PORT || 3000;
+  const port = Number(process.env.PORT) || 3000;
   const httpServer = server.listen(port, "0.0.0.0", () => {
     console.log(`🚀 Server running on http://localhost:${port}/`);
     console.log(`📡 API available at http://localhost:${port}/api`);
