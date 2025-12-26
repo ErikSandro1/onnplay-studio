@@ -12,6 +12,7 @@ import { AuthService } from "./services/AuthService";
 import { StripeService } from "./services/StripeService";
 import { UsageLimitService } from "./services/UsageLimitService";
 import { BroadcastTrackingService } from "./services/BroadcastTrackingService";
+import { rtmpStreamingService } from "./services/RTMPStreamingService";
 import { createDatabase } from "./db/database";
 
 // Load environment variables
@@ -53,17 +54,30 @@ async function startServer() {
   const usageLimitService = new UsageLimitService(db);
   const broadcastService = new BroadcastTrackingService(db);
 
+  // Initialize RTMP Streaming WebSocket server
+  rtmpStreamingService.initialize(server);
+  console.log('📺 RTMP Streaming service initialized');
+
   // API routes
   app.use("/api/auth", createAuthRoutes(authService));
   app.use("/api/payments", createPaymentRoutes(stripeService, authService));
   app.use("/api/usage", createUsageRoutes(usageLimitService, authService));
   app.use("/api/broadcast", createBroadcastRoutes(broadcastService, authService));
 
+  // Stream status endpoint
+  app.get("/api/stream/status", (req, res) => {
+    res.json({
+      active: rtmpStreamingService.hasActiveStreams(),
+      streams: rtmpStreamingService.getStats(),
+    });
+  });
+
   // Health check endpoint
   app.get("/api/health", (req, res) => {
     res.json({
       status: "ok",
       timestamp: new Date().toISOString(),
+      streaming: rtmpStreamingService.hasActiveStreams(),
     });
   });
 
@@ -89,12 +103,14 @@ async function startServer() {
   const httpServer = server.listen(port, "0.0.0.0", () => {
     console.log(`🚀 Server running on http://localhost:${port}/`);
     console.log(`📡 API available at http://localhost:${port}/api`);
+    console.log(`📺 WebSocket streaming at ws://localhost:${port}/api/stream/ws`);
     console.log(`🎨 Frontend served from ${staticPath}`);
   });
 
   // Graceful shutdown
   process.on('SIGTERM', async () => {
     console.log('SIGTERM signal received: closing HTTP server');
+    rtmpStreamingService.stopAllStreams();
     await broadcastService.cleanup();
     httpServer.close(() => {
       console.log('HTTP server closed');
@@ -103,6 +119,7 @@ async function startServer() {
 
   process.on('SIGINT', async () => {
     console.log('SIGINT signal received: closing HTTP server');
+    rtmpStreamingService.stopAllStreams();
     await broadcastService.cleanup();
     httpServer.close(() => {
       console.log('HTTP server closed');
