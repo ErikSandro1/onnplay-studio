@@ -517,6 +517,13 @@ class RTMPStreamService {
   }
 
   /**
+   * Subscribe to stats updates (alias for onStats)
+   */
+  subscribe(callback: StreamCallback): () => void {
+    return this.onStats(callback);
+  }
+
+  /**
    * Subscribe to status changes
    */
   onStatusChange(callback: StatusCallback): () => void {
