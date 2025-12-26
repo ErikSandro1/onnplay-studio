@@ -31,6 +31,7 @@ interface ActiveStream {
   ffmpeg: ChildProcess;
   startTime: Date;
   bytesReceived: number;
+  chunksReceived: number;
 }
 
 interface ClientData {
@@ -147,6 +148,17 @@ export class RTMPStreamingService {
     const clientData = this.clients.get(socket.id);
     if (clientData?.targets) {
       const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+      
+      // Log a cada 100 chunks para debug
+      const streamId = `${socket.id}:${clientData.targets[0]?.id}`;
+      const stream = this.activeStreams.get(streamId);
+      if (stream) {
+        stream.chunksReceived = (stream.chunksReceived || 0) + 1;
+        if (stream.chunksReceived % 100 === 0) {
+          console.log(`[RTMPStreamingService] Chunks received: ${stream.chunksReceived}, bytes: ${stream.bytesReceived}`);
+        }
+      }
+      
       this.forwardToFFmpeg(buffer, clientData.targets);
     }
   }
@@ -163,39 +175,46 @@ export class RTMPStreamingService {
     console.log(`[RTMPStreamingService] FFmpeg target: ${target.platform}`);
     console.log(`[RTMPStreamingService] RTMP URL: ${rtmpUrl.substring(0, 60)}...`);
 
-    // Argumentos do FFmpeg
-    // Recebe WebM via stdin e converte para FLV/H.264 para RTMP
+    // Argumentos do FFmpeg otimizados para WebM input
+    // O navegador envia WebM com VP9/Opus, precisamos converter para H.264/AAC para RTMP
     const ffmpegArgs = [
-      // Input
-      '-i', 'pipe:0',                    // Ler de stdin
-      '-re',                              // Ler em tempo real
+      // Logging
+      '-loglevel', 'warning',
+      '-stats',
       
-      // Video codec
-      '-c:v', 'libx264',                  // Codec H.264
-      '-preset', 'veryfast',              // Preset rápido para baixa latência
-      '-tune', 'zerolatency',             // Otimizar para streaming
-      '-b:v', `${config.videoBitrate}`,   // Bitrate de vídeo
-      '-maxrate', `${config.videoBitrate}`,
-      '-bufsize', `${config.videoBitrate * 2}`,
-      '-pix_fmt', 'yuv420p',              // Formato de pixel compatível
-      '-g', `${config.frameRate * 2}`,    // GOP = 2 segundos
-      '-keyint_min', `${config.frameRate}`,
+      // Input - WebM from stdin
+      '-f', 'webm',                         // Força formato WebM
+      '-i', 'pipe:0',                       // Ler de stdin
       
-      // Video scaling
-      '-vf', `scale=${config.width}:${config.height}:force_original_aspect_ratio=decrease,pad=${config.width}:${config.height}:(ow-iw)/2:(oh-ih)/2`,
-      '-r', `${config.frameRate}`,        // Frame rate
+      // Video codec - converter VP9 para H.264
+      '-c:v', 'libx264',                    // Codec H.264
+      '-preset', 'ultrafast',               // Preset mais rápido para streaming
+      '-tune', 'zerolatency',               // Otimizar para streaming
+      '-profile:v', 'baseline',             // Perfil mais compatível
+      '-level', '3.1',
+      '-b:v', `${Math.min(config.videoBitrate, 4500000)}`, // Max 4.5Mbps
+      '-maxrate', `${Math.min(config.videoBitrate, 4500000)}`,
+      '-bufsize', `${Math.min(config.videoBitrate * 2, 9000000)}`,
+      '-pix_fmt', 'yuv420p',                // Formato de pixel compatível
+      '-g', '60',                           // GOP = 2 segundos a 30fps
+      '-keyint_min', '30',
       
-      // Audio codec
-      '-c:a', 'aac',                      // Codec AAC
-      '-b:a', `${config.audioBitrate}`,   // Bitrate de áudio
-      '-ar', '44100',                     // Sample rate
-      '-ac', '2',                         // Stereo
+      // Video scaling - garantir resolução correta
+      '-vf', `scale=${config.width}:${config.height}:force_original_aspect_ratio=decrease,pad=${config.width}:${config.height}:(ow-iw)/2:(oh-ih)/2,fps=${config.frameRate}`,
+      
+      // Audio codec - converter Opus para AAC
+      '-c:a', 'aac',                        // Codec AAC
+      '-b:a', '128k',                       // Bitrate de áudio fixo
+      '-ar', '44100',                       // Sample rate
+      '-ac', '2',                           // Stereo
       
       // Output
-      '-f', 'flv',                        // Formato FLV para RTMP
+      '-f', 'flv',                          // Formato FLV para RTMP
       '-flvflags', 'no_duration_filesize',
       rtmpUrl,
     ];
+
+    console.log(`[RTMPStreamingService] FFmpeg command: ffmpeg ${ffmpegArgs.join(' ').substring(0, 200)}...`);
 
     return new Promise((resolve, reject) => {
       const ffmpeg = spawn('ffmpeg', ffmpegArgs, {
@@ -204,23 +223,54 @@ export class RTMPStreamingService {
 
       const streamId = `${clientId}:${target.id}`;
 
+      // Capturar stdout (stats)
+      ffmpeg.stdout.on('data', (data: Buffer) => {
+        console.log(`[FFmpeg ${target.platform} stdout]`, data.toString().trim());
+      });
+
+      // Capturar stderr (logs e erros)
       ffmpeg.stderr.on('data', (data: Buffer) => {
-        const output = data.toString();
+        const output = data.toString().trim();
         
-        // Log apenas mensagens importantes
-        if (output.includes('frame=') || output.includes('Error') || output.includes('error')) {
-          console.log(`[FFmpeg ${target.platform}]`, output.trim().substring(0, 200));
+        // Log todas as mensagens para debug
+        if (output.length > 0) {
+          // Filtrar mensagens muito longas
+          const lines = output.split('\n');
+          for (const line of lines) {
+            if (line.includes('frame=') || line.includes('fps=') || line.includes('bitrate=')) {
+              // Log de progresso - mostrar apenas a cada 5 segundos
+              const stream = this.activeStreams.get(streamId);
+              if (stream && Date.now() - stream.startTime.getTime() > 5000) {
+                console.log(`[FFmpeg ${target.platform}] ${line.substring(0, 150)}`);
+              }
+            } else if (line.includes('Error') || line.includes('error') || line.includes('failed')) {
+              console.error(`[FFmpeg ${target.platform} ERROR]`, line);
+            } else if (line.includes('Output') || line.includes('Stream mapping') || line.includes('Press')) {
+              console.log(`[FFmpeg ${target.platform}]`, line.substring(0, 150));
+            }
+          }
         }
       });
 
       ffmpeg.on('error', (error) => {
-        console.error(`[RTMPStreamingService] FFmpeg error for ${target.platform}:`, error);
+        console.error(`[RTMPStreamingService] FFmpeg spawn error for ${target.platform}:`, error);
         this.activeStreams.delete(streamId);
         reject(error);
       });
 
-      ffmpeg.on('close', (code) => {
-        console.log(`[RTMPStreamingService] FFmpeg closed for ${target.platform} with code ${code}`);
+      ffmpeg.on('close', (code, signal) => {
+        const stream = this.activeStreams.get(streamId);
+        const duration = stream ? Math.floor((Date.now() - stream.startTime.getTime()) / 1000) : 0;
+        const bytes = stream?.bytesReceived || 0;
+        const chunks = stream?.chunksReceived || 0;
+        
+        console.log(`[RTMPStreamingService] FFmpeg closed for ${target.platform}:`);
+        console.log(`  - Exit code: ${code}`);
+        console.log(`  - Signal: ${signal}`);
+        console.log(`  - Duration: ${duration}s`);
+        console.log(`  - Bytes received: ${bytes}`);
+        console.log(`  - Chunks received: ${chunks}`);
+        
         this.activeStreams.delete(streamId);
       });
 
@@ -230,10 +280,11 @@ export class RTMPStreamingService {
         ffmpeg,
         startTime: new Date(),
         bytesReceived: 0,
+        chunksReceived: 0,
       });
       
       // Resolver após um curto delay para permitir que FFmpeg inicie
-      setTimeout(() => resolve(), 1000);
+      setTimeout(() => resolve(), 500);
     });
   }
 
@@ -247,11 +298,20 @@ export class RTMPStreamingService {
         if (stream.target.id === target.id) {
           if (stream.ffmpeg.stdin && !stream.ffmpeg.stdin.destroyed) {
             try {
-              stream.ffmpeg.stdin.write(data);
+              const written = stream.ffmpeg.stdin.write(data);
               stream.bytesReceived += data.length;
+              
+              if (!written) {
+                // Buffer cheio, aguardar drain
+                stream.ffmpeg.stdin.once('drain', () => {
+                  // Buffer drenado, pode continuar
+                });
+              }
             } catch (e) {
               console.error(`[RTMPStreamingService] Error writing to FFmpeg for ${target.platform}:`, e);
             }
+          } else {
+            console.warn(`[RTMPStreamingService] FFmpeg stdin not available for ${target.platform}`);
           }
           break;
         }
@@ -334,6 +394,7 @@ export class RTMPStreamingService {
         platform: stream.target.platform,
         duration: Math.floor(duration / 1000),
         bytesReceived: stream.bytesReceived,
+        chunksReceived: stream.chunksReceived,
         status: 'streaming',
       });
     });
