@@ -316,12 +316,12 @@ export default function Dashboard() {
                         <div
                           className="h-full bg-cyan-500"
                           style={{
-                            width: `${usageSummary.percentUsed.streaming}%`,
+                            width: `${usageSummary.percentUsed?.streaming ?? 0}%`,
                           }}
                         ></div>
                       </div>
                       <p className="text-xs text-gray-500 mt-1">
-                        {usageSummary.remaining.streamingMinutes} min restantes
+                        {usageSummary.remaining?.streamingMinutes ?? 0} min restantes
                       </p>
                     </div>
                   )}
@@ -345,7 +345,7 @@ export default function Dashboard() {
                     <p className="text-xs text-green-500 mt-2">Ilimitado</p>
                   ) : (
                     <p className="text-xs text-gray-500 mt-2">
-                      {usageSummary?.remaining.recordingMinutes} min restantes
+                      {usageSummary?.remaining?.recordingMinutes ?? 0} min restantes
                     </p>
                   )}
                 </div>

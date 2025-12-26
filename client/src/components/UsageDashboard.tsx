@@ -120,9 +120,9 @@ export function UsageDashboard() {
     return null;
   }
 
-  const streamingLimit = usage.limits.streamingMinutes;
-  const streamingUsed = usage.usage.streamingMinutes;
-  const streamingPercentage = usage.percentUsed?.streamingMinutes || 
+  const streamingLimit = usage.limits?.streamingMinutes ?? 60;
+  const streamingUsed = usage.usage?.streamingMinutes ?? 0;
+  const streamingPercentage = usage.percentUsed?.streaming ?? 
     (streamingLimit === -1 ? 0 : (streamingUsed / streamingLimit) * 100);
   const streamingRemaining = usage.remaining?.streamingMinutes ?? 
     (streamingLimit === -1 ? Infinity : Math.max(0, streamingLimit - streamingUsed));
