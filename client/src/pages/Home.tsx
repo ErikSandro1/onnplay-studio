@@ -6,6 +6,7 @@ import ToolsMenu, { ToolId } from '../components/ToolsMenu';
 import ParticipantsStrip from '../components/ParticipantsStrip';
 import ControlBar from '../components/ControlBar';
 import DualMonitors from '../components/DualMonitors';
+import LayoutIcons, { LayoutType } from '../components/LayoutIcons';
 
 // Tool Components (opened as modals)
 import TransitionSystem from '../components/TransitionSystem';
@@ -69,6 +70,7 @@ const HomeContent: React.FC = () => {
   const [transitionTimestamp, setTransitionTimestamp] = useState<string>('');
   const [previewCamera, setPreviewCamera] = useState<'cam1' | 'cam2' | 'cam3' | 'media' | 'screen'>('cam1');
   const [programCamera, setProgramCamera] = useState<'cam1' | 'cam2' | 'cam3' | 'media' | 'screen'>('cam2');
+  const [currentLayout, setCurrentLayout] = useState<LayoutType>('single');
   
   // Broadcast stats
   const [viewers, setViewers] = useState(0);
@@ -429,6 +431,14 @@ const HomeContent: React.FC = () => {
         <div className="flex-1 flex overflow-hidden">
           {/* Center: Monitors + Participants + Controls */}
           <div className="flex-1 flex flex-col p-4 gap-4">
+            {/* Layout Selector */}
+            <div className="flex justify-center">
+              <LayoutIcons 
+                currentLayout={currentLayout} 
+                onLayoutChange={setCurrentLayout} 
+              />
+            </div>
+
             {/* Monitors */}
             <div className="flex-1 min-h-0">
               <DualMonitors 
