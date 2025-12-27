@@ -17,6 +17,7 @@ import OverlayManager from '../components/OverlayManager';
 import StreamingConfig from '../components/StreamingConfig';
 import RecordingSettings from '../components/RecordingSettings';
 import UnifiedChat from '../components/UnifiedChat';
+import LiveCommentsPanel from '../components/LiveCommentsPanel';
 import AdvancedSettings from '../components/AdvancedSettings';
 import { AIChat } from '../components/AIChat';
 import { JoinRoomModal } from '../components/JoinRoomModal';
@@ -315,7 +316,7 @@ const HomeContent: React.FC = () => {
       case 'recording':
         return <RecordingSettings isOpen={true} onClose={handleCloseTool} />;
       case 'chat':
-        return <UnifiedChat isOpen={true} onClose={handleCloseTool} />;
+        return <LiveCommentsPanel isOpen={true} onClose={handleCloseTool} />;
       case 'settings':
         return <AdvancedSettings isOpen={true} onClose={handleCloseTool} />;
       default:

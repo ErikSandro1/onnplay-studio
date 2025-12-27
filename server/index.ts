@@ -8,6 +8,7 @@ import { createAuthRoutes } from "./routes/auth";
 import { createPaymentRoutes } from "./routes/payments";
 import { createUsageRoutes } from "./routes/usage";
 import { createBroadcastRoutes } from "./routes/broadcast";
+import youtubeRoutes from "./routes/youtube";
 import { AuthService } from "./services/AuthService";
 import { StripeService } from "./services/StripeService";
 import { UsageLimitService } from "./services/UsageLimitService";
@@ -63,6 +64,7 @@ async function startServer() {
   app.use("/api/payments", createPaymentRoutes(stripeService, authService));
   app.use("/api/usage", createUsageRoutes(usageLimitService, authService));
   app.use("/api/broadcast", createBroadcastRoutes(broadcastService, authService));
+  app.use("/api/youtube", youtubeRoutes);
 
   // Stream status endpoint
   app.get("/api/stream/status", (req, res) => {
