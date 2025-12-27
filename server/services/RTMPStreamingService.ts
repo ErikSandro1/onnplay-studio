@@ -325,6 +325,26 @@ export class RTMPStreamingService {
   getActiveStreamsCount(): number {
     return this.activeStreams.size;
   }
+
+  /**
+   * Stop all active streams (for graceful shutdown)
+   */
+  stopAllStreams(): void {
+    console.log(`[RTMPStreamingService] Stopping all ${this.activeStreams.size} active streams...`);
+    
+    for (const [socketId, stream] of this.activeStreams) {
+      try {
+        if (stream.ffmpegProcess && !stream.ffmpegProcess.killed) {
+          stream.ffmpegProcess.kill('SIGTERM');
+        }
+      } catch (error) {
+        console.error(`[RTMPStreamingService] Error stopping stream ${socketId}:`, error);
+      }
+    }
+    
+    this.activeStreams.clear();
+    console.log('[RTMPStreamingService] All streams stopped');
+  }
 }
 
 // Export singleton instance
