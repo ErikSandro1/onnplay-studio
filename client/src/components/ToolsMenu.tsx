@@ -29,7 +29,6 @@ interface Tool {
   id: ToolId;
   label: string;
   icon: React.ReactNode;
-  isPro?: boolean;
 }
 
 interface ToolsMenuProps {
@@ -37,14 +36,14 @@ interface ToolsMenuProps {
 }
 
 const tools: Tool[] = [
-  { id: 'transitions', label: 'Transitions', icon: <Shuffle size={18} />, isPro: true },
+  { id: 'transitions', label: 'Transitions', icon: <Shuffle size={18} /> },
   { id: 'brand', label: 'Brand', icon: <Palette size={18} /> },
-  { id: 'people', label: 'People', icon: <Users size={18} />, isPro: true },
-  { id: 'audio', label: 'Audio', icon: <Mic size={18} />, isPro: true },
-  { id: 'camera', label: 'Camera', icon: <Video size={18} />, isPro: true },
+  { id: 'people', label: 'People', icon: <Users size={18} /> },
+  { id: 'audio', label: 'Audio', icon: <Mic size={18} /> },
+  { id: 'camera', label: 'Camera', icon: <Video size={18} /> },
   { id: 'destinations', label: 'Destinations', icon: <Cast size={18} /> },
   { id: 'recording', label: 'Recording', icon: <Circle size={18} /> },
-  { id: 'analytics', label: 'Analytics', icon: <BarChart3 size={18} />, isPro: true },
+  { id: 'analytics', label: 'Analytics', icon: <BarChart3 size={18} /> },
   { id: 'chat', label: 'Chat', icon: <MessageSquare size={18} /> },
   { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },
 ];
@@ -122,18 +121,6 @@ const ToolsMenu: React.FC<ToolsMenuProps> = ({ onSelectTool }) => {
                 <span className="flex-1 text-left font-medium text-sm">
                   {tool.label}
                 </span>
-                
-                {tool.isPro && (
-                  <span 
-                    className="px-2 py-0.5 rounded text-xs font-bold"
-                    style={{
-                      background: '#FF6B00',
-                      color: '#FFFFFF'
-                    }}
-                  >
-                    PRO
-                  </span>
-                )}
               </button>
             ))}
           </div>
