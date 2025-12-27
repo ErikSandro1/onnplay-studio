@@ -34,40 +34,8 @@ interface MultiStreamChatProps {
 }
 
 export function MultiStreamChat({ className = '', onSelectMessage, selectedMessage }: MultiStreamChatProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: '1',
-      platform: 'youtube',
-      username: 'Lusse',
-      avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lusse',
-      message: 'iwwv.nda.as-!',
-      timestamp: new Date(Date.now() - 240000),
-    },
-    {
-      id: '2',
-      platform: 'twitch',
-      username: 'Mia',
-      avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mia',
-      message: 'co/eisper 🔥',
-      timestamp: new Date(Date.now() - 180000),
-    },
-    {
-      id: '3',
-      platform: 'facebook',
-      username: 'Devid',
-      avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Devid',
-      message: '@vanida.comeritso',
-      timestamp: new Date(Date.now() - 120000),
-    },
-    {
-      id: '4',
-      platform: 'youtube',
-      username: 'Amella',
-      avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Amella',
-      message: 'peterce yer kianeenationr',
-      timestamp: new Date(Date.now() - 60000),
-    },
-  ]);
+  // Iniciar com array vazio - mensagens reais virão das plataformas conectadas
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   const [filterPlatform, setFilterPlatform] = useState<string>('all');
   const [showOverlay, setShowOverlay] = useState(true);
@@ -81,36 +49,19 @@ export function MultiStreamChat({ className = '', onSelectMessage, selectedMessa
     scrollToBottom();
   }, [messages]);
 
-  // Simular mensagens chegando em tempo real
+  // Função para adicionar mensagem externa (chamada por integrações reais)
+  const addExternalMessage = (msg: ChatMessage) => {
+    setMessages((prev) => [...prev.slice(-50), msg]);
+  };
+
+  // Expor função para uso externo (integrações de plataformas)
   useEffect(() => {
-    const interval = setInterval(() => {
-      const platforms: Array<'youtube' | 'twitch' | 'facebook'> = ['youtube', 'twitch', 'facebook'];
-      const randomPlatform = platforms[Math.floor(Math.random() * platforms.length)];
-      const sampleMessages = [
-        'Ótima transmissão! 🔥',
-        'Hola a todos!',
-        'Que bueno verte!',
-        'Saludos!',
-        'Gracias por la transmisión',
-        'Conteúdo incrível! 👏',
-        'Quando é a próxima live?',
-      ];
-      const sampleNames = ['Alex', 'Laura', 'Carlos', 'Maria', 'Pedro', 'Ana', 'João', 'Sofia'];
-
-      const username = sampleNames[Math.floor(Math.random() * sampleNames.length)];
-      const newMsg: ChatMessage = {
-        id: Date.now().toString(),
-        platform: randomPlatform,
-        username,
-        avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`,
-        message: sampleMessages[Math.floor(Math.random() * sampleMessages.length)],
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev.slice(-50), newMsg]); // Keep last 50 messages
-    }, 5000);
-
-    return () => clearInterval(interval);
+    // @ts-ignore - Expor para uso global temporário
+    window.addMultiStreamChatMessage = addExternalMessage;
+    return () => {
+      // @ts-ignore
+      delete window.addMultiStreamChatMessage;
+    };
   }, []);
 
   const handleSelectMessage = (msg: ChatMessage) => {
