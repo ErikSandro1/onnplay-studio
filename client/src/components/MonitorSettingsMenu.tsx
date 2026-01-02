@@ -67,9 +67,23 @@ export function MonitorSettingsMenu({ target, isOpen, onClose, anchorRef }: Moni
   useEffect(() => {
     if (isOpen && anchorRef.current) {
       const rect = anchorRef.current.getBoundingClientRect();
+      const windowWidth = window.innerWidth;
+      
+      // Para PREVIEW, posicionar à direita do botão
+      // Para PROGRAM, posicionar à esquerda do botão
+      let left = rect.right + 10; // Padrão: à direita do botão
+      
+      // Se não couber à direita, posicionar à esquerda
+      if (left + 280 > windowWidth) {
+        left = rect.left - 280 - 10;
+      }
+      
+      // Garantir que não saia da tela
+      if (left < 10) left = 10;
+      
       setPosition({
         top: rect.bottom + 8,
-        left: rect.left - 200 + rect.width, // Alinhar à direita
+        left: left,
       });
     }
   }, [isOpen, anchorRef]);
