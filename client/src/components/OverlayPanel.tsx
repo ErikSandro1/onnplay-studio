@@ -109,9 +109,9 @@ export function OverlayPanel({ isOpen, onClose }: OverlayPanelProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="absolute top-0 left-full ml-2 w-96 bg-gray-900 rounded-lg shadow-xl border border-gray-700 z-50 flex flex-col max-h-[85vh]">
+    <div className="absolute right-0 top-0 h-full w-80 bg-gray-900 border-l border-gray-700 flex flex-col z-40">
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-gray-700">
+      <div className="p-4 border-b border-gray-700 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Layers size={18} className="text-purple-400" />
           <h3 className="text-white font-semibold">Overlays</h3>
@@ -294,7 +294,7 @@ export function OverlayPanel({ isOpen, onClose }: OverlayPanelProps) {
       </div>
 
       {/* Footer */}
-      <div className="p-2 border-t border-gray-700 bg-gray-800/50">
+      <div className="p-3 border-t border-gray-700">
         <p className="text-xs text-gray-500 text-center">
           Clique em um overlay para aplicar no stream
         </p>
