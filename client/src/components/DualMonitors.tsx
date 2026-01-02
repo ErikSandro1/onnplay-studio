@@ -375,11 +375,11 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
       <div className="flex flex-col items-center justify-center px-2">
         <button
           onClick={handleTransitionGo}
-          disabled={!hasPreviewContent && !isTransitioningLocal}
+          disabled={!hasPreviewContent && !previewStream && !previewMedia && !isTransitioningLocal}
           className={`
             relative w-14 h-14 rounded-full flex items-center justify-center
             transition-all duration-300 transform
-            ${hasPreviewContent || isTransitioningLocal 
+            ${(hasPreviewContent || previewStream || previewMedia || isTransitioningLocal)
               ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-400 hover:to-green-500 hover:scale-110 shadow-lg shadow-green-500/50' 
               : 'bg-gray-700 cursor-not-allowed opacity-50'
             }
@@ -395,13 +395,13 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
         
         <span 
           className="mt-2 text-xs font-bold tracking-wider"
-          style={{ color: hasPreviewContent ? '#22C55E' : '#6B7280' }}
+          style={{ color: (hasPreviewContent || previewStream || previewMedia) ? '#22C55E' : '#6B7280' }}
         >
           GO
         </span>
         
         {/* Indicador de conteúdo no PREVIEW */}
-        {hasPreviewContent && (
+        {(hasPreviewContent || previewStream || previewMedia) && (
           <div 
             className="mt-2 w-2 h-2 rounded-full animate-pulse"
             style={{ background: '#22C55E' }}
