@@ -40,12 +40,8 @@ export const LocalParticipantCard: React.FC<LocalParticipantCardProps> = ({
     }
   }, [stream]);
 
-  // Iniciar câmera automaticamente ao montar
-  useEffect(() => {
-    if (!localCameraService.isStreamActive()) {
-      localCameraService.startCamera();
-    }
-  }, []);
+  // Câmera não inicia automaticamente - usuário precisa clicar para ativar
+  // Isso respeita a privacidade e dá controle ao usuário
 
   const handleToggleMute = (e: React.MouseEvent) => {
     e.stopPropagation();
