@@ -188,6 +188,35 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
     }
   }, [programStream]);
 
+  // Escutar mudanças nas configurações de câmera e aplicar ao vídeo
+  useEffect(() => {
+    const handleSettingsChanged = (event: CustomEvent) => {
+      const { target, settings } = event.detail;
+      console.log('[DualMonitors] Settings changed:', target, settings);
+      
+      // Aplicar configurações ao vídeo correspondente
+      const videoRef = target === 'preview' ? previewStreamRef.current : programStreamRef.current;
+      
+      if (videoRef) {
+        const transforms: string[] = [];
+        
+        if (settings.flipH) transforms.push('scaleX(-1)');
+        if (settings.flipV) transforms.push('scaleY(-1)');
+        if (settings.rotation !== 0) transforms.push(`rotate(${settings.rotation}deg)`);
+        if (settings.zoom !== 1) transforms.push(`scale(${settings.zoom})`);
+        
+        videoRef.style.transform = transforms.join(' ');
+        videoRef.style.filter = `brightness(${settings.brightness}%) contrast(${settings.contrast}%)`;
+      }
+    };
+    
+    window.addEventListener('monitor:settings-changed', handleSettingsChanged as EventListener);
+    
+    return () => {
+      window.removeEventListener('monitor:settings-changed', handleSettingsChanged as EventListener);
+    };
+  }, []);
+
   // Função de transição GO (PREVIEW -> PROGRAM)
   const handleTransitionGo = () => {
     setIsTransitioningLocal(true);
