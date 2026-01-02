@@ -134,23 +134,25 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
     };
   }, []);
 
-  // Escutar evento source:preview para câmera/tela
+  // Escutar evento camera:preview para câmera/tela
   useEffect(() => {
-    const handleSourcePreview = (event: CustomEvent) => {
+    const handleCameraPreview = (event: CustomEvent) => {
       const { id, type, name, stream } = event.detail;
-      console.log('[DualMonitors] Source preview event:', { id, type, name, stream });
+      console.log('[DualMonitors] Camera preview event:', { id, type, name, stream });
       
       if (stream && (type === 'camera' || type === 'screen')) {
         setPreviewStream(stream);
         setPreviewMedia(null); // Limpar mídia de imagem/vídeo
         setHasPreviewContent(true);
+        // Limpar a fonte de mídia no MediaSourceService também
+        mediaSourceService.setPreviewSource(null);
       }
     };
     
-    window.addEventListener('source:preview', handleSourcePreview as EventListener);
+    window.addEventListener('camera:preview', handleCameraPreview as EventListener);
     
     return () => {
-      window.removeEventListener('source:preview', handleSourcePreview as EventListener);
+      window.removeEventListener('camera:preview', handleCameraPreview as EventListener);
     };
   }, []);
 
