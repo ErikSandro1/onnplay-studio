@@ -307,10 +307,10 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
         >
           {/* Renderizar stream de câmera, mídia ou placeholder */}
           {previewStream ? (
-            <div className="w-full h-full relative">
+            <div className="w-full h-full relative flex items-center justify-center bg-black">
               <video
                 ref={previewStreamRef}
-                className="w-full h-full object-cover bg-black"
+                className="max-w-full max-h-full object-contain"
                 autoPlay
                 muted
                 playsInline
@@ -494,10 +494,10 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
         >
           {/* Renderizar stream de câmera, mídia ou placeholder */}
           {programStream ? (
-            <div className="w-full h-full relative">
+            <div className="w-full h-full relative flex items-center justify-center bg-black">
               <video
                 ref={programStreamRef}
-                className="w-full h-full object-cover bg-black"
+                className="max-w-full max-h-full object-contain"
                 autoPlay
                 muted
                 playsInline
