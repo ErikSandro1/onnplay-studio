@@ -76,6 +76,10 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
     const unsubscribeActive = mediaSourceService.onActiveChange((source) => {
       console.log('[DualMonitors] Program source changed:', source?.name);
       setProgramMedia(source);
+      // Se uma nova mídia for enviada para PROGRAM, limpar o stream de câmera
+      if (source) {
+        setProgramStream(null);
+      }
     });
 
     // Carregar estado inicial
@@ -183,6 +187,10 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
       setProgramStream(previewStream);
       setProgramMedia(null); // Limpar mídia quando tiver câmera
       setPreviewStream(null); // Limpar do preview
+    } else if (previewMedia) {
+      // Se tiver mídia (imagem/vídeo) no PREVIEW, limpar o stream de câmera do PROGRAM
+      console.log('[DualMonitors] Transferring media to PROGRAM, clearing camera stream');
+      setProgramStream(null); // Limpar câmera quando tiver mídia
     }
     
     // Disparar evento de transição
