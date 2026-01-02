@@ -208,6 +208,45 @@ export class CommentOverlayService {
     this.notify();
   }
 
+  // Show comment directly (simplified API for Sidebar)
+  showComment(data: {
+    id: string;
+    author: string;
+    message: string;
+    avatar: string;
+    platform: string;
+    timestamp: Date;
+  }): void {
+    const comment: Comment = {
+      id: data.id,
+      platform: data.platform as any,
+      author: {
+        id: data.author,
+        name: data.author,
+        avatarUrl: data.avatar,
+        badges: [],
+      },
+      message: data.message,
+      timestamp: data.timestamp.getTime(),
+      isPinned: false,
+      isStarred: false,
+      isRead: false,
+    };
+
+    // Add to comments list
+    this.comments.push(comment);
+    
+    // Pin it to show on screen
+    this.pinComment(comment.id);
+    
+    console.log('[CommentOverlay] Comment shown:', data.author, '-', data.message);
+  }
+
+  // Hide all pinned comments
+  hideAll(): void {
+    this.clearPinnedComments();
+  }
+
   // Statistics
   getStats() {
     const total = this.comments.length;

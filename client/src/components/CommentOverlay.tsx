@@ -29,7 +29,7 @@ export function CommentOverlay() {
   }
 
   const getPositionClasses = () => {
-    const base = 'fixed z-50';
+    const base = 'absolute z-50';
     switch (config.position) {
       case 'top-left':
         return `${base} top-4 left-4`;

@@ -3,6 +3,7 @@ import { Video, FileText, LayoutGrid, Settings, X, Plus, MessageSquare, Youtube,
 import { commentOverlayService } from '../services/CommentOverlayService';
 import { mediaSourceService } from '../services/MediaSourceService';
 import { BannerPanel } from './BannerPanel';
+import { ScenePanelSidebar } from './ScenePanelSidebar';
 
 interface SidebarProps {
   activeSection?: string;
@@ -709,6 +710,14 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
       {/* Expandable Panel - BANNERS */}
       {activePanel === 'banners' && (
         <BannerPanel 
+          isOpen={true} 
+          onClose={() => setActivePanel(null)} 
+        />
+      )}
+
+      {/* Expandable Panel - SCENES */}
+      {activePanel === 'scenes' && (
+        <ScenePanelSidebar 
           isOpen={true} 
           onClose={() => setActivePanel(null)} 
         />
