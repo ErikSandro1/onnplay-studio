@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Eye, EyeOff, Send, X, Edit2, Trash2, Monitor, Tv, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Eye, EyeOff, Send, X, Edit2, Trash2, Monitor, Tv, Sparkles, ChevronDown, ChevronUp, Move } from 'lucide-react';
 import { bannerOverlayService, Banner, BannerType, BannerTheme, BannerPosition } from '../services/BannerOverlayService';
 import { ColorThemeSelector } from './ColorThemeSelector';
 import { BannerStyleSelector } from './BannerStyleSelector';
@@ -17,6 +17,7 @@ export function BannerPanel({ isOpen, onClose }: BannerPanelProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [showPresets, setShowPresets] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [editPositionBannerId, setEditPositionBannerId] = useState<string | null>(null);
 
   // Form state for creating/editing
   const [formData, setFormData] = useState({
@@ -498,6 +499,26 @@ export function BannerPanel({ isOpen, onClose }: BannerPanelProps) {
                 <Edit2 size={10} />
                 Editar
               </button>
+              {banner.type !== 'ticker' && (
+                <button
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    // Enviar para preview primeiro para poder editar posição
+                    handleSendToPreview(banner.id);
+                    setEditPositionBannerId(banner.id);
+                    // Emitir evento para ativar modo de edição
+                    window.dispatchEvent(new CustomEvent('banner:edit-position', { detail: { bannerId: banner.id } }));
+                  }}
+                  className={`px-2 py-1 rounded text-xs flex items-center justify-center gap-1 ${
+                    editPositionBannerId === banner.id 
+                      ? 'bg-cyan-600 text-white' 
+                      : 'bg-gray-700 hover:bg-gray-600 text-white'
+                  }`}
+                  title="Mover posição"
+                >
+                  <Move size={10} />
+                </button>
+              )}
               <button
                 onClick={(e) => { e.stopPropagation(); handleDelete(banner.id); }}
                 className="px-2 py-1 bg-red-900/50 hover:bg-red-900 rounded text-xs text-red-400 hover:text-white"

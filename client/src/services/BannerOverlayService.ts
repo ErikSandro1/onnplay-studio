@@ -16,12 +16,18 @@ export type BannerType = 'lower-third' | 'banner' | 'ticker' | 'logo';
 export type BannerPosition = 'top' | 'bottom' | 'left' | 'right' | 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 export type BannerTheme = 'bubble' | 'classic' | 'minimal' | 'block' | 'gradient' | 'neon' | 'glass' | 'sharp';
 
+export interface BannerCustomPosition {
+  x: number;  // Porcentagem (0-100) da esquerda
+  y: number;  // Porcentagem (0-100) do topo
+}
+
 export interface Banner {
   id: string;
   type: BannerType;
   name: string;
   theme: BannerTheme;
   position: BannerPosition;
+  customPosition?: BannerCustomPosition;  // Posição customizada (sobrescreve position)
   content: {
     title?: string;
     subtitle?: string;
@@ -357,6 +363,38 @@ class BannerOverlayService {
   // Obter banner por ID
   getBanner(id: string): Banner | null {
     return this.banners.get(id) || null;
+  }
+
+  // Atualizar posição customizada do banner
+  updateBannerPosition(id: string, customPosition: BannerCustomPosition): Banner | null {
+    const banner = this.banners.get(id);
+    if (!banner) return null;
+
+    banner.customPosition = customPosition;
+    this.banners.set(id, banner);
+    this.emit({ type: 'banner:updated', banner });
+    
+    // Salvar automaticamente
+    this.saveToPersistence();
+    
+    console.log('[BannerService] Banner position updated:', banner.name, customPosition);
+    return banner;
+  }
+
+  // Resetar posição customizada (voltar para pre-set)
+  resetBannerPosition(id: string): Banner | null {
+    const banner = this.banners.get(id);
+    if (!banner) return null;
+
+    delete banner.customPosition;
+    this.banners.set(id, banner);
+    this.emit({ type: 'banner:updated', banner });
+    
+    // Salvar automaticamente
+    this.saveToPersistence();
+    
+    console.log('[BannerService] Banner position reset to preset:', banner.name);
+    return banner;
   }
 
   // Sistema de eventos

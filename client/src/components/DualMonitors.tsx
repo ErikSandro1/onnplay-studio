@@ -44,6 +44,10 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
   // Estado para backgrounds
   const [currentBackground, setCurrentBackground] = useState<BackgroundPreset | CustomBackground | null>(null);
   const [previewBackground, setPreviewBackground] = useState<BackgroundPreset | CustomBackground | null>(null);
+  
+  // Estado para modo de edição de posição do banner
+  const [bannerEditMode, setBannerEditMode] = useState(false);
+  const previewMonitorRef = useRef<HTMLDivElement>(null);
 
   // Escutar eventos de preview de mídia e mudanças no MediaSourceService
   useEffect(() => {
@@ -93,6 +97,19 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
     });
 
     return unsubscribe;
+  }, []);
+
+  // Escutar evento de edição de posição do banner
+  useEffect(() => {
+    const handleEditPosition = (event: CustomEvent) => {
+      console.log('[DualMonitors] Banner edit position event:', event.detail);
+      setBannerEditMode(true);
+    };
+
+    window.addEventListener('banner:edit-position', handleEditPosition as EventListener);
+    return () => {
+      window.removeEventListener('banner:edit-position', handleEditPosition as EventListener);
+    };
   }, []);
 
   // Atualizar vídeos quando as fontes mudarem
@@ -215,7 +232,11 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           </div>
           
           {/* Banner Overlay - PREVIEW */}
-          <BannerOverlay target="preview" />
+          <BannerOverlay 
+            target="preview" 
+            editMode={bannerEditMode}
+            onEditModeChange={(isEdit) => setBannerEditMode(isEdit)}
+          />
         </div>
       </div>
 
