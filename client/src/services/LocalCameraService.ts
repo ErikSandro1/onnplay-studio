@@ -194,7 +194,7 @@ class LocalCameraService {
     console.log('[LocalCameraService] Sending camera to preview');
     
     // Disparar evento para DualMonitors
-    window.dispatchEvent(new CustomEvent('source:preview', {
+    window.dispatchEvent(new CustomEvent('camera:preview', {
       detail: {
         id: 'local-camera',
         type: 'camera',
