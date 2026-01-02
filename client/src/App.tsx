@@ -51,6 +51,11 @@ function Router() {
       <Route path="/home" component={Landing} />
       <Route path="/checkout/success" component={CheckoutSuccess} />
       
+      {/* Development route - No auth required for testing */}
+      <Route path="/dev">
+        <Home />
+      </Route>
+      
       {/* Protected routes - Require authentication */}
       <Route path="/">
         <ProtectedRoute>

@@ -327,6 +327,30 @@ export class RTMPStreamingService {
   }
 
   /**
+   * Check if there are active streams
+   */
+  hasActiveStreams(): boolean {
+    return this.activeStreams.size > 0;
+  }
+
+  /**
+   * Get stats for all active streams
+   */
+  getStats(): object {
+    const stats: any[] = [];
+    for (const [socketId, stream] of this.activeStreams) {
+      stats.push({
+        socketId,
+        destinations: stream.destinations.length,
+        bytesReceived: stream.bytesReceived,
+        chunksReceived: stream.chunksReceived,
+        duration: (Date.now() - stream.startTime) / 1000,
+      });
+    }
+    return { count: this.activeStreams.size, streams: stats };
+  }
+
+  /**
    * Stop all active streams (for graceful shutdown)
    */
   stopAllStreams(): void {
@@ -334,8 +358,10 @@ export class RTMPStreamingService {
     
     for (const [socketId, stream] of this.activeStreams) {
       try {
-        if (stream.ffmpegProcess && !stream.ffmpegProcess.killed) {
-          stream.ffmpegProcess.kill('SIGTERM');
+        for (const [destId, ffmpeg] of stream.ffmpegProcesses) {
+          if (ffmpeg && !ffmpeg.killed) {
+            ffmpeg.kill('SIGTERM');
+          }
         }
       } catch (error) {
         console.error(`[RTMPStreamingService] Error stopping stream ${socketId}:`, error);

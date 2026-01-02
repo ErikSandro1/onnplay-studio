@@ -12,6 +12,7 @@
  */
 
 import { io, Socket } from 'socket.io-client';
+import { mediaSourceService, MediaSource } from './MediaSourceService';
 
 export interface StreamDestination {
   id: string;
@@ -47,6 +48,7 @@ class RTMPStreamService {
   private animationFrameId: number | null = null;
   private statsInterval: NodeJS.Timeout | null = null;
   private videoElement: HTMLVideoElement | null = null;
+  private activeMediaSource: MediaSource | null = null;
   
   // Stats
   private chunksSent = 0;
@@ -85,6 +87,18 @@ class RTMPStreamService {
       alpha: false,
       desynchronized: true  // Better performance
     });
+    
+    // Subscribe to media source changes
+    mediaSourceService.subscribeActive((source) => {
+      this.activeMediaSource = source;
+      console.log('[RTMPStreamService] Active media source changed:', source?.name || 'none');
+    });
+    
+    // Listen for media activation events
+    window.addEventListener('media:activate', ((event: CustomEvent) => {
+      console.log('[RTMPStreamService] Media activated:', event.detail);
+      this.activeMediaSource = mediaSourceService.getActiveSource();
+    }) as EventListener);
   }
 
   /**
@@ -400,16 +414,27 @@ class RTMPStreamService {
       }
 
       try {
-        // Try to capture video element first
-        if (this.videoElement && !this.videoElement.paused && this.videoElement.readyState >= 2) {
+        // Priority 1: Check for active media source (image/video uploaded by user)
+        if (this.activeMediaSource && this.activeMediaSource.canvas) {
+          // Draw from the media source's canvas
+          this.captureCtx.drawImage(
+            this.activeMediaSource.canvas, 
+            0, 0, 
+            this.config.width, 
+            this.config.height
+          );
+        }
+        // Priority 2: Try to capture video element (webcam/screen share)
+        else if (this.videoElement && !this.videoElement.paused && this.videoElement.readyState >= 2) {
           this.captureCtx.drawImage(
             this.videoElement, 
             0, 0, 
             this.config.width, 
             this.config.height
           );
-        } else {
-          // Fallback: draw placeholder
+        } 
+        // Priority 3: Fallback - draw placeholder
+        else {
           this.captureCtx.fillStyle = '#1a1a2e';
           this.captureCtx.fillRect(0, 0, this.config.width, this.config.height);
           
@@ -447,6 +472,21 @@ class RTMPStreamService {
 
     this.animationFrameId = requestAnimationFrame(drawFrame);
     console.log('[RTMPStreamService] Canvas capture started at', this.config.frameRate, 'fps');
+  }
+
+  /**
+   * Set active media source manually
+   */
+  setActiveMediaSource(source: MediaSource | null): void {
+    this.activeMediaSource = source;
+    console.log('[RTMPStreamService] Active media source set:', source?.name || 'none');
+  }
+
+  /**
+   * Get current active media source
+   */
+  getActiveMediaSource(): MediaSource | null {
+    return this.activeMediaSource;
   }
 
   /**
