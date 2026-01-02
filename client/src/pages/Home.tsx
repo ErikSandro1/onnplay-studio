@@ -335,7 +335,7 @@ const HomeContent: React.FC = () => {
   const renderToolModal = () => {
     switch (activeTool) {
       case 'transitions':
-        return <TransitionSystem onTransition={handleTransition} isTransitioning={isTransitioning} />;
+        return <TransitionSystem onTransition={handleTransition} isTransitioning={isTransitioning} onClose={handleCloseTool} />;
       case 'brand':
         return <OverlayManager isOpen={true} onClose={handleCloseTool} />;
       case 'people':
@@ -343,7 +343,7 @@ const HomeContent: React.FC = () => {
       case 'audio':
         return <AdvancedAudioMixer isOpen={true} onClose={handleCloseTool} />;
       case 'camera':
-        return <CameraControl onCameraChange={handleCameraChange} onLayoutChange={handleLayoutChange} />;
+        return <CameraControl onCameraChange={handleCameraChange} onLayoutChange={handleLayoutChange} onClose={handleCloseTool} />;
       case 'destinations':
         return (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

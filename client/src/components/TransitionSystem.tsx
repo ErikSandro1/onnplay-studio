@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Zap, Scissors, ArrowRightLeft, Play } from 'lucide-react';
+import { Zap, Scissors, ArrowRightLeft, Play, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 type TransitionType = 'mix' | 'wipe' | 'cut' | 'auto';
@@ -7,9 +7,10 @@ type TransitionType = 'mix' | 'wipe' | 'cut' | 'auto';
 interface TransitionSystemProps {
   onTransition: (type: TransitionType) => void;
   isTransitioning: boolean;
+  onClose?: () => void;
 }
 
-export default function TransitionSystem({ onTransition, isTransitioning }: TransitionSystemProps) {
+export default function TransitionSystem({ onTransition, isTransitioning, onClose }: TransitionSystemProps) {
   const [selectedTransition, setSelectedTransition] = useState<TransitionType>('mix');
   const [transitionDuration, setTransitionDuration] = useState(1000); // ms
   const [autoTransitionInterval, setAutoTransitionInterval] = useState(5000); // ms
@@ -97,6 +98,20 @@ export default function TransitionSystem({ onTransition, isTransitioning }: Tran
 
   return (
     <div className="flex flex-col gap-2">
+      {/* Header with Close Button */}
+      {onClose && (
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-white font-bold text-sm">Transições</h3>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-700 rounded transition-colors text-gray-400 hover:text-white"
+            title="Fechar"
+          >
+            <X size={18} />
+          </button>
+        </div>
+      )}
+      
       {/* Transition Buttons */}
       <div className="grid grid-cols-2 gap-2">
         {transitions.map((transition) => {

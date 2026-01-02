@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Video, Monitor, Grid3x3, Maximize2, Settings, ZoomIn, Move, RotateCw, RefreshCw } from 'lucide-react';
+import { Video, Monitor, Grid3x3, Maximize2, Settings, ZoomIn, Move, RotateCw, RefreshCw, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { cameraControlService, CameraId, CameraSettings } from '../services/CameraControlService';
 
@@ -18,9 +18,10 @@ interface Camera {
 interface CameraControlProps {
   onCameraChange: (camera: CameraSource, target: 'program' | 'preview') => void;
   onLayoutChange: (layout: LayoutType) => void;
+  onClose?: () => void;
 }
 
-export default function CameraControl({ onCameraChange, onLayoutChange }: CameraControlProps) {
+export default function CameraControl({ onCameraChange, onLayoutChange, onClose }: CameraControlProps) {
   const [cameras, setCameras] = useState<Camera[]>([
     { id: 'cam1', label: 'CAM 1', isActive: true, isLive: false, resolution: '1080p', fps: 60 },
     { id: 'cam2', label: 'CAM 2', isActive: true, isLive: false, resolution: '1080p', fps: 60 },
@@ -154,6 +155,20 @@ export default function CameraControl({ onCameraChange, onLayoutChange }: Camera
 
   return (
     <div className="space-y-4">
+      {/* Header with Close Button */}
+      {onClose && (
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-white font-bold text-sm">Controle de Câmera</h3>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-700 rounded transition-colors text-gray-400 hover:text-white"
+            title="Fechar"
+          >
+            <X size={18} />
+          </button>
+        </div>
+      )}
+      
       {/* Program (PGM) Row */}
       <div>
         <div className="flex items-center gap-2 mb-2">
