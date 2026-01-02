@@ -1,18 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Video, FileText, LayoutGrid, Settings, X, Plus, MessageSquare, Youtube, Eye, RefreshCw, Link2, Unlink, Facebook, Instagram, Twitch, Music, Image, Film, Type, ArrowRight, Play, Monitor, Palette, Layers } from 'lucide-react';
+import { Video, FileText, LayoutGrid, Settings, X, Plus, MessageSquare, Youtube, Eye, RefreshCw, Link2, Unlink, Facebook, Instagram, Twitch, Music, Image, Film, Type, ArrowRight, Play, Monitor, Palette, Layers, Save } from 'lucide-react';
 import { commentOverlayService } from '../services/CommentOverlayService';
 import { mediaSourceService } from '../services/MediaSourceService';
 import { BannerPanel } from './BannerPanel';
 import { ScenePanelSidebar } from './ScenePanelSidebar';
 import { BackgroundPanel } from './BackgroundPanel';
 import { OverlayPanel } from './OverlayPanel';
+import { ProjectPanel } from './ProjectPanel';
 
 interface SidebarProps {
   activeSection?: string;
   onSectionChange?: (section: string) => void;
 }
 
-type PanelType = 'sources' | 'chat' | 'scenes' | 'layouts' | 'settings' | 'banners' | 'backgrounds' | 'overlays' | null;
+type PanelType = 'sources' | 'chat' | 'scenes' | 'layouts' | 'settings' | 'banners' | 'backgrounds' | 'overlays' | 'projects' | null;
 
 interface VideoSource {
   id: string;
@@ -344,6 +345,7 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
     { id: 'backgrounds' as PanelType, icon: Palette, label: 'Fundos' },
     { id: 'scenes' as PanelType, icon: FileText, label: 'Scenes' },
     { id: 'layouts' as PanelType, icon: LayoutGrid, label: 'Layouts' },
+    { id: 'projects' as PanelType, icon: Save, label: 'Projetos' },
   ];
 
   return (
@@ -730,6 +732,14 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
       {/* Expandable Panel - OVERLAYS */}
       {activePanel === 'overlays' && (
         <OverlayPanel 
+          isOpen={true} 
+          onClose={() => setActivePanel(null)} 
+        />
+      )}
+
+      {/* Expandable Panel - PROJECTS */}
+      {activePanel === 'projects' && (
+        <ProjectPanel 
           isOpen={true} 
           onClose={() => setActivePanel(null)} 
         />

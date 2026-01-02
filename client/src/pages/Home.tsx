@@ -506,7 +506,47 @@ const HomeContent: React.FC = () => {
 
             {/* Participants Strip */}
             <div style={{ height: '140px' }}>
-              <ParticipantsStrip participants={displayParticipants} />
+              <ParticipantsStrip 
+                participants={displayParticipants}
+                onToggleMute={(id) => {
+                  console.log('[Home] Toggle mute for participant:', id);
+                  // TODO: Implement via Daily.co
+                }}
+                onToggleCamera={(id) => {
+                  console.log('[Home] Toggle camera for participant:', id);
+                  // TODO: Implement via Daily.co
+                }}
+                onParticipantClick={(id) => {
+                  console.log('[Home] Participant clicked:', id);
+                  // Encontrar o participante
+                  const participant = displayParticipants.find(p => p.id === id);
+                  if (participant) {
+                    // Mapear participante para câmera
+                    const cameraMap: Record<string, 'cam1' | 'cam2' | 'cam3'> = {
+                      '1': 'cam1',
+                      '2': 'cam2', 
+                      '3': 'cam3',
+                    };
+                    const camera = cameraMap[id] || 'cam1';
+                    
+                    // IMPORTANTE: Limpar qualquer mídia no preview para mostrar a câmera
+                    // Importar mediaSourceService se necessário
+                    import('../services/MediaSourceService').then(({ mediaSourceService }) => {
+                      mediaSourceService.setPreviewSource(null);
+                    });
+                    
+                    // Enviar para PREVIEW
+                    setPreviewCamera(camera);
+                    
+                    // Disparar evento para atualizar DualMonitors
+                    window.dispatchEvent(new CustomEvent('participant:preview', {
+                      detail: { participantId: id, camera, participant }
+                    }));
+                    
+                    toast.success(`${participant.name} enviado para PREVIEW`);
+                  }
+                }}
+              />
             </div>
 
             {/* Control Bar */}
