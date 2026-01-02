@@ -77,6 +77,10 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
       console.log('[DualMonitors] Preview source changed:', source?.name);
       setPreviewMedia(source);
       setHasPreviewContent(!!source);
+      // Se uma nova mídia for enviada para PREVIEW, limpar o stream de câmera
+      if (source) {
+        setPreviewStream(null);
+      }
     });
 
     // Escutar mudanças na fonte ativa (PROGRAM)
