@@ -46,9 +46,11 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
   const [currentBackground, setCurrentBackground] = useState<BackgroundPreset | CustomBackground | null>(null);
   const [previewBackground, setPreviewBackground] = useState<BackgroundPreset | CustomBackground | null>(null);
   
-  // Estado para stream de câmera/tela no PREVIEW
+  // Estado para stream de câmera/tela no PREVIEW e PROGRAM
   const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
+  const [programStream, setProgramStream] = useState<MediaStream | null>(null);
   const previewStreamRef = useRef<HTMLVideoElement>(null);
+  const programStreamRef = useRef<HTMLVideoElement>(null);
   
   // Estado para modo de edição de posição do banner
   const [bannerEditMode, setBannerEditMode] = useState(false);
@@ -163,9 +165,25 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
     }
   }, [programMedia]);
 
+  // Atualizar vídeo do stream de câmera/tela no PROGRAM
+  useEffect(() => {
+    if (programStream && programStreamRef.current) {
+      programStreamRef.current.srcObject = programStream;
+      programStreamRef.current.play().catch((e) => console.error('Error playing program stream:', e));
+    }
+  }, [programStream]);
+
   // Função de transição GO (PREVIEW -> PROGRAM)
   const handleTransitionGo = () => {
     setIsTransitioningLocal(true);
+    
+    // Se tiver stream de câmera no PREVIEW, transferir para PROGRAM
+    if (previewStream) {
+      console.log('[DualMonitors] Transferring camera stream to PROGRAM');
+      setProgramStream(previewStream);
+      setProgramMedia(null); // Limpar mídia quando tiver câmera
+      setPreviewStream(null); // Limpar do preview
+    }
     
     // Disparar evento de transição
     window.dispatchEvent(new CustomEvent('transition:go', {
@@ -401,8 +419,23 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
             boxShadow: '0 0 20px rgba(255, 107, 0, 0.3)',
           }}
         >
-          {/* Renderizar mídia do PROGRAM ou câmera */}
-          {programMedia ? (
+          {/* Renderizar stream de câmera, mídia ou placeholder */}
+          {programStream ? (
+            <div className="w-full h-full relative">
+              <video
+                ref={programStreamRef}
+                className="w-full h-full object-cover bg-black"
+                autoPlay
+                muted
+                playsInline
+                style={{ transform: 'scaleX(-1)' }}
+              />
+              {/* Label da câmera */}
+              <div className="absolute bottom-12 left-3 px-2 py-1 rounded bg-black/70 text-white text-xs">
+                🎥 Câmera Local
+              </div>
+            </div>
+          ) : programMedia ? (
             <div className="w-full h-full relative">
               {programMedia.type === 'image' ? (
                 <img 
