@@ -1,5 +1,5 @@
-import React from 'react';
-import { Maximize2, Settings } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Maximize2, Settings, ArrowRight, Play } from 'lucide-react';
 import VideoPreview from './VideoPreview';
 import { CameraId } from '../services/CameraControlService';
 import { CommentOverlay } from './CommentOverlay';
@@ -28,8 +28,46 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
 }) => {
   const previewLabel = previewCamera.toUpperCase().replace('CAM', 'CAM ');
   const programLabel = programCamera.toUpperCase().replace('CAM', 'CAM ');
+  
+  const [hasPreviewContent, setHasPreviewContent] = useState(false);
+  const [isTransitioningLocal, setIsTransitioningLocal] = useState(false);
+
+  // Escutar eventos de preview de mídia
+  useEffect(() => {
+    const handleMediaPreview = (event: CustomEvent) => {
+      console.log('[DualMonitors] Media preview event:', event.detail);
+      setHasPreviewContent(true);
+    };
+
+    window.addEventListener('media:preview', handleMediaPreview as EventListener);
+    return () => {
+      window.removeEventListener('media:preview', handleMediaPreview as EventListener);
+    };
+  }, []);
+
+  // Função de transição GO (PREVIEW -> PROGRAM)
+  const handleTransitionGo = () => {
+    setIsTransitioningLocal(true);
+    
+    // Disparar evento de transição
+    window.dispatchEvent(new CustomEvent('transition:go', {
+      detail: { from: 'preview', to: 'program' }
+    }));
+    
+    // Disparar evento para ativar a mídia no PROGRAM
+    window.dispatchEvent(new CustomEvent('media:transition-to-program'));
+    
+    console.log('[DualMonitors] Transition GO: PREVIEW -> PROGRAM');
+    
+    // Reset após animação
+    setTimeout(() => {
+      setIsTransitioningLocal(false);
+      setHasPreviewContent(false);
+    }, 500);
+  };
+
   return (
-    <div className="flex gap-4 h-full">
+    <div className="flex gap-2 h-full items-stretch">
       {/* PREVIEW Monitor */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
@@ -87,6 +125,44 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           {/* Banner Overlay - PREVIEW */}
           <BannerOverlay target="preview" />
         </div>
+      </div>
+
+      {/* Botão GO de Transição */}
+      <div className="flex flex-col items-center justify-center px-2">
+        <button
+          onClick={handleTransitionGo}
+          disabled={!hasPreviewContent && !isTransitioningLocal}
+          className={`
+            relative w-14 h-14 rounded-full flex items-center justify-center
+            transition-all duration-300 transform
+            ${hasPreviewContent || isTransitioningLocal 
+              ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-400 hover:to-green-500 hover:scale-110 shadow-lg shadow-green-500/50' 
+              : 'bg-gray-700 cursor-not-allowed opacity-50'
+            }
+            ${isTransitioningLocal ? 'animate-pulse scale-110' : ''}
+          `}
+          title="Enviar PREVIEW para PROGRAM (GO)"
+        >
+          <ArrowRight 
+            size={28} 
+            className={`text-white ${isTransitioningLocal ? 'animate-bounce' : ''}`}
+          />
+        </button>
+        
+        <span 
+          className="mt-2 text-xs font-bold tracking-wider"
+          style={{ color: hasPreviewContent ? '#22C55E' : '#6B7280' }}
+        >
+          GO
+        </span>
+        
+        {/* Indicador de conteúdo no PREVIEW */}
+        {hasPreviewContent && (
+          <div 
+            className="mt-2 w-2 h-2 rounded-full animate-pulse"
+            style={{ background: '#22C55E' }}
+          />
+        )}
       </div>
 
       {/* PROGRAM Monitor */}

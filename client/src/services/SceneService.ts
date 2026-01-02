@@ -8,9 +8,12 @@
  * - Configurações de áudio
  * 
  * Permite trocar rapidamente entre configurações pré-definidas durante a transmissão
+ * 
+ * Agora com SALVAMENTO AUTOMÁTICO usando PersistenceService.
  */
 
 import { LayoutType } from '../components/LayoutIcons';
+import { persistenceService, PersistedScene } from './PersistenceService';
 
 export interface SceneSource {
   id: string;
@@ -67,8 +70,77 @@ class SceneService {
   private previewSceneId: string | null = null;
   private listeners: Set<SceneListener> = new Set();
 
+  private isRestoring = false;
+
   constructor() {
-    this.createDefaultScenes();
+    // Restaurar cenas salvas ou criar padrões
+    this.restoreFromPersistence();
+  }
+
+  /**
+   * Restaura cenas do armazenamento persistente
+   */
+  private restoreFromPersistence(): void {
+    if (this.isRestoring) return;
+    this.isRestoring = true;
+
+    try {
+      const persistedScenes = persistenceService.loadScenes();
+      
+      if (persistedScenes.length > 0) {
+        console.log('[SceneService] Restoring', persistedScenes.length, 'scenes from persistence');
+        
+        for (const persisted of persistedScenes) {
+          const scene: Scene = {
+            id: persisted.id,
+            name: persisted.name,
+            layout: persisted.layout as LayoutType,
+            sources: [],
+            banners: [],
+            audioSettings: persisted.audioSettings,
+            createdAt: new Date(persisted.createdAt),
+            updatedAt: new Date(persisted.createdAt),
+          };
+          
+          this.scenes.set(scene.id, scene);
+        }
+        
+        // Ativar primeira cena
+        const firstScene = Array.from(this.scenes.values())[0];
+        if (firstScene) {
+          this.activeSceneId = firstScene.id;
+        }
+        
+        console.log('[SceneService] Restoration complete');
+      } else {
+        // Criar cenas padrão se não houver salvas
+        this.createDefaultScenes();
+      }
+    } catch (e) {
+      console.error('[SceneService] Failed to restore from persistence:', e);
+      this.createDefaultScenes();
+    } finally {
+      this.isRestoring = false;
+    }
+  }
+
+  /**
+   * Salva todas as cenas na persistência
+   */
+  private saveToPersistence(): void {
+    if (this.isRestoring) return;
+
+    const persistedScenes: PersistedScene[] = Array.from(this.scenes.values()).map(scene => ({
+      id: scene.id,
+      name: scene.name,
+      layout: scene.layout,
+      sources: scene.sources.map(s => s.id),
+      banners: scene.banners.map(b => b.id),
+      audioSettings: scene.audioSettings || { masterVolume: 100, musicVolume: 50, micVolume: 100 },
+      createdAt: scene.createdAt.getTime(),
+    }));
+
+    persistenceService.saveScenes(persistedScenes);
   }
 
   private createDefaultScenes() {
@@ -143,6 +215,9 @@ class SceneService {
 
     this.scenes.set(id, scene);
     this.emit({ type: 'scene:created', scene });
+    
+    // Salvar automaticamente
+    this.saveToPersistence();
 
     return scene;
   }
@@ -160,6 +235,9 @@ class SceneService {
 
     this.scenes.set(id, updatedScene);
     this.emit({ type: 'scene:updated', scene: updatedScene });
+    
+    // Salvar automaticamente
+    this.saveToPersistence();
 
     return updatedScene;
   }
@@ -177,6 +255,9 @@ class SceneService {
 
     this.scenes.delete(id);
     this.emit({ type: 'scene:deleted', scene });
+    
+    // Salvar automaticamente
+    this.saveToPersistence();
 
     return true;
   }

@@ -6,7 +6,11 @@
  * 2. Ativar no PREVIEW -> visualizar antes de enviar
  * 3. Enviar para PROGRAM -> público vê
  * 4. Remover do PROGRAM -> volta para lista
+ * 
+ * Agora com SALVAMENTO AUTOMÁTICO usando PersistenceService.
  */
+
+import { persistenceService, PersistedBanner } from './PersistenceService';
 
 export type BannerType = 'lower-third' | 'banner' | 'ticker' | 'logo';
 export type BannerPosition = 'top' | 'bottom' | 'left' | 'right' | 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
@@ -46,9 +50,78 @@ class BannerOverlayService {
   private previewBannerId: string | null = null;
   private programBannerId: string | null = null;
 
+  private isRestoring = false;
+
   constructor() {
-    // Criar alguns banners de exemplo
-    this.createDefaultBanners();
+    // Restaurar banners salvos ou criar padrões
+    this.restoreFromPersistence();
+  }
+
+  /**
+   * Restaura banners do armazenamento persistente
+   */
+  private async restoreFromPersistence(): Promise<void> {
+    if (this.isRestoring) return;
+    this.isRestoring = true;
+
+    try {
+      const persistedBanners = persistenceService.loadBanners();
+      
+      if (persistedBanners.length > 0) {
+        console.log('[BannerService] Restoring', persistedBanners.length, 'banners from persistence');
+        
+        for (const persisted of persistedBanners) {
+          const banner: Banner = {
+            id: persisted.id,
+            type: 'lower-third',
+            name: persisted.title,
+            theme: persisted.theme as BannerTheme,
+            position: persisted.position as BannerPosition,
+            content: {
+              title: persisted.title,
+              subtitle: persisted.subtitle,
+              backgroundColor: '#f97316',
+              textColor: '#ffffff',
+            },
+            isInPreview: false,
+            isInProgram: false,
+            createdAt: new Date(persisted.createdAt),
+          };
+          
+          this.banners.set(banner.id, banner);
+        }
+        
+        console.log('[BannerService] Restoration complete');
+      } else {
+        // Criar banners padrão se não houver salvos
+        this.createDefaultBanners();
+      }
+    } catch (e) {
+      console.error('[BannerService] Failed to restore from persistence:', e);
+      this.createDefaultBanners();
+    } finally {
+      this.isRestoring = false;
+    }
+  }
+
+  /**
+   * Salva todos os banners na persistência
+   */
+  private saveToPersistence(): void {
+    if (this.isRestoring) return;
+
+    const persistedBanners: PersistedBanner[] = Array.from(this.banners.values()).map(banner => ({
+      id: banner.id,
+      title: banner.content.title || banner.name,
+      subtitle: banner.content.subtitle,
+      theme: banner.theme,
+      position: banner.position,
+      isActive: banner.isInProgram,
+      isInPreview: banner.isInPreview,
+      createdAt: banner.createdAt.getTime(),
+    }));
+
+    persistenceService.saveBanners(persistedBanners);
   }
 
   private createDefaultBanners() {
@@ -129,6 +202,9 @@ class BannerOverlayService {
     this.banners.set(id, banner);
     this.emit({ type: 'banner:created', banner });
     
+    // Salvar automaticamente
+    this.saveToPersistence();
+    
     return banner;
   }
 
@@ -140,6 +216,9 @@ class BannerOverlayService {
     const updatedBanner = { ...banner, ...updates };
     this.banners.set(id, updatedBanner);
     this.emit({ type: 'banner:updated', banner: updatedBanner });
+    
+    // Salvar automaticamente
+    this.saveToPersistence();
 
     return updatedBanner;
   }
@@ -155,6 +234,9 @@ class BannerOverlayService {
 
     this.banners.delete(id);
     this.emit({ type: 'banner:deleted', banner });
+    
+    // Salvar automaticamente
+    this.saveToPersistence();
 
     return true;
   }

@@ -4,7 +4,11 @@
  * Gerencia fontes de mídia (imagens e vídeos) carregadas pelo usuário.
  * Integra com VideoSourceManager e RTMPStreamService para permitir
  * que mídias sejam exibidas no stream.
+ * 
+ * Agora com SALVAMENTO AUTOMÁTICO usando PersistenceService.
  */
+
+import { persistenceService, PersistedMediaSource } from './PersistenceService';
 
 export interface MediaSource {
   id: string;
@@ -23,17 +27,23 @@ export interface MediaSource {
 type MediaSourceCallback = (sources: MediaSource[]) => void;
 type ActiveSourceCallback = (source: MediaSource | null) => void;
 
+type PreviewSourceCallback = (source: MediaSource | null) => void;
+
 class MediaSourceService {
   private sources: Map<string, MediaSource> = new Map();
-  private activeSourceId: string | null = null;
+  private activeSourceId: string | null = null; // PROGRAM
+  private previewSourceId: string | null = null; // PREVIEW
   private callbacks: Set<MediaSourceCallback> = new Set();
   private activeCallbacks: Set<ActiveSourceCallback> = new Set();
+  private previewCallbacks: Set<PreviewSourceCallback> = new Set();
   
   // Canvas para captura
   private captureCanvas: HTMLCanvasElement;
   private captureCtx: CanvasRenderingContext2D;
   private animationFrameId: number | null = null;
   
+  private isRestoring = false;
+
   constructor() {
     // Criar canvas de captura em resolução HD
     this.captureCanvas = document.createElement('canvas');
@@ -43,6 +53,166 @@ class MediaSourceService {
       alpha: false,
       desynchronized: true
     })!;
+
+    // Restaurar fontes salvas ao inicializar
+    this.restoreFromPersistence();
+    
+    // Escutar evento de transição GO (PREVIEW -> PROGRAM)
+    window.addEventListener('media:transition-to-program', () => {
+      this.transitionPreviewToProgram();
+    });
+  }
+
+  /**
+   * Restaura fontes de mídia do armazenamento persistente
+   */
+  private async restoreFromPersistence(): Promise<void> {
+    if (this.isRestoring) return;
+    this.isRestoring = true;
+
+    try {
+      const persistedSources = await persistenceService.loadMediaSources();
+      console.log('[MediaSourceService] Restoring', persistedSources.length, 'sources from persistence');
+
+      for (const persisted of persistedSources) {
+        try {
+          // Converter ArrayBuffer de volta para File
+          const file = persistenceService.arrayBufferToFile(
+            persisted.data,
+            persisted.name,
+            persisted.mimeType
+          );
+
+          // Recriar a fonte
+          if (persisted.type === 'image') {
+            await this.addImageFromPersisted(persisted.id, file, persisted.isActive);
+          } else if (persisted.type === 'video') {
+            await this.addVideoFromPersisted(persisted.id, file, persisted.isActive);
+          }
+        } catch (e) {
+          console.error('[MediaSourceService] Failed to restore source:', persisted.name, e);
+        }
+      }
+
+      console.log('[MediaSourceService] Restoration complete');
+    } catch (e) {
+      console.error('[MediaSourceService] Failed to restore from persistence:', e);
+    } finally {
+      this.isRestoring = false;
+    }
+  }
+
+  /**
+   * Adiciona uma imagem restaurada da persistência
+   */
+  private async addImageFromPersisted(id: string, file: File, wasActive: boolean): Promise<MediaSource> {
+    const url = URL.createObjectURL(file);
+    
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1920;
+        canvas.height = 1080;
+        const ctx = canvas.getContext('2d')!;
+        this.drawImageCentered(ctx, img, canvas.width, canvas.height);
+        const stream = canvas.captureStream(30);
+        
+        const source: MediaSource = {
+          id,
+          name: file.name.substring(0, 30),
+          type: 'image',
+          file,
+          url,
+          stream,
+          element: img,
+          canvas,
+          isActive: false,
+        };
+        
+        this.sources.set(id, source);
+        
+        // Restaurar estado ativo se necessário
+        if (wasActive) {
+          this.setActiveSource(id);
+        }
+        
+        this.notify();
+        console.log('[MediaSourceService] Image restored:', source.name);
+        resolve(source);
+      };
+      
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to restore image'));
+      };
+      
+      img.src = url;
+    });
+  }
+
+  /**
+   * Adiciona um vídeo restaurado da persistência
+   */
+  private async addVideoFromPersisted(id: string, file: File, wasActive: boolean): Promise<MediaSource> {
+    const url = URL.createObjectURL(file);
+    
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.src = url;
+      video.loop = true;
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = 'auto';
+      
+      video.onloadedmetadata = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1920;
+        canvas.height = 1080;
+        const ctx = canvas.getContext('2d')!;
+        
+        const renderFrame = () => {
+          if (!video.paused && !video.ended) {
+            this.drawVideoCentered(ctx, video, canvas.width, canvas.height);
+          }
+          if (this.sources.has(id)) {
+            requestAnimationFrame(renderFrame);
+          }
+        };
+        
+        video.onplay = () => renderFrame();
+        const stream = canvas.captureStream(30);
+        
+        const source: MediaSource = {
+          id,
+          name: file.name.substring(0, 30),
+          type: 'video',
+          file,
+          url,
+          stream,
+          element: video,
+          canvas,
+          isActive: false,
+          duration: video.duration,
+          isPlaying: false,
+        };
+        
+        this.sources.set(id, source);
+        
+        if (wasActive) {
+          this.setActiveSource(id);
+        }
+        
+        this.notify();
+        console.log('[MediaSourceService] Video restored:', source.name);
+        resolve(source);
+      };
+      
+      video.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to restore video'));
+      };
+    });
   }
 
   /**
@@ -81,6 +251,9 @@ class MediaSourceService {
         
         this.sources.set(id, source);
         this.notify();
+        
+        // Salvar automaticamente na persistência
+        this.saveSourceToPersistence(source);
         
         console.log('[MediaSourceService] Image added:', source.name);
         resolve(source);
@@ -163,6 +336,9 @@ class MediaSourceService {
         this.sources.set(id, source);
         this.notify();
         
+        // Salvar automaticamente na persistência
+        this.saveSourceToPersistence(source);
+        
         console.log('[MediaSourceService] Video added:', source.name, 'Duration:', video.duration);
         resolve(source);
       };
@@ -243,11 +419,77 @@ class MediaSourceService {
     this.sources.delete(id);
     this.notify();
     
+    // Remover da persistência
+    persistenceService.removeMediaSource(id);
+    
     console.log('[MediaSourceService] Source removed:', id);
   }
 
   /**
+   * Salva uma fonte na persistência
+   */
+  private async saveSourceToPersistence(source: MediaSource): Promise<void> {
+    if (this.isRestoring) return; // Não salvar durante restauração
+    
+    try {
+      await persistenceService.saveMediaSource({
+        id: source.id,
+        name: source.name,
+        type: source.type,
+        file: source.file,
+        isActive: source.isActive,
+      });
+    } catch (e) {
+      console.error('[MediaSourceService] Failed to persist source:', e);
+    }
+  }
+
+  /**
    * Define a fonte ativa (a que será enviada para o stream)
+   */
+  /**
+   * Define a fonte para PREVIEW (preparação antes de ir ao ar)
+   */
+  setPreviewSource(id: string | null): void {
+    this.previewSourceId = id;
+    
+    const source = id ? this.sources.get(id) : null;
+    this.notifyPreview(source);
+    
+    console.log('[MediaSourceService] Preview source set:', id);
+  }
+
+  /**
+   * Obtém a fonte em PREVIEW
+   */
+  getPreviewSource(): MediaSource | null {
+    if (!this.previewSourceId) return null;
+    return this.sources.get(this.previewSourceId) || null;
+  }
+
+  /**
+   * Transição: Move a fonte do PREVIEW para o PROGRAM
+   */
+  transitionPreviewToProgram(): void {
+    if (!this.previewSourceId) {
+      console.log('[MediaSourceService] No preview source to transition');
+      return;
+    }
+    
+    const previewId = this.previewSourceId;
+    
+    // Ativar no PROGRAM
+    this.setActiveSource(previewId);
+    
+    // Limpar PREVIEW
+    this.previewSourceId = null;
+    this.notifyPreview(null);
+    
+    console.log('[MediaSourceService] Transitioned preview to program:', previewId);
+  }
+
+  /**
+   * Define a fonte ativa no PROGRAM (saída ao vivo)
    */
   setActiveSource(id: string | null): void {
     // Desativar fonte anterior
@@ -279,7 +521,19 @@ class MediaSourceService {
     this.notify();
     this.notifyActive();
     
-    console.log('[MediaSourceService] Active source changed:', id);
+    console.log('[MediaSourceService] Active source (PROGRAM) changed:', id);
+  }
+
+  /**
+   * Registra callback para mudanças no PREVIEW
+   */
+  onPreviewChange(callback: PreviewSourceCallback): () => void {
+    this.previewCallbacks.add(callback);
+    return () => this.previewCallbacks.delete(callback);
+  }
+
+  private notifyPreview(source: MediaSource | null): void {
+    this.previewCallbacks.forEach(cb => cb(source));
   }
 
   /**

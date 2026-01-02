@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Video, FileText, LayoutGrid, Settings, X, Plus, MessageSquare, Youtube, Eye, RefreshCw, Link2, Unlink, Facebook, Instagram, Twitch, Music, Image, Film, Type } from 'lucide-react';
+import { Video, FileText, LayoutGrid, Settings, X, Plus, MessageSquare, Youtube, Eye, RefreshCw, Link2, Unlink, Facebook, Instagram, Twitch, Music, Image, Film, Type, ArrowRight, Play, Monitor } from 'lucide-react';
 import { commentOverlayService } from '../services/CommentOverlayService';
 import { mediaSourceService } from '../services/MediaSourceService';
 import { BannerPanel } from './BannerPanel';
@@ -735,6 +735,7 @@ interface SourceItemProps {
 const SourceItem: React.FC<SourceItemProps> = ({ source, onRemove }) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const [isActive, setIsActive] = React.useState(false);
+  const [isInPreview, setIsInPreview] = React.useState(false);
 
   React.useEffect(() => {
     if (videoRef.current && source.stream) {
@@ -742,12 +743,15 @@ const SourceItem: React.FC<SourceItemProps> = ({ source, onRemove }) => {
     }
   }, [source.stream]);
 
-  // Duplo clique para enviar para o PROGRAM
-  const handleDoubleClick = () => {
+  // Enviar para PROGRAM (botão de seta ou duplo clique)
+  const sendToProgram = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    
     if (source.type === 'image' || source.type === 'video') {
       // Ativar esta fonte no MediaSourceService
       mediaSourceService.setActiveSource(source.id);
       setIsActive(true);
+      setIsInPreview(false);
       
       // Emitir evento para que o RTMPStreamService capture esta fonte
       window.dispatchEvent(new CustomEvent('media:activate', { 
@@ -759,32 +763,46 @@ const SourceItem: React.FC<SourceItemProps> = ({ source, onRemove }) => {
         } 
       }));
       
-      console.log('[SourceItem] Source activated for PROGRAM:', source.name);
+      console.log('[SourceItem] Source sent to PROGRAM:', source.name);
     }
   };
 
-  // Clique simples para preview
-  const handleClick = () => {
-    // Emitir evento para preview
-    window.dispatchEvent(new CustomEvent('media:preview', { 
-      detail: { 
-        id: source.id, 
-        type: source.type, 
-        name: source.name,
-        stream: source.stream 
-      } 
-    }));
+  // Enviar para PREVIEW (clique simples)
+  const sendToPreview = () => {
+    if (source.type === 'image' || source.type === 'video') {
+      setIsInPreview(true);
+      
+      // Definir no MediaSourceService como fonte de preview
+      mediaSourceService.setPreviewSource(source.id);
+      
+      // Emitir evento para preview (para atualizar UI)
+      window.dispatchEvent(new CustomEvent('media:preview', { 
+        detail: { 
+          id: source.id, 
+          type: source.type, 
+          name: source.name,
+          stream: source.stream 
+        } 
+      }));
+      
+      console.log('[SourceItem] Source sent to PREVIEW:', source.name);
+    }
   };
 
   return (
     <div
-      className="relative rounded-lg overflow-hidden cursor-pointer transition-all group hover:border-cyan-400"
-      style={{ border: isActive ? '2px solid #FF6B00' : '2px solid #1E2842' }}
-      onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
-      title="Duplo clique para enviar ao PROGRAM"
+      className="relative rounded-lg overflow-hidden transition-all group"
+      style={{ 
+        border: isActive ? '3px solid #FF6B00' : isInPreview ? '3px solid #00D9FF' : '2px solid #1E2842',
+        boxShadow: isActive ? '0 0 10px rgba(255, 107, 0, 0.5)' : isInPreview ? '0 0 10px rgba(0, 217, 255, 0.5)' : 'none'
+      }}
     >
-      <div className="aspect-video bg-black relative">
+      {/* Preview da fonte */}
+      <div 
+        className="aspect-video bg-black relative cursor-pointer hover:opacity-90"
+        onClick={sendToPreview}
+        title="Clique para enviar ao PREVIEW"
+      >
         {source.stream ? (
           <video
             ref={videoRef}
@@ -810,32 +828,77 @@ const SourceItem: React.FC<SourceItemProps> = ({ source, onRemove }) => {
           {source.type === 'image' ? 'IMG' : source.type === 'video' ? 'VID' : source.type.toUpperCase()}
         </div>
 
-        {/* Indicador de ativo no PROGRAM */}
+        {/* Indicador de status */}
         {isActive && (
           <div
-            className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-bold animate-pulse"
+            className="absolute bottom-2 left-2 px-2 py-1 rounded text-[10px] font-bold animate-pulse flex items-center gap-1"
             style={{ background: '#FF6B00', color: '#FFF' }}
           >
-            LIVE
+            <Monitor size={10} /> PROGRAM
+          </div>
+        )}
+        {isInPreview && !isActive && (
+          <div
+            className="absolute bottom-2 left-2 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1"
+            style={{ background: '#00D9FF', color: '#000' }}
+          >
+            <Eye size={10} /> PREVIEW
           </div>
         )}
 
+        {/* Botão de remover */}
         <button
           onClick={(e) => {
             e.stopPropagation();
             onRemove();
           }}
           className="absolute top-2 right-2 w-5 h-5 rounded-full bg-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+          title="Remover fonte"
         >
           <X size={12} className="text-white" />
         </button>
       </div>
 
+      {/* Barra inferior com nome e botões de ação */}
       <div
-        className="px-2 py-1.5 text-xs font-medium truncate"
-        style={{ background: '#1E2842', color: '#FFFFFF' }}
+        className="px-2 py-2 flex items-center justify-between gap-2"
+        style={{ background: '#1E2842' }}
       >
-        {source.name}
+        <span className="text-xs font-medium truncate flex-1" style={{ color: '#FFFFFF' }}>
+          {source.name}
+        </span>
+        
+        {/* Botões de ação */}
+        <div className="flex items-center gap-1">
+          {/* Botão PREVIEW */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              sendToPreview();
+            }}
+            className="w-7 h-7 rounded flex items-center justify-center transition-all hover:scale-110"
+            style={{ 
+              background: isInPreview ? '#00D9FF' : '#374151',
+              color: isInPreview ? '#000' : '#FFF'
+            }}
+            title="Enviar para PREVIEW"
+          >
+            <Eye size={14} />
+          </button>
+          
+          {/* Botão PROGRAM (seta) */}
+          <button
+            onClick={sendToProgram}
+            className="w-7 h-7 rounded flex items-center justify-center transition-all hover:scale-110"
+            style={{ 
+              background: isActive ? '#FF6B00' : '#374151',
+              color: '#FFF'
+            }}
+            title="Enviar para PROGRAM (Live)"
+          >
+            <ArrowRight size={14} />
+          </button>
+        </div>
       </div>
     </div>
   );
