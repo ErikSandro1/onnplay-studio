@@ -4,6 +4,7 @@ import VideoPreview from './VideoPreview';
 import { CameraId } from '../services/CameraControlService';
 import { CommentOverlay } from './CommentOverlay';
 import { BannerOverlay } from './BannerOverlay';
+import { OverlayFrame } from './OverlayFrame';
 import { mediaSourceService, MediaSource } from '../services/MediaSourceService';
 import { backgroundService, CustomBackground } from '../services/BackgroundService';
 import { BackgroundPreset } from '../config/BackgroundPresets';
@@ -230,6 +231,9 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           >
             PREVIEW
           </div>
+          
+          {/* Overlay Frame - PREVIEW */}
+          <OverlayFrame target="preview" />
           
           {/* Banner Overlay - PREVIEW */}
           <BannerOverlay 
@@ -459,6 +463,9 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           <div className="absolute inset-0 pointer-events-none">
             <CommentOverlay />
           </div>
+          
+          {/* Overlay Frame - PROGRAM */}
+          <OverlayFrame target="program" />
           
           {/* Banner Overlay - PROGRAM */}
           <BannerOverlay target="program" />
