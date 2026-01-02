@@ -1,5 +1,6 @@
 import React from 'react';
-import { Mic, MicOff, Video, VideoOff, MoreVertical } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, MoreVertical, UserPlus } from 'lucide-react';
+import { LocalParticipantCard } from './LocalParticipantCard';
 
 interface Participant {
   id: string;
@@ -8,6 +9,7 @@ interface Participant {
   isMuted: boolean;
   isCameraOff: boolean;
   isSpeaking?: boolean;
+  isLocal?: boolean;
 }
 
 interface ParticipantsStripProps {
@@ -15,6 +17,7 @@ interface ParticipantsStripProps {
   onToggleMute: (id: string) => void;
   onToggleCamera: (id: string) => void;
   onParticipantClick: (id: string) => void;
+  onInvite?: () => void;
 }
 
 const ParticipantsStrip: React.FC<ParticipantsStripProps> = ({
@@ -22,7 +25,11 @@ const ParticipantsStrip: React.FC<ParticipantsStripProps> = ({
   onToggleMute,
   onToggleCamera,
   onParticipantClick,
+  onInvite,
 }) => {
+  // Filtrar participantes remotos (não locais)
+  const remoteParticipants = participants.filter(p => !p.isLocal);
+
   return (
     <div 
       className="flex items-center gap-3 px-6 py-4 overflow-x-auto"
@@ -32,7 +39,16 @@ const ParticipantsStrip: React.FC<ParticipantsStripProps> = ({
         minHeight: '120px'
       }}
     >
-      {participants.map((participant) => (
+      {/* Card do usuário local (YOU) - sempre primeiro */}
+      <LocalParticipantCard 
+        name="YOU"
+        onSendToPreview={() => {
+          console.log('[ParticipantsStrip] Local camera sent to preview');
+        }}
+      />
+
+      {/* Participantes remotos (GUESTs) */}
+      {remoteParticipants.map((participant, index) => (
         <div
           key={participant.id}
           className="flex-shrink-0 relative group cursor-pointer"
@@ -45,7 +61,7 @@ const ParticipantsStrip: React.FC<ParticipantsStripProps> = ({
             style={{
               height: '80px',
               background: '#1E2842',
-              border: participant.isSpeaking ? '2px solid #00D9FF' : '2px solid transparent',
+              border: participant.isSpeaking ? '2px solid #00D9FF' : '2px solid #2D3A5C',
               boxShadow: participant.isSpeaking ? '0 0 15px rgba(0, 217, 255, 0.5)' : 'none'
             }}
           >
@@ -122,6 +138,28 @@ const ParticipantsStrip: React.FC<ParticipantsStripProps> = ({
                 <MoreVertical size={16} />
               </button>
             </div>
+
+            {/* GUEST badge */}
+            <div
+              className="absolute top-2 left-2 px-2 py-0.5 rounded text-xs font-bold"
+              style={{
+                background: 'rgba(0, 217, 255, 0.9)',
+                color: '#0A0E1A',
+              }}
+            >
+              GUEST {index + 1}
+            </div>
+
+            {/* Status indicator */}
+            <div
+              className="absolute top-2 right-2 w-2 h-2 rounded-full"
+              style={{
+                background: !participant.isCameraOff ? '#00FF88' : '#FF3366',
+                boxShadow: !participant.isCameraOff
+                  ? '0 0 8px rgba(0, 255, 136, 0.6)'
+                  : '0 0 8px rgba(255, 51, 102, 0.6)',
+              }}
+            />
           </div>
           
           {/* Name */}
@@ -135,10 +173,10 @@ const ParticipantsStrip: React.FC<ParticipantsStripProps> = ({
           {/* Muted Indicator */}
           {participant.isMuted && (
             <div 
-              className="absolute top-2 left-2 p-1 rounded-full"
+              className="absolute bottom-8 left-2 p-1 rounded-full"
               style={{ background: 'rgba(255, 107, 0, 0.9)' }}
             >
-              <MicOff size={12} style={{ color: '#FFFFFF' }} />
+              <MicOff size={10} style={{ color: '#FFFFFF' }} />
             </div>
           )}
         </div>
@@ -147,29 +185,36 @@ const ParticipantsStrip: React.FC<ParticipantsStripProps> = ({
       {/* Add Participant Button */}
       <div
         className="flex-shrink-0 flex flex-col items-center justify-center cursor-pointer group"
-        style={{ width: '140px', height: '80px' }}
+        style={{ width: '140px' }}
+        onClick={onInvite}
       >
         <div 
-          className="w-full h-full rounded-lg flex items-center justify-center border-2 border-dashed transition-all group-hover:border-solid"
+          className="w-full rounded-lg flex items-center justify-center border-2 border-dashed transition-all group-hover:border-solid group-hover:border-[#00D9FF]"
           style={{
-            borderColor: '#1E2842',
+            height: '80px',
+            borderColor: '#2D3A5C',
             background: 'transparent'
           }}
         >
           <div className="text-center">
+            <UserPlus 
+              size={24} 
+              className="mx-auto mb-1 transition-colors group-hover:text-[#00D9FF]"
+              style={{ color: '#7A8BA3' }}
+            />
             <div 
-              className="text-3xl mb-1"
+              className="text-xs font-medium transition-colors group-hover:text-[#00D9FF]"
               style={{ color: '#7A8BA3' }}
             >
-              +
-            </div>
-            <div 
-              className="text-xs font-medium"
-              style={{ color: '#7A8BA3' }}
-            >
-              Invite
+              Convidar
             </div>
           </div>
+        </div>
+        <div 
+          className="mt-2 text-center text-sm font-medium"
+          style={{ color: '#7A8BA3' }}
+        >
+          Add Guest
         </div>
       </div>
     </div>

@@ -46,6 +46,10 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
   const [currentBackground, setCurrentBackground] = useState<BackgroundPreset | CustomBackground | null>(null);
   const [previewBackground, setPreviewBackground] = useState<BackgroundPreset | CustomBackground | null>(null);
   
+  // Estado para stream de câmera/tela no PREVIEW
+  const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
+  const previewStreamRef = useRef<HTMLVideoElement>(null);
+  
   // Estado para modo de edição de posição do banner
   const [bannerEditMode, setBannerEditMode] = useState(false);
   const previewMonitorRef = useRef<HTMLDivElement>(null);
@@ -113,12 +117,41 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
     };
   }, []);
 
+  // Escutar evento source:preview para câmera/tela
+  useEffect(() => {
+    const handleSourcePreview = (event: CustomEvent) => {
+      const { id, type, name, stream } = event.detail;
+      console.log('[DualMonitors] Source preview event:', { id, type, name, stream });
+      
+      if (stream && (type === 'camera' || type === 'screen')) {
+        setPreviewStream(stream);
+        setPreviewMedia(null); // Limpar mídia de imagem/vídeo
+        setHasPreviewContent(true);
+      }
+    };
+    
+    window.addEventListener('source:preview', handleSourcePreview as EventListener);
+    
+    return () => {
+      window.removeEventListener('source:preview', handleSourcePreview as EventListener);
+    };
+  }, []);
+
+  // Atualizar vídeo do stream de câmera/tela
+  useEffect(() => {
+    if (previewStream && previewStreamRef.current) {
+      previewStreamRef.current.srcObject = previewStream;
+      previewStreamRef.current.play().catch((e) => console.error('Error playing stream:', e));
+    }
+  }, [previewStream]);
+
   // Atualizar vídeos quando as fontes mudarem
   useEffect(() => {
     if (previewMedia?.type === 'video' && previewVideoRef.current) {
       const video = previewMedia.element as HTMLVideoElement;
       previewVideoRef.current.srcObject = previewMedia.stream;
       previewVideoRef.current.play().catch(() => {});
+      setPreviewStream(null); // Limpar stream de câmera quando houver mídia
     }
   }, [previewMedia]);
 
@@ -193,8 +226,23 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
             boxShadow: '0 0 20px rgba(0, 217, 255, 0.2)',
           }}
         >
-          {/* Renderizar mídia do PREVIEW ou câmera */}
-          {previewMedia ? (
+          {/* Renderizar stream de câmera, mídia ou placeholder */}
+          {previewStream ? (
+            <div className="w-full h-full relative">
+              <video
+                ref={previewStreamRef}
+                className="w-full h-full object-cover bg-black"
+                autoPlay
+                muted
+                playsInline
+                style={{ transform: 'scaleX(-1)' }}
+              />
+              {/* Label da câmera */}
+              <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-black/70 text-white text-xs">
+                🎥 Câmera Local
+              </div>
+            </div>
+          ) : previewMedia ? (
             <div className="w-full h-full relative">
               {previewMedia.type === 'image' ? (
                 <img 

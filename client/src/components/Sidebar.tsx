@@ -436,7 +436,7 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-bold text-white uppercase tracking-wider">
-                    FONTES DE VÍDEO
+                    MÍDIA & CAPTURA
                   </span>
                   <button
                     onClick={() => setIsAddingSource(!isAddingSource)}
@@ -455,22 +455,8 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
                     className="mb-3 p-3 rounded-lg"
                     style={{ background: '#1E2842', border: '1px solid #2D3A5C' }}
                   >
-                    <p className="text-xs text-gray-400 mb-2">Adicionar fonte:</p>
+                    <p className="text-xs text-gray-400 mb-2">Adicionar mídia:</p>
                     <div className="flex flex-col gap-2">
-                      <button
-                        onClick={addCameraSource}
-                        className="flex items-center gap-2 px-3 py-2 rounded text-sm text-white hover:bg-[#2D3A5C] transition-colors"
-                      >
-                        <Video size={16} />
-                        Câmera / Webcam
-                      </button>
-                      <button
-                        onClick={addScreenSource}
-                        className="flex items-center gap-2 px-3 py-2 rounded text-sm text-white hover:bg-[#2D3A5C] transition-colors"
-                      >
-                        <Video size={16} />
-                        Compartilhar Tela
-                      </button>
                       <button
                         onClick={addImageSource}
                         className="flex items-center gap-2 px-3 py-2 rounded text-sm text-white hover:bg-[#2D3A5C] transition-colors"
@@ -485,6 +471,17 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
                         <Film size={16} />
                         🎬 Carregar Vídeo
                       </button>
+                      <button
+                        onClick={addScreenSource}
+                        className="flex items-center gap-2 px-3 py-2 rounded text-sm text-white hover:bg-[#2D3A5C] transition-colors"
+                      >
+                        <Monitor size={16} />
+                        🖥️ Compartilhar Tela
+                      </button>
+                      <div className="flex items-center gap-2 px-3 py-2 rounded text-sm text-gray-500 cursor-not-allowed">
+                        <Video size={16} />
+                        🎥 Captura Externa (em breve)
+                      </div>
                     </div>
                     {/* Hidden file inputs */}
                     <input
@@ -799,9 +796,20 @@ const SourceItem: React.FC<SourceItemProps> = ({ source, onRemove }) => {
 
   // Enviar para PREVIEW (clique simples)
   const sendToPreview = () => {
-    if (source.type === 'image' || source.type === 'video') {
-      setIsInPreview(true);
-      
+    setIsInPreview(true);
+    
+    if (source.type === 'camera' || source.type === 'screen') {
+      // Para câmera e tela, emitir evento específico com o stream
+      window.dispatchEvent(new CustomEvent('camera:preview', { 
+        detail: { 
+          id: source.id, 
+          type: source.type, 
+          name: source.name,
+          stream: source.stream 
+        } 
+      }));
+      console.log('[SourceItem] Camera/Screen sent to PREVIEW:', source.name, source.stream);
+    } else if (source.type === 'image' || source.type === 'video') {
       // Definir no MediaSourceService como fonte de preview
       mediaSourceService.setPreviewSource(source.id);
       
@@ -815,7 +823,7 @@ const SourceItem: React.FC<SourceItemProps> = ({ source, onRemove }) => {
         } 
       }));
       
-      console.log('[SourceItem] Source sent to PREVIEW:', source.name);
+      console.log('[SourceItem] Image/Video sent to PREVIEW:', source.name);
     }
   };
 

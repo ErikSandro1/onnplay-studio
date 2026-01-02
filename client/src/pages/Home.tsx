@@ -163,6 +163,40 @@ const HomeContent: React.FC = () => {
     }
   }, [isLive]);
 
+  // Listen for camera:preview event from Sidebar sources
+  useEffect(() => {
+    const handleCameraPreview = (event: CustomEvent) => {
+      const { id, type, name, stream } = event.detail;
+      console.log('[Home] Camera preview event received:', { id, type, name, stream });
+      
+      // Limpar qualquer mídia de preview
+      import('../services/MediaSourceService').then(({ mediaSourceService }) => {
+        mediaSourceService.setPreviewSource(null);
+      });
+      
+      // Definir a câmera no preview
+      // Mapear o ID da fonte para o tipo de câmera
+      if (type === 'camera') {
+        setPreviewCamera('cam1');
+      } else if (type === 'screen') {
+        setPreviewCamera('screen');
+      }
+      
+      // Disparar evento para DualMonitors com o stream
+      window.dispatchEvent(new CustomEvent('source:preview', {
+        detail: { id, type, name, stream }
+      }));
+      
+      toast.success(`${name} enviado para PREVIEW`);
+    };
+    
+    window.addEventListener('camera:preview', handleCameraPreview as EventListener);
+    
+    return () => {
+      window.removeEventListener('camera:preview', handleCameraPreview as EventListener);
+    };
+  }, []);
+
   const handleGoLive = async () => {
     try {
       if (isLive) {
