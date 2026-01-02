@@ -190,21 +190,22 @@ export function OverlayPanel({ isOpen, onClose }: OverlayPanelProps) {
           </div>
         )}
 
-        {/* Categorias - Scroll horizontal */}
+        {/* Categorias - Grid com ícones e nomes visíveis */}
         <div className="p-4 border-b border-gray-700">
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-gray-700">
+          <div className="grid grid-cols-6 sm:grid-cols-11 gap-2">
             {OVERLAY_CATEGORIES.map((cat) => (
               <button
                 key={cat.id}
                 onClick={() => setSelectedCategory(cat.id)}
-                className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap flex items-center gap-2 transition-all ${
+                title={cat.name}
+                className={`flex flex-col items-center justify-center p-2 rounded-lg transition-all ${
                   selectedCategory === cat.id
-                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
+                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 ring-2 ring-purple-400'
                     : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
                 }`}
               >
-                <span className="text-base">{cat.icon}</span>
-                <span>{cat.name}</span>
+                <span className="text-xl mb-1">{cat.icon}</span>
+                <span className="text-[10px] leading-tight text-center truncate w-full">{cat.name}</span>
               </button>
             ))}
           </div>
