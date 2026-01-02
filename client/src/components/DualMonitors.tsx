@@ -5,6 +5,7 @@ import { CameraId } from '../services/CameraControlService';
 import { CommentOverlay } from './CommentOverlay';
 import { BannerOverlay } from './BannerOverlay';
 import { OverlayFrame } from './OverlayFrame';
+import { MonitorSettingsMenu, getMonitorSettings, applySettingsToVideo } from './MonitorSettingsMenu';
 import { mediaSourceService, MediaSource } from '../services/MediaSourceService';
 import { backgroundService, CustomBackground } from '../services/BackgroundService';
 import { BackgroundPreset } from '../config/BackgroundPresets';
@@ -55,6 +56,12 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
   // Estado para modo de edição de posição do banner
   const [bannerEditMode, setBannerEditMode] = useState(false);
   const previewMonitorRef = useRef<HTMLDivElement>(null);
+  
+  // Estado para menus de configurações
+  const [previewSettingsOpen, setPreviewSettingsOpen] = useState(false);
+  const [programSettingsOpen, setProgramSettingsOpen] = useState(false);
+  const previewSettingsRef = useRef<HTMLButtonElement>(null);
+  const programSettingsRef = useRef<HTMLButtonElement>(null);
 
   // Escutar eventos de preview de mídia e mudanças no MediaSourceService
   useEffect(() => {
@@ -236,12 +243,23 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           </div>
           
           <button
-            className="p-2 rounded-lg transition-all duration-200 hover:bg-[#1E2842]"
-            style={{ color: '#7A8BA3' }}
+            ref={previewSettingsRef}
+            onClick={() => setPreviewSettingsOpen(!previewSettingsOpen)}
+            className={`p-2 rounded-lg transition-all duration-200 hover:bg-[#1E2842] ${previewSettingsOpen ? 'bg-[#1E2842]' : ''}`}
+            style={{ color: previewSettingsOpen ? '#00D9FF' : '#7A8BA3' }}
+            title="Configurações do PREVIEW"
           >
             <Settings size={18} />
           </button>
         </div>
+        
+        {/* Menu de configurações do PREVIEW */}
+        <MonitorSettingsMenu
+          target="preview"
+          isOpen={previewSettingsOpen}
+          onClose={() => setPreviewSettingsOpen(false)}
+          anchorRef={previewSettingsRef}
+        />
         
         {/* Monitor */}
         <div 
@@ -403,19 +421,31 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           
           <div className="flex items-center gap-2">
             <button
-              className="p-2 rounded-lg transition-all duration-200 hover:bg-[#1E2842]"
-              style={{ color: '#7A8BA3' }}
+              ref={programSettingsRef}
+              onClick={() => setProgramSettingsOpen(!programSettingsOpen)}
+              className={`p-2 rounded-lg transition-all duration-200 hover:bg-[#1E2842] ${programSettingsOpen ? 'bg-[#1E2842]' : ''}`}
+              style={{ color: programSettingsOpen ? '#FF6B00' : '#7A8BA3' }}
+              title="Configurações do PROGRAM"
             >
               <Settings size={18} />
             </button>
             <button
               className="p-2 rounded-lg transition-all duration-200 hover:bg-[#1E2842]"
               style={{ color: '#7A8BA3' }}
+              title="Tela cheia"
             >
               <Maximize2 size={18} />
             </button>
           </div>
         </div>
+        
+        {/* Menu de configurações do PROGRAM */}
+        <MonitorSettingsMenu
+          target="program"
+          isOpen={programSettingsOpen}
+          onClose={() => setProgramSettingsOpen(false)}
+          anchorRef={programSettingsRef}
+        />
         
         {/* Monitor */}
         <div 

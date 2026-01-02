@@ -1,6 +1,6 @@
 /**
  * OverlayFrame - Renderiza o overlay/moldura decorativa sobre o vídeo
- * O overlay deve cobrir toda a área mantendo a proporção da imagem
+ * O overlay deve cobrir toda a área da tela (PREVIEW ou PROGRAM)
  */
 
 import { useState, useEffect } from 'react';
@@ -39,16 +39,22 @@ export function OverlayFrame({ target }: OverlayFrameProps) {
 
   return (
     <div 
-      className="absolute inset-0 pointer-events-none z-40 flex items-center justify-center"
-      style={{ overflow: 'hidden' }}
+      className="absolute inset-0 pointer-events-none z-40"
+      style={{ 
+        overflow: 'hidden',
+        width: '100%',
+        height: '100%',
+      }}
     >
       <img
         src={imageUrl}
         alt={overlay.name}
-        className="w-full h-full"
         style={{ 
-          objectFit: 'contain', // Manter proporção sem distorcer
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover', // Preencher toda a área mantendo proporção
           objectPosition: 'center',
+          display: 'block',
         }}
         onError={(e) => {
           // Esconder se a imagem falhar ao carregar
