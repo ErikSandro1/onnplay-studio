@@ -12,6 +12,7 @@ export interface OverlayPreset {
   thumbnail: string;  // URL da miniatura
   imageUrl: string;   // URL da imagem em alta resolução
   isPremium?: boolean;
+  hasTransparency?: boolean; // Se true, funciona como moldura (PNG transparente)
 }
 
 export type OverlayCategory = 
@@ -66,6 +67,7 @@ export const OVERLAY_PRESETS: OverlayPreset[] = [
     category: 'halloween',
     thumbnail: '/overlays/halloween-ghost.png',
     imageUrl: '/overlays/halloween-ghost.png',
+    hasTransparency: true,
   },
   {
     id: 'halloween-bones',
@@ -73,6 +75,7 @@ export const OVERLAY_PRESETS: OverlayPreset[] = [
     category: 'halloween',
     thumbnail: '/overlays/halloween-bones.png',
     imageUrl: '/overlays/halloween-bones.png',
+    hasTransparency: true,
   },
 
   // ========== ANIVERSÁRIO / BIRTHDAY ==========
@@ -160,6 +163,7 @@ export const OVERLAY_PRESETS: OverlayPreset[] = [
     category: 'neon',
     thumbnail: '/overlays/pink-glow-frame.png',
     imageUrl: '/overlays/pink-glow-frame.png',
+    hasTransparency: true,
   },
   {
     id: 'neon-frame',
@@ -183,6 +187,7 @@ export const OVERLAY_PRESETS: OverlayPreset[] = [
     category: 'news',
     thumbnail: '/overlays/breaking-news.png',
     imageUrl: '/overlays/breaking-news.png',
+    hasTransparency: true,
   },
   {
     id: 'news-broadcast',
@@ -190,6 +195,7 @@ export const OVERLAY_PRESETS: OverlayPreset[] = [
     category: 'news',
     thumbnail: '/overlays/news-broadcast.png',
     imageUrl: '/overlays/news-broadcast.png',
+    hasTransparency: true,
   },
 
   // ========== MINIMALISTA ==========

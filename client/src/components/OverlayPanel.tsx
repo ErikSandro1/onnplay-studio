@@ -294,9 +294,16 @@ export function OverlayPanel({ isOpen, onClose }: OverlayPanelProps) {
                       </div>
                     </div>
 
-                    {/* Nome */}
+                    {/* Nome e indicador de moldura */}
                     <div className="p-3 bg-gray-800/90">
-                      <p className="text-sm text-white truncate font-medium">{overlay.name}</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-white truncate font-medium">{overlay.name}</p>
+                        {'hasTransparency' in overlay && overlay.hasTransparency && (
+                          <span className="text-[10px] bg-cyan-600/80 text-white px-1.5 py-0.5 rounded" title="Moldura com transparência - funciona sobre vídeo">
+                            MOLDURA
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Badge ativo */}
@@ -327,6 +334,9 @@ export function OverlayPanel({ isOpen, onClose }: OverlayPanelProps) {
         <div className="p-4 border-t border-gray-700 bg-gray-800/50">
           <p className="text-sm text-gray-400 text-center">
             Clique em um overlay para aplicar instantaneamente no stream
+          </p>
+          <p className="text-xs text-cyan-400 text-center mt-1">
+            💡 Overlays com badge "MOLDURA" têm transparência e funcionam sobre vídeo/câmera
           </p>
         </div>
       </div>
