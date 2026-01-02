@@ -612,6 +612,13 @@ class MediaSourceService {
     return () => this.activeCallbacks.delete(callback);
   }
 
+  /**
+   * Subscribe para mudanças na fonte ativa (alias)
+   */
+  onActiveChange(callback: ActiveSourceCallback): () => void {
+    return this.subscribeActive(callback);
+  }
+
   private notify(): void {
     const sources = this.getSources();
     this.callbacks.forEach(cb => cb(sources));

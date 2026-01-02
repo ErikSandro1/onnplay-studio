@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Maximize2, Settings, ArrowRight, Play } from 'lucide-react';
 import VideoPreview from './VideoPreview';
 import { CameraId } from '../services/CameraControlService';
 import { CommentOverlay } from './CommentOverlay';
 import { BannerOverlay } from './BannerOverlay';
+import { mediaSourceService, MediaSource } from '../services/MediaSourceService';
 
 interface DualMonitorsProps {
   isLive: boolean;
@@ -31,19 +32,64 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
   
   const [hasPreviewContent, setHasPreviewContent] = useState(false);
   const [isTransitioningLocal, setIsTransitioningLocal] = useState(false);
+  
+  // Estado para fontes de mídia no PREVIEW e PROGRAM
+  const [previewMedia, setPreviewMedia] = useState<MediaSource | null>(null);
+  const [programMedia, setProgramMedia] = useState<MediaSource | null>(null);
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
+  const programVideoRef = useRef<HTMLVideoElement>(null);
 
-  // Escutar eventos de preview de mídia
+  // Escutar eventos de preview de mídia e mudanças no MediaSourceService
   useEffect(() => {
     const handleMediaPreview = (event: CustomEvent) => {
       console.log('[DualMonitors] Media preview event:', event.detail);
-      setHasPreviewContent(true);
+      const source = mediaSourceService.getPreviewSource();
+      setPreviewMedia(source);
+      setHasPreviewContent(!!source);
     };
+
+    // Escutar mudanças na fonte de preview
+    const unsubscribePreview = mediaSourceService.onPreviewChange((source) => {
+      console.log('[DualMonitors] Preview source changed:', source?.name);
+      setPreviewMedia(source);
+      setHasPreviewContent(!!source);
+    });
+
+    // Escutar mudanças na fonte ativa (PROGRAM)
+    const unsubscribeActive = mediaSourceService.onActiveChange((source) => {
+      console.log('[DualMonitors] Program source changed:', source?.name);
+      setProgramMedia(source);
+    });
+
+    // Carregar estado inicial
+    setPreviewMedia(mediaSourceService.getPreviewSource());
+    setProgramMedia(mediaSourceService.getActiveSource());
+    setHasPreviewContent(!!mediaSourceService.getPreviewSource());
 
     window.addEventListener('media:preview', handleMediaPreview as EventListener);
     return () => {
       window.removeEventListener('media:preview', handleMediaPreview as EventListener);
+      unsubscribePreview();
+      unsubscribeActive();
     };
   }, []);
+
+  // Atualizar vídeos quando as fontes mudarem
+  useEffect(() => {
+    if (previewMedia?.type === 'video' && previewVideoRef.current) {
+      const video = previewMedia.element as HTMLVideoElement;
+      previewVideoRef.current.srcObject = previewMedia.stream;
+      previewVideoRef.current.play().catch(() => {});
+    }
+  }, [previewMedia]);
+
+  useEffect(() => {
+    if (programMedia?.type === 'video' && programVideoRef.current) {
+      const video = programMedia.element as HTMLVideoElement;
+      programVideoRef.current.srcObject = programMedia.stream;
+      programVideoRef.current.play().catch(() => {});
+    }
+  }, [programMedia]);
 
   // Função de transição GO (PREVIEW -> PROGRAM)
   const handleTransitionGo = () => {
@@ -108,11 +154,36 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
             boxShadow: '0 0 20px rgba(0, 217, 255, 0.2)',
           }}
         >
-          {/* Video Preview */}
-          <VideoPreview cameraId={previewCamera} />
+          {/* Renderizar mídia do PREVIEW ou câmera */}
+          {previewMedia ? (
+            <div className="w-full h-full relative">
+              {previewMedia.type === 'image' ? (
+                <img 
+                  src={previewMedia.url} 
+                  alt={previewMedia.name}
+                  className="w-full h-full object-contain bg-black"
+                />
+              ) : (
+                <video
+                  ref={previewVideoRef}
+                  className="w-full h-full object-contain bg-black"
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                />
+              )}
+              {/* Nome da mídia */}
+              <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-black/70 text-white text-xs">
+                {previewMedia.name}
+              </div>
+            </div>
+          ) : (
+            <VideoPreview cameraId={previewCamera} />
+          )}
           
           {/* Label */}
-            <div 
+          <div 
             className="absolute top-3 left-3 px-3 py-1 rounded-md text-xs font-bold"
             style={{
               background: 'rgba(0, 217, 255, 0.9)',
@@ -236,8 +307,33 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
             boxShadow: '0 0 20px rgba(255, 107, 0, 0.3)',
           }}
         >
-          {/* Video Preview */}
-          <VideoPreview cameraId={programCamera} />
+          {/* Renderizar mídia do PROGRAM ou câmera */}
+          {programMedia ? (
+            <div className="w-full h-full relative">
+              {programMedia.type === 'image' ? (
+                <img 
+                  src={programMedia.url} 
+                  alt={programMedia.name}
+                  className="w-full h-full object-contain bg-black"
+                />
+              ) : (
+                <video
+                  ref={programVideoRef}
+                  className="w-full h-full object-contain bg-black"
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                />
+              )}
+              {/* Nome da mídia */}
+              <div className="absolute bottom-12 left-3 px-2 py-1 rounded bg-black/70 text-white text-xs">
+                {programMedia.name}
+              </div>
+            </div>
+          ) : (
+            <VideoPreview cameraId={programCamera} />
+          )}
           
           {/* LIVE indicator */}
           {isLive && (
