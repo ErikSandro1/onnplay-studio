@@ -275,12 +275,20 @@ export function BannerPanel({ isOpen, onClose }: BannerPanelProps) {
           <div className="grid grid-cols-2 gap-2">
             <select
               value={formData.type}
-              onChange={(e) => setFormData({ ...formData, type: e.target.value as BannerType })}
+              onChange={(e) => {
+                const newType = e.target.value as BannerType;
+                // Auto-ajustar posição para ticker (rodapé)
+                if (newType === 'ticker') {
+                  setFormData({ ...formData, type: newType, position: 'bottom' });
+                } else {
+                  setFormData({ ...formData, type: newType });
+                }
+              }}
               className="px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-white text-xs"
             >
               <option value="lower-third">Lower Third</option>
               <option value="banner">Banner</option>
-              <option value="ticker">Ticker</option>
+              <option value="ticker">Rodapé / Ticker</option>
             </select>
 
             <select

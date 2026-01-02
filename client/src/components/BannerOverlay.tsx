@@ -144,6 +144,16 @@ export function BannerOverlay({ target }: BannerOverlayProps) {
   };
 
   const getPositionStyles = (): React.CSSProperties => {
+    // Para ticker, usar posição especial no rodapé
+    if (banner.type === 'ticker') {
+      return {
+        bottom: '0',
+        left: '0',
+        right: '0',
+        width: '100%',
+      };
+    }
+
     const positions: Record<string, React.CSSProperties> = {
       'top': { top: '20px', left: '50%', transform: 'translateX(-50%)' },
       'bottom': { bottom: '80px', left: '50%', transform: 'translateX(-50%)' },
@@ -216,21 +226,24 @@ export function BannerOverlay({ target }: BannerOverlayProps) {
       );
     }
 
-    // Ticker (scrolling text)
+    // Ticker (scrolling text) - Rodapé
     if (type === 'ticker') {
       return (
         <div 
           style={{
             ...themeStyles,
-            width: '100%',
+            width: '100vw',
+            maxWidth: '100%',
             overflow: 'hidden',
+            padding: '8px 0',
           }} 
           className={getAnimationClass()}
         >
-          <div className="animate-marquee whitespace-nowrap">
-            <span className="text-sm font-medium mx-4">{content.title}</span>
-            <span className="text-sm font-medium mx-4">{content.title}</span>
-            <span className="text-sm font-medium mx-4">{content.title}</span>
+          <div className="animate-marquee whitespace-nowrap flex items-center">
+            <span className="text-sm font-medium mx-8">• {content.title}</span>
+            <span className="text-sm font-medium mx-8">• {content.title}</span>
+            <span className="text-sm font-medium mx-8">• {content.title}</span>
+            <span className="text-sm font-medium mx-8">• {content.title}</span>
           </div>
         </div>
       );
