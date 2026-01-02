@@ -132,9 +132,7 @@ export default function UnifiedChat({ isOpen, onClose }: UnifiedChatProps) {
         isStarred: false,
         isRead: false,
       };
-      // First add comment to service, then pin it
-      commentOverlayService.addComment(comment);
-      commentOverlayService.pinComment(comment.id);
+      commentOverlayService.pinComment(comment);
     } else {
       commentOverlayService.clearPinned();
     }
@@ -318,52 +316,33 @@ export default function UnifiedChat({ isOpen, onClose }: UnifiedChatProps) {
                 <p className="text-sm text-gray-300 mt-1 break-words">{msg.message}</p>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center gap-1 flex-shrink-0">
-                {/* Show on Screen Button (always visible) */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSelectMessage(msg);
-                  }}
-                  className={`p-2 rounded-lg transition-all ${
-                    selectedMessage?.id === msg.id
-                      ? 'bg-[#d4a853] text-black hover:bg-[#e0b563]'
-                      : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#2a2a2a] hover:text-white'
-                  }`}
-                  title={selectedMessage?.id === msg.id ? 'Remover da tela' : 'Mostrar na tela'}
-                >
-                  {selectedMessage?.id === msg.id ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-                
-                {/* Moderation Actions (only when moderation mode is ON) */}
-                {showModeration && (
-                  <>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePinMessage(msg.id);
-                      }}
-                      className={`p-2 rounded-lg hover:bg-[#2a2a2a] transition-colors ${
-                        msg.isPinned ? 'text-[#d4a853]' : 'text-gray-500'
-                      }`}
-                      title="Fixar mensagem"
-                    >
-                      <Pin size={16} />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteMessage(msg.id);
-                      }}
-                      className="p-2 rounded-lg hover:bg-red-900/50 text-gray-500 hover:text-red-400 transition-colors"
-                      title="Deletar mensagem"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </>
-                )}
-              </div>
+              {/* Moderation Actions */}
+              {showModeration && (
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handlePinMessage(msg.id);
+                    }}
+                    className={`p-2 rounded-lg hover:bg-[#2a2a2a] transition-colors ${
+                      msg.isPinned ? 'text-[#d4a853]' : 'text-gray-500'
+                    }`}
+                    title="Fixar mensagem"
+                  >
+                    <Pin size={16} />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteMessage(msg.id);
+                    }}
+                    className="p-2 rounded-lg hover:bg-red-900/50 text-gray-500 hover:text-red-400 transition-colors"
+                    title="Deletar mensagem"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              )}
             </div>
           ))}
           <div ref={messagesEndRef} />

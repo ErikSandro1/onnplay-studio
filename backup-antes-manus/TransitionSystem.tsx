@@ -51,16 +51,14 @@ export default function TransitionSystem({ onTransition, isTransitioning }: Tran
     if (!isAutoMode) return;
 
     const interval = setInterval(() => {
-      // Use selected transition instead of always 'mix'
-      const transitionToUse = selectedTransition === 'auto' ? 'mix' : selectedTransition;
-      handleTransition(transitionToUse);
+      handleTransition('mix');
       toast.info('Transição automática executada', {
         description: `Próxima transição em ${autoTransitionInterval / 1000}s`,
       });
     }, autoTransitionInterval);
 
     return () => clearInterval(interval);
-  }, [isAutoMode, autoTransitionInterval, selectedTransition]);
+  }, [isAutoMode, autoTransitionInterval]);
 
   const handleTransition = (type: TransitionType) => {
     console.log('🎭 TransitionSystem.handleTransition called:', type);

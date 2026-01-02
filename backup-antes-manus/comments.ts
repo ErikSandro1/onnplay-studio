@@ -76,11 +76,11 @@ export interface CommentFilter {
 }
 
 export const DEFAULT_COMMENT_OVERLAY_CONFIG: CommentOverlayConfig = {
-  position: 'bottom-left',
+  position: 'bottom-center',
   dimension: 'regular',
   fontSize: 'medium',
   autoShow: false,
-  duration: 0, // Manual removal (0 = never auto-hide)
+  duration: 10, // 10 seconds
   maxVisible: 3,
   theme: 'dark',
   brandColor: '#FF6B00', // OnnPlay orange

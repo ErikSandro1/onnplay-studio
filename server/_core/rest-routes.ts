@@ -8,6 +8,8 @@ import { createAuthRoutes } from '../routes/auth';
 import { createPaymentRoutes } from '../routes/payments';
 import { createUsageRoutes } from '../routes/usage';
 import { createBroadcastRoutes } from '../routes/broadcast';
+import youtubeRoutes from '../routes/youtube';
+import youtubeOAuthRoutes from '../routes/youtubeOAuth';
 
 /**
  * Setup REST API routes
@@ -34,10 +36,14 @@ export function setupRestRoutes(app: express.Application) {
   app.use('/api/payments', paymentRoutes);
   app.use('/api/usage', usageRoutes);
   app.use('/api/broadcast', broadcastRoutes);
+  app.use('/api/youtube', youtubeRoutes);
+  app.use('/api/youtube', youtubeOAuthRoutes);
 
   console.log('✅ REST API routes configured');
   console.log('   - /api/auth/*');
   console.log('   - /api/payments/*');
   console.log('   - /api/usage/*');
   console.log('   - /api/broadcast/*');
+  console.log('   - /api/youtube/*');
+  console.log('   - /api/youtube/oauth/*');
 }

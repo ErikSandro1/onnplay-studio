@@ -3,6 +3,7 @@ import { Maximize2, Settings } from 'lucide-react';
 import VideoPreview from './VideoPreview';
 import { CameraId } from '../services/CameraControlService';
 import { CommentOverlay } from './CommentOverlay';
+import { BannerOverlay } from './BannerOverlay';
 
 interface DualMonitorsProps {
   isLive: boolean;
@@ -73,7 +74,7 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           <VideoPreview cameraId={previewCamera} />
           
           {/* Label */}
-          <div 
+            <div 
             className="absolute top-3 left-3 px-3 py-1 rounded-md text-xs font-bold"
             style={{
               background: 'rgba(0, 217, 255, 0.9)',
@@ -82,6 +83,9 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           >
             PREVIEW
           </div>
+          
+          {/* Banner Overlay - PREVIEW */}
+          <BannerOverlay target="preview" />
         </div>
       </div>
 
@@ -241,6 +245,9 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           <div className="absolute inset-0 pointer-events-none">
             <CommentOverlay />
           </div>
+          
+          {/* Banner Overlay - PROGRAM */}
+          <BannerOverlay target="program" />
           
           {/* Transition Indicator */}
           {lastTransition !== 'none' && (

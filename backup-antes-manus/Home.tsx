@@ -24,7 +24,6 @@ import { AIChat } from '../components/AIChat';
 import { JoinRoomModal } from '../components/JoinRoomModal';
 import { EmailVerificationBanner } from '../components/EmailVerificationBanner';
 import { useAuth } from '../contexts/AuthContext';
-import { toast } from 'sonner';
 
 // Services
 import { videoSourceManager } from '../services/VideoSourceManager';
@@ -79,6 +78,23 @@ const HomeContent: React.FC = () => {
   const [viewers, setViewers] = useState(0);
   const [duration, setDuration] = useState('00:00:00');
   const [bitrate, setBitrate] = useState('0 Kbps');
+  
+  // Broadcast status for visual feedback
+  type BroadcastStatus = 'off_air' | 'connecting' | 'sending' | 'waiting_youtube' | 'live' | 'ending';
+  const [broadcastStatus, setBroadcastStatus] = useState<BroadcastStatus>('off_air');
+  
+  // Active broadcasts (created but not yet live)
+  const [activeBroadcasts, setActiveBroadcasts] = useState<Array<{
+    id: string;
+    accountId: string;
+    platform: string;
+    title: string;
+    watchUrl?: string;
+    streamKey?: string;
+    rtmpUrl?: string;
+    liveChatId?: string;
+    status: 'scheduled' | 'ready' | 'live' | 'ended';
+  }>>([]);
 
   // Mock participants (used when Daily.co is not connected)
   const mockParticipants = [
@@ -165,21 +181,49 @@ const HomeContent: React.FC = () => {
 
   const handleGoLive = async () => {
     try {
-      if (isLive) {
+      if (isLive || broadcastStatus === 'live') {
         // Stop streaming
+        setBroadcastStatus('ending');
         await rtmpStreamService.stopStreaming();
         setIsLive(false);
+        setBroadcastStatus('off_air');
         
         // End broadcast tracking
         if (broadcastId) {
           await endBroadcast(viewers); // Pass peak viewers
         }
+        
+        // End YouTube broadcasts
+        for (const broadcast of activeBroadcasts) {
+          if (broadcast.platform === 'youtube') {
+            try {
+              await fetch('/api/youtube/oauth/end-live?userId=default-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  accountId: broadcast.accountId,
+                  broadcastId: broadcast.id,
+                }),
+              });
+            } catch (e) {
+              console.error('Failed to end YouTube broadcast:', e);
+            }
+          }
+        }
+        setActiveBroadcasts([]);
       } else {
         // Check if destinations are configured
         const destinations = rtmpStreamService.getDestinations();
         const enabled = destinations.filter(d => d.enabled);
         if (enabled.length === 0) {
-          alert('Please configure streaming destinations first (Tools → Destinations)');
+          alert('Configure os destinos de transmissão primeiro (Ferramentas → Destinos)');
+          setActiveTool('destinations');
+          return;
+        }
+        
+        // Check if we have broadcasts created
+        if (activeBroadcasts.length === 0) {
+          alert('Crie uma live primeiro antes de ir ao ar (Ferramentas → Destinos → Criar Live)');
           setActiveTool('destinations');
           return;
         }
@@ -196,41 +240,62 @@ const HomeContent: React.FC = () => {
           return;
         }
         
-        // Start actual streaming
+        // Update status: connecting
+        setBroadcastStatus('connecting');
+        
+        // Start actual streaming (sends video to YouTube)
         await rtmpStreamService.startStreaming();
         
-        // Auto-transition YouTube broadcasts to LIVE after stream stabilizes
-        setTimeout(async () => {
-          try {
-            const destinations = rtmpStreamService.getDestinations();
-            for (const dest of destinations) {
-              if (dest.platform === "youtube" && dest.enabled && dest.broadcastId && dest.accountId) {
-                console.log("[Home] Transitioning YouTube broadcast to LIVE...", dest.broadcastId);
-                const response = await fetch("/api/youtube/oauth/go-live?userId=default-user", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    accountId: dest.accountId,
-                    broadcastId: dest.broadcastId,
-                  }),
-                });
-                const data = await response.json();
-                if (data.success) {
-                  console.log("[Home] YouTube broadcast is now LIVE!");
-                } else {
-                  console.warn("[Home] Failed to transition to LIVE:", data.message);
-                }
+        // Update status: sending stream
+        setBroadcastStatus('sending');
+        console.log('[GoLive] Stream started, sending to YouTube...');
+        
+        // Transition each YouTube broadcast to LIVE
+        for (const broadcast of activeBroadcasts) {
+          if (broadcast.platform === 'youtube') {
+            console.log('[GoLive] Transitioning YouTube broadcast to LIVE:', broadcast.id);
+            setBroadcastStatus('waiting_youtube');
+            try {
+              const response = await fetch('/api/youtube/oauth/go-live?userId=default-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  accountId: broadcast.accountId,
+                  broadcastId: broadcast.id,
+                }),
+              });
+              
+              if (response.ok) {
+                console.log('[GoLive] YouTube broadcast is now LIVE!');
+                setBroadcastStatus('live');
+                setIsLive(true);
+                // Update broadcast status
+                setActiveBroadcasts(prev => prev.map(b => 
+                  b.id === broadcast.id ? { ...b, status: 'live' as const } : b
+                ));
+                
+                // Emit event for chat to connect
+                window.dispatchEvent(new CustomEvent('broadcast:live', {
+                  detail: {
+                    broadcastId: broadcast.id,
+                    liveChatId: broadcast.liveChatId,
+                    platform: 'youtube',
+                    accountId: broadcast.accountId,
+                  }
+                }));
+              } else {
+                const error = await response.json();
+                console.error('[GoLive] Failed to transition to LIVE:', error);
               }
+            } catch (e) {
+              console.error('[GoLive] Error transitioning to LIVE:', e);
             }
-          } catch (err) {
-            console.error("[Home] Error transitioning to LIVE:", err);
           }
-        }, 15000); // Wait 15 seconds for stream to stabilize
-        setIsLive(true);
+        }
       }
     } catch (err) {
       console.error('Failed to toggle streaming:', err);
-      alert(`Failed to ${isLive ? 'stop' : 'start'} streaming: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      alert(`Falha ao ${isLive ? 'parar' : 'iniciar'} transmissão: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
     }
   };
 
@@ -311,7 +376,7 @@ const HomeContent: React.FC = () => {
       };
       
       // Execute transition via ProgramSwitcher
-      await programSwitcher.executeTake({
+      await programSwitcher.take({
         type: transitionMap[type],
         duration: type === 'cut' ? 0 : 1000,
       });
@@ -324,9 +389,6 @@ const HomeContent: React.FC = () => {
       console.log(`✅ Transition ${type} executed`);
     } catch (error) {
       console.error('❌ Transition error:', error);
-      toast.error('Erro na transição', {
-        description: error instanceof Error ? error.message : 'Erro desconhecido',
-      });
     } finally {
       setIsTransitioning(false);
     }
@@ -353,6 +415,10 @@ const HomeContent: React.FC = () => {
                 <button onClick={handleCloseTool} className="text-gray-400 hover:text-white">✕</button>
               </div>
               <DestinationsManager 
+                onBroadcastReady={(broadcasts) => {
+                  console.log('[Home] Broadcasts ready:', broadcasts);
+                  setActiveBroadcasts(broadcasts);
+                }}
                 onStartStreaming={() => {
                   handleCloseTool();
                   handleGoLive();
@@ -573,6 +639,7 @@ const HomeContent: React.FC = () => {
                 bitrate={bitrate}
                 onGoLive={handleGoLive}
                 onStartRecording={handleStartRecording}
+                broadcastStatus={broadcastStatus}
               />
             </div>
           </div>

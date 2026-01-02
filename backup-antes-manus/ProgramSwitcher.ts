@@ -49,11 +49,7 @@ export class ProgramSwitcher {
     onProgress?: SwitchCallback
   ): Promise<void> {
     if (!this.previewSourceId) {
-      throw new Error('Nenhuma fonte selecionada no Preview. Selecione uma fonte antes de fazer a transição.');
-    }
-
-    if (this.previewSourceId === this.programSourceId) {
-      throw new Error('Preview e Program são iguais. Selecione uma fonte diferente no Preview.');
+      throw new Error('No preview source selected');
     }
 
     if (transitionEngine.isInProgress()) {
@@ -86,11 +82,7 @@ export class ProgramSwitcher {
    */
   async executeCut(): Promise<void> {
     if (!this.previewSourceId) {
-      throw new Error('Nenhuma fonte selecionada no Preview. Selecione uma fonte antes de fazer a transição.');
-    }
-
-    if (this.previewSourceId === this.programSourceId) {
-      throw new Error('Preview e Program são iguais. Selecione uma fonte diferente no Preview.');
+      throw new Error('No preview source selected');
     }
 
     const newProgramSource = this.previewSourceId;

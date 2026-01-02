@@ -9,6 +9,7 @@ import { createPaymentRoutes } from "./routes/payments";
 import { createUsageRoutes } from "./routes/usage";
 import { createBroadcastRoutes } from "./routes/broadcast";
 import youtubeRoutes from "./routes/youtube";
+import youtubeOAuthRoutes from "./routes/youtubeOAuth";
 import { AuthService } from "./services/AuthService";
 import { StripeService } from "./services/StripeService";
 import { UsageLimitService } from "./services/UsageLimitService";
@@ -65,6 +66,7 @@ async function startServer() {
   app.use("/api/usage", createUsageRoutes(usageLimitService, authService));
   app.use("/api/broadcast", createBroadcastRoutes(broadcastService, authService));
   app.use("/api/youtube", youtubeRoutes);
+  app.use("/api/youtube", youtubeOAuthRoutes);
 
   // Stream status endpoint
   app.get("/api/stream/status", (req, res) => {
@@ -91,6 +93,19 @@ async function startServer() {
 
   app.use(express.static(staticPath));
 
+  // Rota especial para forcar refresh do cache
+  app.get("/fresh", (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+    res.setHeader('X-Accel-Expires', '0');
+    const fs = require('fs');
+    const indexPath = path.join(staticPath, "index.html");
+    const html = fs.readFileSync(indexPath, 'utf8');
+    res.type('html').send(html);
+  });
+
   // Handle client-side routing - serve index.html for all routes
   // This must be last to not interfere with API routes
   app.get("*", (req, res) => {
@@ -98,6 +113,11 @@ async function startServer() {
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ error: 'API endpoint not found', path: req.path });
     }
+    // Disable caching for index.html to ensure fresh content
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
     res.sendFile(path.join(staticPath, "index.html"));
   });
 

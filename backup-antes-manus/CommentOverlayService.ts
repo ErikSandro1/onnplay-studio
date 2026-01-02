@@ -183,10 +183,6 @@ export class CommentOverlayService {
     });
   }
 
-  clearPinned(): void {
-    this.clearPinnedComments();
-  }
-
   // Configuration
   getConfig(): CommentOverlayConfig {
     return { ...this.config };

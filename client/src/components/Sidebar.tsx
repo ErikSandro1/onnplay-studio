@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Video, FileText, LayoutGrid, Settings, X, Plus, MessageSquare, Youtube, Eye, RefreshCw, Link2, Unlink, Facebook, Instagram, Twitch, Music, Image, Film } from 'lucide-react';
+import { Video, FileText, LayoutGrid, Settings, X, Plus, MessageSquare, Youtube, Eye, RefreshCw, Link2, Unlink, Facebook, Instagram, Twitch, Music, Image, Film, Type } from 'lucide-react';
 import { commentOverlayService } from '../services/CommentOverlayService';
 import { mediaSourceService } from '../services/MediaSourceService';
+import { BannerPanel } from './BannerPanel';
 
 interface SidebarProps {
   activeSection?: string;
   onSectionChange?: (section: string) => void;
 }
 
-type PanelType = 'sources' | 'chat' | 'scenes' | 'layouts' | 'settings' | null;
+type PanelType = 'sources' | 'chat' | 'scenes' | 'layouts' | 'settings' | 'banners' | null;
 
 interface VideoSource {
   id: string;
@@ -335,6 +336,7 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
   const sidebarItems = [
     { id: 'sources' as PanelType, icon: Video, label: 'Fontes' },
     { id: 'chat' as PanelType, icon: MessageSquare, label: 'Chat' },
+    { id: 'banners' as PanelType, icon: Type, label: 'Banners' },
     { id: 'scenes' as PanelType, icon: FileText, label: 'Scenes' },
     { id: 'layouts' as PanelType, icon: LayoutGrid, label: 'Layouts' },
   ];
@@ -702,6 +704,14 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
             </div>
           </div>
         </div>
+      )}
+
+      {/* Expandable Panel - BANNERS */}
+      {activePanel === 'banners' && (
+        <BannerPanel 
+          isOpen={true} 
+          onClose={() => setActivePanel(null)} 
+        />
       )}
     </div>
   );
