@@ -14,7 +14,7 @@ import { persistenceService, PersistedBanner } from './PersistenceService';
 
 export type BannerType = 'lower-third' | 'banner' | 'ticker' | 'logo';
 export type BannerPosition = 'top' | 'bottom' | 'left' | 'right' | 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
-export type BannerTheme = 'bubble' | 'classic' | 'minimal' | 'block';
+export type BannerTheme = 'bubble' | 'classic' | 'minimal' | 'block' | 'gradient' | 'neon' | 'glass' | 'sharp';
 
 export interface Banner {
   id: string;

@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Plus, Eye, EyeOff, Send, X, Edit2, Trash2, Monitor, Tv } from 'lucide-react';
+import { Plus, Eye, EyeOff, Send, X, Edit2, Trash2, Monitor, Tv, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { bannerOverlayService, Banner, BannerType, BannerTheme, BannerPosition } from '../services/BannerOverlayService';
+import { ColorThemeSelector } from './ColorThemeSelector';
+import { BannerStyleSelector } from './BannerStyleSelector';
+import { BannerPresetSelector } from './BannerPresetSelector';
+import { COLOR_THEMES, BANNER_STYLES, ColorTheme, BannerStyle } from '../config/BannerPresets';
 
 interface BannerPanelProps {
   isOpen: boolean;
@@ -11,6 +15,8 @@ export function BannerPanel({ isOpen, onClose }: BannerPanelProps) {
   const [banners, setBanners] = useState<Banner[]>([]);
   const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [showPresets, setShowPresets] = useState(true);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Form state for creating/editing
   const [formData, setFormData] = useState({
@@ -51,6 +57,8 @@ export function BannerPanel({ isOpen, onClose }: BannerPanelProps) {
     });
     setEditingBanner(null);
     setIsCreating(false);
+    setShowPresets(true);
+    setShowAdvanced(false);
   };
 
   const handleCreate = () => {
@@ -107,6 +115,7 @@ export function BannerPanel({ isOpen, onClose }: BannerPanelProps) {
       accentColor: banner.content.accentColor || '#ea580c',
     });
     setIsCreating(true);
+    setShowPresets(false);
   };
 
   const handleDelete = (id: string) => {
@@ -133,10 +142,49 @@ export function BannerPanel({ isOpen, onClose }: BannerPanelProps) {
     bannerOverlayService.removeFromProgram();
   };
 
+  const handleColorThemeSelect = (theme: ColorTheme) => {
+    setFormData({
+      ...formData,
+      backgroundColor: theme.backgroundColor,
+      textColor: theme.textColor,
+      accentColor: theme.accentColor,
+    });
+  };
+
+  const handleStyleSelect = (style: BannerStyle) => {
+    setFormData({
+      ...formData,
+      theme: style.id as BannerTheme,
+    });
+  };
+
+  const handlePresetSelect = (preset: {
+    backgroundColor: string;
+    textColor: string;
+    accentColor: string;
+    style: string;
+    position: string;
+  }) => {
+    setFormData({
+      ...formData,
+      backgroundColor: preset.backgroundColor,
+      textColor: preset.textColor,
+      accentColor: preset.accentColor,
+      theme: preset.style as BannerTheme,
+      position: preset.position as BannerPosition,
+    });
+    setShowPresets(false);
+  };
+
   if (!isOpen) return null;
 
   const previewBanner = bannerOverlayService.getPreviewBanner();
   const programBanner = bannerOverlayService.getProgramBanner();
+
+  // Find current color theme ID
+  const currentColorThemeId = COLOR_THEMES.find(
+    t => t.backgroundColor === formData.backgroundColor
+  )?.id || 'onnplay-orange';
 
   return (
     <div className="absolute right-0 top-0 h-full w-80 bg-gray-900 border-l border-gray-700 flex flex-col z-40">
@@ -198,7 +246,7 @@ export function BannerPanel({ isOpen, onClose }: BannerPanelProps) {
 
       {/* Create/Edit Form */}
       {isCreating ? (
-        <div className="p-3 border-b border-gray-700 space-y-3 max-h-80 overflow-y-auto">
+        <div className="p-3 border-b border-gray-700 space-y-3 max-h-[60vh] overflow-y-auto">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-white">
               {editingBanner ? 'Editar Banner' : 'Novo Banner'}
@@ -208,6 +256,14 @@ export function BannerPanel({ isOpen, onClose }: BannerPanelProps) {
             </button>
           </div>
 
+          {/* Presets Section */}
+          {showPresets && !editingBanner && (
+            <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
+              <BannerPresetSelector onSelect={handlePresetSelect} />
+            </div>
+          )}
+
+          {/* Basic Info */}
           <input
             type="text"
             placeholder="Nome do banner"
@@ -228,29 +284,18 @@ export function BannerPanel({ isOpen, onClose }: BannerPanelProps) {
             </select>
 
             <select
-              value={formData.theme}
-              onChange={(e) => setFormData({ ...formData, theme: e.target.value as BannerTheme })}
+              value={formData.position}
+              onChange={(e) => setFormData({ ...formData, position: e.target.value as BannerPosition })}
               className="px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-white text-xs"
             >
-              <option value="classic">Classic</option>
-              <option value="bubble">Bubble</option>
-              <option value="minimal">Minimal</option>
-              <option value="block">Block</option>
+              <option value="bottom-left">Inferior Esquerdo</option>
+              <option value="bottom-right">Inferior Direito</option>
+              <option value="bottom">Inferior Centro</option>
+              <option value="top-left">Superior Esquerdo</option>
+              <option value="top-right">Superior Direito</option>
+              <option value="top">Superior Centro</option>
             </select>
           </div>
-
-          <select
-            value={formData.position}
-            onChange={(e) => setFormData({ ...formData, position: e.target.value as BannerPosition })}
-            className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-white text-xs"
-          >
-            <option value="bottom-left">Inferior Esquerdo</option>
-            <option value="bottom-right">Inferior Direito</option>
-            <option value="bottom">Inferior Centro</option>
-            <option value="top-left">Superior Esquerdo</option>
-            <option value="top-right">Superior Direito</option>
-            <option value="top">Superior Centro</option>
-          </select>
 
           <input
             type="text"
@@ -270,33 +315,81 @@ export function BannerPanel({ isOpen, onClose }: BannerPanelProps) {
             />
           )}
 
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Fundo</label>
-              <input
-                type="color"
-                value={formData.backgroundColor}
-                onChange={(e) => setFormData({ ...formData, backgroundColor: e.target.value })}
-                className="w-full h-8 rounded cursor-pointer"
-              />
+          {/* Color Theme Selector */}
+          <ColorThemeSelector
+            selectedThemeId={currentColorThemeId}
+            onSelect={handleColorThemeSelect}
+          />
+
+          {/* Banner Style Selector */}
+          <BannerStyleSelector
+            selectedStyleId={formData.theme}
+            onSelect={handleStyleSelect}
+            previewColor={formData.backgroundColor}
+          />
+
+          {/* Advanced Options */}
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="w-full flex items-center justify-between px-3 py-2 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400 hover:text-white"
+          >
+            <span>Opções Avançadas</span>
+            {showAdvanced ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+
+          {showAdvanced && (
+            <div className="space-y-3 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-xs text-gray-400 block mb-1">Fundo</label>
+                  <input
+                    type="color"
+                    value={formData.backgroundColor}
+                    onChange={(e) => setFormData({ ...formData, backgroundColor: e.target.value })}
+                    className="w-full h-8 rounded cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 block mb-1">Texto</label>
+                  <input
+                    type="color"
+                    value={formData.textColor}
+                    onChange={(e) => setFormData({ ...formData, textColor: e.target.value })}
+                    className="w-full h-8 rounded cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 block mb-1">Destaque</label>
+                  <input
+                    type="color"
+                    value={formData.accentColor}
+                    onChange={(e) => setFormData({ ...formData, accentColor: e.target.value })}
+                    className="w-full h-8 rounded cursor-pointer"
+                  />
+                </div>
+              </div>
             </div>
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Texto</label>
-              <input
-                type="color"
-                value={formData.textColor}
-                onChange={(e) => setFormData({ ...formData, textColor: e.target.value })}
-                className="w-full h-8 rounded cursor-pointer"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Destaque</label>
-              <input
-                type="color"
-                value={formData.accentColor}
-                onChange={(e) => setFormData({ ...formData, accentColor: e.target.value })}
-                className="w-full h-8 rounded cursor-pointer"
-              />
+          )}
+
+          {/* Live Preview */}
+          <div className="bg-gray-950 rounded-lg p-4 border border-gray-700">
+            <p className="text-xs text-gray-500 mb-2">Preview:</p>
+            <div 
+              className="p-3 rounded"
+              style={{
+                backgroundColor: formData.backgroundColor,
+                color: formData.textColor,
+                borderRadius: formData.theme === 'bubble' ? '9999px' : 
+                             formData.theme === 'minimal' ? '4px' : 
+                             formData.theme === 'block' ? '8px' : '0',
+                borderLeft: formData.theme === 'classic' ? `4px solid ${formData.accentColor}` : undefined,
+                boxShadow: formData.theme === 'neon' ? `0 0 15px ${formData.backgroundColor}` : undefined,
+              }}
+            >
+              <div className="font-semibold text-sm">{formData.title || 'Título'}</div>
+              {formData.subtitle && formData.type === 'lower-third' && (
+                <div className="text-xs opacity-80">{formData.subtitle}</div>
+              )}
             </div>
           </div>
 
@@ -376,6 +469,10 @@ export function BannerPanel({ isOpen, onClose }: BannerPanelProps) {
               style={{
                 backgroundColor: banner.content.backgroundColor,
                 color: banner.content.textColor,
+                borderRadius: banner.theme === 'bubble' ? '9999px' : 
+                             banner.theme === 'minimal' ? '4px' : 
+                             banner.theme === 'block' ? '8px' : '0',
+                borderLeft: banner.theme === 'classic' ? `4px solid ${banner.content.accentColor}` : undefined,
               }}
             >
               <div className="font-semibold truncate">{banner.content.title}</div>

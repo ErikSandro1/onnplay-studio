@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Video, FileText, LayoutGrid, Settings, X, Plus, MessageSquare, Youtube, Eye, RefreshCw, Link2, Unlink, Facebook, Instagram, Twitch, Music, Image, Film, Type, ArrowRight, Play, Monitor } from 'lucide-react';
+import { Video, FileText, LayoutGrid, Settings, X, Plus, MessageSquare, Youtube, Eye, RefreshCw, Link2, Unlink, Facebook, Instagram, Twitch, Music, Image, Film, Type, ArrowRight, Play, Monitor, Palette } from 'lucide-react';
 import { commentOverlayService } from '../services/CommentOverlayService';
 import { mediaSourceService } from '../services/MediaSourceService';
 import { BannerPanel } from './BannerPanel';
 import { ScenePanelSidebar } from './ScenePanelSidebar';
+import { BackgroundPanel } from './BackgroundPanel';
 
 interface SidebarProps {
   activeSection?: string;
   onSectionChange?: (section: string) => void;
 }
 
-type PanelType = 'sources' | 'chat' | 'scenes' | 'layouts' | 'settings' | 'banners' | null;
+type PanelType = 'sources' | 'chat' | 'scenes' | 'layouts' | 'settings' | 'banners' | 'backgrounds' | null;
 
 interface VideoSource {
   id: string;
@@ -338,6 +339,7 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
     { id: 'sources' as PanelType, icon: Video, label: 'Fontes' },
     { id: 'chat' as PanelType, icon: MessageSquare, label: 'Chat' },
     { id: 'banners' as PanelType, icon: Type, label: 'Banners' },
+    { id: 'backgrounds' as PanelType, icon: Palette, label: 'Fundos' },
     { id: 'scenes' as PanelType, icon: FileText, label: 'Scenes' },
     { id: 'layouts' as PanelType, icon: LayoutGrid, label: 'Layouts' },
   ];
@@ -710,6 +712,14 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
       {/* Expandable Panel - BANNERS */}
       {activePanel === 'banners' && (
         <BannerPanel 
+          isOpen={true} 
+          onClose={() => setActivePanel(null)} 
+        />
+      )}
+
+      {/* Expandable Panel - BACKGROUNDS */}
+      {activePanel === 'backgrounds' && (
+        <BackgroundPanel 
           isOpen={true} 
           onClose={() => setActivePanel(null)} 
         />

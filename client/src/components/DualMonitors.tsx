@@ -5,6 +5,8 @@ import { CameraId } from '../services/CameraControlService';
 import { CommentOverlay } from './CommentOverlay';
 import { BannerOverlay } from './BannerOverlay';
 import { mediaSourceService, MediaSource } from '../services/MediaSourceService';
+import { backgroundService, CustomBackground } from '../services/BackgroundService';
+import { BackgroundPreset } from '../config/BackgroundPresets';
 
 interface DualMonitorsProps {
   isLive: boolean;
@@ -38,6 +40,10 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
   const [programMedia, setProgramMedia] = useState<MediaSource | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const programVideoRef = useRef<HTMLVideoElement>(null);
+  
+  // Estado para backgrounds
+  const [currentBackground, setCurrentBackground] = useState<BackgroundPreset | CustomBackground | null>(null);
+  const [previewBackground, setPreviewBackground] = useState<BackgroundPreset | CustomBackground | null>(null);
 
   // Escutar eventos de preview de mídia e mudanças no MediaSourceService
   useEffect(() => {
@@ -72,6 +78,21 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
       unsubscribePreview();
       unsubscribeActive();
     };
+  }, []);
+
+  // Escutar mudanças de background
+  useEffect(() => {
+    // Carregar estado inicial
+    setCurrentBackground(backgroundService.getCurrentBackground());
+    setPreviewBackground(backgroundService.getPreviewBackground());
+
+    // Escutar mudanças
+    const unsubscribe = backgroundService.subscribe((bg) => {
+      setCurrentBackground(backgroundService.getCurrentBackground());
+      setPreviewBackground(backgroundService.getPreviewBackground());
+    });
+
+    return unsubscribe;
   }, []);
 
   // Atualizar vídeos quando as fontes mudarem
@@ -149,7 +170,7 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
         <div 
           className="flex-1 rounded-lg overflow-hidden relative"
           style={{
-            background: '#141B2E',
+            ...backgroundService.getBackgroundCSS(previewBackground || currentBackground),
             border: '2px solid #00D9FF',
             boxShadow: '0 0 20px rgba(0, 217, 255, 0.2)',
           }}
@@ -302,7 +323,7 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           data-monitor="program"
           className="flex-1 rounded-lg overflow-hidden relative"
           style={{
-            background: '#141B2E',
+            ...backgroundService.getBackgroundCSS(currentBackground),
             border: '2px solid #FF6B00',
             boxShadow: '0 0 20px rgba(255, 107, 0, 0.3)',
           }}

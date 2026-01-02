@@ -50,8 +50,24 @@ export function BannerOverlay({ target }: BannerOverlayProps) {
 
   if (!banner) return null;
 
-  const getThemeStyles = (theme: BannerTheme, bgColor: string, textColor: string, accentColor?: string) => {
-    const baseStyles = {
+  // Helper to adjust color brightness
+  const adjustColor = (color: string, amount: number): string => {
+    const hex = color.replace('#', '');
+    const num = parseInt(hex, 16);
+    
+    let r = (num >> 16) + amount;
+    let g = ((num >> 8) & 0x00FF) + amount;
+    let b = (num & 0x0000FF) + amount;
+    
+    r = Math.max(0, Math.min(255, r));
+    g = Math.max(0, Math.min(255, g));
+    b = Math.max(0, Math.min(255, b));
+    
+    return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+  };
+
+  const getThemeStyles = (theme: BannerTheme, bgColor: string, textColor: string, accentColor?: string): React.CSSProperties => {
+    const baseStyles: React.CSSProperties = {
       backgroundColor: bgColor,
       color: textColor,
     };
@@ -61,7 +77,7 @@ export function BannerOverlay({ target }: BannerOverlayProps) {
         return {
           ...baseStyles,
           borderRadius: '9999px',
-          padding: '12px 24px',
+          padding: '12px 28px',
           boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
         };
       case 'classic':
@@ -87,12 +103,47 @@ export function BannerOverlay({ target }: BannerOverlayProps) {
           padding: '16px 24px',
           boxShadow: '0 8px 30px rgba(0,0,0,0.4)',
         };
+      case 'gradient':
+        return {
+          ...baseStyles,
+          background: `linear-gradient(135deg, ${bgColor}, ${adjustColor(bgColor, -30)})`,
+          borderRadius: '12px',
+          padding: '14px 24px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+        };
+      case 'neon':
+        return {
+          ...baseStyles,
+          borderRadius: '8px',
+          padding: '12px 24px',
+          boxShadow: `0 0 20px ${bgColor}, 0 0 40px ${bgColor}50`,
+          border: `1px solid ${bgColor}`,
+          backgroundColor: `${bgColor}20`,
+          backdropFilter: 'blur(4px)',
+        };
+      case 'glass':
+        return {
+          ...baseStyles,
+          borderRadius: '16px',
+          padding: '14px 24px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+          backdropFilter: 'blur(12px)',
+          backgroundColor: `${bgColor}80`,
+          border: '1px solid rgba(255,255,255,0.2)',
+        };
+      case 'sharp':
+        return {
+          ...baseStyles,
+          borderRadius: '0',
+          padding: '14px 24px',
+          boxShadow: `4px 4px 0 ${adjustColor(bgColor, -40)}`,
+        };
       default:
         return baseStyles;
     }
   };
 
-  const getPositionStyles = () => {
+  const getPositionStyles = (): React.CSSProperties => {
     const positions: Record<string, React.CSSProperties> = {
       'top': { top: '20px', left: '50%', transform: 'translateX(-50%)' },
       'bottom': { bottom: '80px', left: '50%', transform: 'translateX(-50%)' },
@@ -107,7 +158,7 @@ export function BannerOverlay({ target }: BannerOverlayProps) {
     return positions[banner.position] || positions['bottom-left'];
   };
 
-  const getAnimationClass = () => {
+  const getAnimationClass = (): string => {
     if (!isVisible) return 'opacity-0 scale-95';
     
     switch (banner.position) {
