@@ -202,39 +202,43 @@ export class RTMPStreamingService {
     console.log(`[FFmpeg ${dest.platform}] Full RTMP URL:`, rtmpUrl);
 
     // Fixed output bitrates (proven to work)
-    const OUTPUT_VIDEO_BITRATE = 3000; // 3 Mbps
+    const OUTPUT_VIDEO_BITRATE = 2500; // 2.5 Mbps (reduced for stability)
     const OUTPUT_AUDIO_BITRATE = 128;  // 128 kbps
     
     const videoBitrate = `${OUTPUT_VIDEO_BITRATE}k`;
     const audioBitrate = `${OUTPUT_AUDIO_BITRATE}k`;
-    const bufsize = `${OUTPUT_VIDEO_BITRATE * 2}k`;
+    const bufsize = `${OUTPUT_VIDEO_BITRATE * 4}k`; // 4x buffer for stability
     
     console.log(`[FFmpeg ${dest.platform}] Output: ${videoBitrate}`);
     
-    // FFmpeg arguments - EXACT copy from working backup
+    // FFmpeg arguments - optimized for stability with VBR
     const ffmpegArgs = [
-      // Parameters for valid timestamps (diagnostic recommendation)
-      '-fflags', '+genpts',
+      // Parameters for valid timestamps and stability
+      '-fflags', '+genpts+igndts+discardcorrupt',
       '-use_wallclock_as_timestamps', '1',
-      '-thread_queue_size', '1024',
-      '-hide_banner', '-loglevel', 'info',
+      '-thread_queue_size', '8192', // Large buffer
+      '-probesize', '32M',
+      '-analyzeduration', '32M',
+      '-err_detect', 'ignore_err', // Ignore input errors
+      '-hide_banner', '-loglevel', 'warning',
       
       // Input from stdin (WebM from MediaRecorder)
-      '-f', 'webm', '-i', 'pipe:0',
+      '-f', 'webm',
+      '-i', 'pipe:0',
       
-      // Video encoding
+      // Video encoding - optimized for streaming stability
       '-c:v', 'libx264',
-      '-preset', 'veryfast',
+      '-preset', 'ultrafast',
       '-tune', 'zerolatency',
+      '-threads', '0', // Auto-detect threads
       
-      // Video bitrate settings
+      // Video bitrate settings - VBR for better stability
       '-b:v', videoBitrate,
-      '-minrate', videoBitrate,
-      '-maxrate', videoBitrate,
+      '-maxrate', `${OUTPUT_VIDEO_BITRATE * 1.5}k`, // Allow 50% burst
       '-bufsize', bufsize,
       
-      // x264 specific params for CBR
-      '-x264-params', 'nal-hrd=cbr:force-cfr=1',
+      // x264 specific params - removed strict CBR for stability
+      '-x264-params', 'force-cfr=1',
       
       // Keyframe settings (YouTube requires keyframe every 2 seconds)
       '-g', String(config.frameRate * 2),
@@ -259,10 +263,13 @@ export class RTMPStreamingService {
       
       // FLV output settings
       '-flvflags', 'no_duration_filesize',
-      '-flush_packets', '1',
+      '-flush_packets', '0', // Don't flush immediately for stability
+      '-max_interleave_delta', '0',
       '-f', 'flv',
       
-      // RTMP output
+      // RTMP output with timeout settings
+      '-rtmp_live', 'live',
+      '-rtmp_buffer', '3000', // 3 second buffer
       rtmpUrl,
     ];
 
@@ -270,6 +277,15 @@ export class RTMPStreamingService {
 
     const ffmpeg = spawn('ffmpeg', ffmpegArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    // CRITICAL: Handle stdin errors to prevent server crash
+    ffmpeg.stdin?.on('error', (err: any) => {
+      if (err.code === 'EPIPE' || err.code === 'ERR_STREAM_DESTROYED') {
+        console.log(`[FFmpeg Relay ${dest.platform}] stdin closed (expected when FFmpeg exits)`);
+      } else {
+        console.error(`[FFmpeg Relay ${dest.platform}] stdin error:`, err.message);
+      }
     });
 
     // Handle FFmpeg stdout (progress info)
@@ -355,11 +371,20 @@ export class RTMPStreamingService {
 
     // Write chunk to all FFmpeg processes
     for (const [destId, ffmpeg] of activeStream.ffmpegProcesses) {
-      if (ffmpeg.stdin && !ffmpeg.stdin.destroyed) {
+      if (ffmpeg.stdin && !ffmpeg.stdin.destroyed && ffmpeg.stdin.writable) {
         try {
-          ffmpeg.stdin.write(buffer);
-        } catch (e) {
-          console.error(`[RTMPStreamingService] Error writing to FFmpeg ${destId}:`, e);
+          const canWrite = ffmpeg.stdin.write(buffer);
+          if (!canWrite) {
+            // Buffer is full, wait for drain
+            ffmpeg.stdin.once('drain', () => {
+              // Buffer drained, can continue
+            });
+          }
+        } catch (e: any) {
+          // Ignore EPIPE errors - FFmpeg may have closed
+          if (e.code !== 'EPIPE' && e.code !== 'ERR_STREAM_DESTROYED') {
+            console.error(`[RTMPStreamingService] Error writing to FFmpeg ${destId}:`, e.message);
+          }
         }
       }
     }
