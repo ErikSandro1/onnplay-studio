@@ -76,12 +76,12 @@ class RTMPStreamService {
   private wakeLock: WakeLockSentinel | null = null;
   private audioContext: AudioContext | null = null;
   
-  // Config - YouTube Professional Settings
+  // Config - YouTube Professional Settings (matched with server FFmpeg settings)
   private config = {
     width: 1280,
     height: 720,
     frameRate: 30,
-    videoBitrate: 4000000,  // 4 Mbps for YouTube 720p
+    videoBitrate: 4500000,  // 4.5 Mbps for YouTube 720p (matches server)
     audioBitrate: 128000,
   };
 
@@ -734,8 +734,9 @@ class RTMPStreamService {
       this.updateStatus('error', 'MediaRecorder error');
     };
 
-    // Start recording with small timeslice for low latency
-    this.mediaRecorder.start(100); // 100ms chunks for low latency
+    // Start recording with 33ms timeslice (~30fps) for consistent frame rate
+    // Smaller chunks = more consistent bitrate = better stability
+    this.mediaRecorder.start(33); // ~30fps chunks for stable bitrate
     console.log('[RTMPStreamService] MediaRecorder started with', mimeType || 'default codec');
   }
 

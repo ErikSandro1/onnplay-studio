@@ -12,6 +12,7 @@
  * This is the same architecture used by StreamYard, Restream, etc.
  * 
  * UPDATED: Increased timeouts and added heartbeat for stable long-running streams
+ * UPDATED: Added YouTube recommended FFmpeg settings and frame buffer for stability
  */
 
 import { spawn, ChildProcess } from 'child_process';
@@ -34,6 +35,57 @@ interface StreamConfig {
   audioBitrate: number;
 }
 
+/**
+ * FrameBuffer - Stores recent chunks to handle network jitter
+ * If no new data arrives, we can repeat the last chunk to maintain stream continuity
+ */
+class FrameBuffer {
+  private chunks: Buffer[] = [];
+  private maxSize: number;
+  private lastChunk: Buffer | null = null;
+  private duplicateCount: number = 0;
+
+  constructor(maxSize: number = 30) {
+    this.maxSize = maxSize;
+  }
+
+  push(chunk: Buffer): void {
+    this.chunks.push(chunk);
+    this.lastChunk = chunk;
+    if (this.chunks.length > this.maxSize) {
+      this.chunks.shift();
+    }
+  }
+
+  getNextChunk(): Buffer | null {
+    if (this.chunks.length > 0) {
+      this.duplicateCount = 0;
+      return this.chunks.shift() || null;
+    }
+    // If no new chunk, return last chunk (frame duplication)
+    if (this.lastChunk && this.duplicateCount < 5) {
+      this.duplicateCount++;
+      console.log(`[FrameBuffer] Duplicating last chunk (${this.duplicateCount}/5)`);
+      return this.lastChunk;
+    }
+    return null;
+  }
+
+  hasChunks(): boolean {
+    return this.chunks.length > 0;
+  }
+
+  size(): number {
+    return this.chunks.length;
+  }
+
+  clear(): void {
+    this.chunks = [];
+    this.lastChunk = null;
+    this.duplicateCount = 0;
+  }
+}
+
 interface ActiveStream {
   socket: Socket;
   destinations: StreamDestination[];
@@ -44,6 +96,8 @@ interface ActiveStream {
   startTime: number;
   lastChunkTime: number; // Track last chunk received for health monitoring
   heartbeatInterval?: NodeJS.Timeout; // Heartbeat interval
+  frameBuffer: FrameBuffer; // Buffer for frame stability
+  bufferDrainInterval?: NodeJS.Timeout; // Interval to drain buffer to FFmpeg
 }
 
 export class RTMPStreamingService {
@@ -131,13 +185,13 @@ export class RTMPStreamingService {
 
   /**
    * Handle start relay request
-   * UPDATED: Added heartbeat monitoring
+   * UPDATED: Added heartbeat monitoring and frame buffer
    */
   private handleStartRelay(socket: Socket, destinations: StreamDestination[], config: StreamConfig): void {
     console.log('[RTMPStreamingService] Starting relay for', destinations.length, 'destinations');
     console.log('[RTMPStreamingService] Config:', config);
 
-    // Create active stream entry
+    // Create active stream entry with frame buffer
     const activeStream: ActiveStream = {
       socket,
       destinations,
@@ -147,6 +201,7 @@ export class RTMPStreamingService {
       chunksReceived: 0,
       startTime: Date.now(),
       lastChunkTime: Date.now(),
+      frameBuffer: new FrameBuffer(30), // Buffer up to 30 chunks (~1 second at 30fps)
     };
 
     // Start FFmpeg relay process for each destination
@@ -156,6 +211,12 @@ export class RTMPStreamingService {
         activeStream.ffmpegProcesses.set(dest.id, ffmpeg);
       }
     }
+
+    // Start buffer drain interval - drain buffer to FFmpeg at regular intervals
+    // This ensures consistent data flow even if chunks arrive irregularly
+    activeStream.bufferDrainInterval = setInterval(() => {
+      this.drainBufferToFFmpeg(socket.id);
+    }, 33); // ~30fps drain rate
 
     // Start heartbeat monitoring - check every 30 seconds if stream is healthy
     activeStream.heartbeatInterval = setInterval(() => {
@@ -168,6 +229,31 @@ export class RTMPStreamingService {
       message: `Relay started to ${destinations.length} destinations`,
       heartbeatInterval: 10000, // Tell client to send heartbeat every 10 seconds
     });
+  }
+
+  /**
+   * Drain buffer to FFmpeg processes at regular intervals
+   * This ensures consistent data flow and handles frame duplication if needed
+   */
+  private drainBufferToFFmpeg(socketId: string): void {
+    const activeStream = this.activeStreams.get(socketId);
+    if (!activeStream) return;
+
+    const chunk = activeStream.frameBuffer.getNextChunk();
+    if (!chunk) return;
+
+    // Write chunk to all FFmpeg processes
+    for (const [destId, ffmpeg] of activeStream.ffmpegProcesses) {
+      if (ffmpeg.stdin && !ffmpeg.stdin.destroyed && ffmpeg.stdin.writable) {
+        try {
+          ffmpeg.stdin.write(chunk);
+        } catch (e: any) {
+          if (e.code !== 'EPIPE' && e.code !== 'ERR_STREAM_DESTROYED') {
+            console.error(`[RTMPStreamingService] Error draining to FFmpeg ${destId}:`, e.message);
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -201,56 +287,67 @@ export class RTMPStreamingService {
     console.log(`[RTMPStreamingService] Starting relay to ${dest.platform}: ${dest.rtmpUrl}/****`);
     console.log(`[FFmpeg ${dest.platform}] Full RTMP URL:`, rtmpUrl);
 
-    // Fixed output bitrates (proven to work)
-    const OUTPUT_VIDEO_BITRATE = 2500; // 2.5 Mbps (reduced for stability)
-    const OUTPUT_AUDIO_BITRATE = 128;  // 128 kbps
+    // YouTube recommended bitrates (based on research)
+    // 720p: 4.5 Mbps, 1080p: 6-8 Mbps
+    const OUTPUT_VIDEO_BITRATE = 4500; // 4.5 Mbps for 720p (YouTube recommended)
+    const OUTPUT_AUDIO_BITRATE = 128;  // 128 kbps (YouTube recommends 384k but 128k is fine)
     
     const videoBitrate = `${OUTPUT_VIDEO_BITRATE}k`;
     const audioBitrate = `${OUTPUT_AUDIO_BITRATE}k`;
-    const bufsize = `${OUTPUT_VIDEO_BITRATE * 4}k`; // 4x buffer for stability
+    const bufsize = `${OUTPUT_VIDEO_BITRATE * 2}k`; // 2x bitrate (YouTube recommended)
     
     console.log(`[FFmpeg ${dest.platform}] Output: ${videoBitrate}`);
     
-    // FFmpeg arguments - optimized for stability with VBR
+    // FFmpeg arguments - YouTube recommended settings (based on research)
+    // Key findings:
+    // 1. GOP should be HALF the framerate (30 for 30fps = 1 second keyframes)
+    // 2. Use CBR (constant bitrate) for streaming
+    // 3. Use High Profile for better quality
+    // 4. Buffer should be 2x bitrate
+    // 5. Use 2 B-frames for better compression
+    const gopSize = Math.round(config.frameRate); // GOP = fps (1 second keyframes, YouTube recommended)
+    
     const ffmpegArgs = [
-      // Parameters for valid timestamps and stability
+      // Input parameters for stability
       '-fflags', '+genpts+igndts+discardcorrupt',
       '-use_wallclock_as_timestamps', '1',
-      '-thread_queue_size', '8192', // Large buffer
-      '-probesize', '32M',
-      '-analyzeduration', '32M',
-      '-err_detect', 'ignore_err', // Ignore input errors
+      '-thread_queue_size', '4096',
+      '-probesize', '10M',
+      '-analyzeduration', '10M',
+      '-err_detect', 'ignore_err',
       '-hide_banner', '-loglevel', 'warning',
       
       // Input from stdin (WebM from MediaRecorder)
       '-f', 'webm',
       '-i', 'pipe:0',
       
-      // Video encoding - optimized for streaming stability
+      // Video encoding - YouTube recommended settings
       '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-tune', 'zerolatency',
-      '-threads', '0', // Auto-detect threads
+      '-preset', 'veryfast', // Good balance of speed and quality
+      '-tune', 'zerolatency', // Low latency for live streaming
+      '-threads', '0',
       
-      // Video bitrate settings - VBR for better stability
+      // CBR (Constant Bit Rate) - YouTube recommended for streaming
       '-b:v', videoBitrate,
-      '-maxrate', `${OUTPUT_VIDEO_BITRATE * 1.5}k`, // Allow 50% burst
-      '-bufsize', bufsize,
+      '-minrate', videoBitrate,  // Force constant bitrate
+      '-maxrate', videoBitrate,  // Force constant bitrate
+      '-bufsize', bufsize,       // 2x bitrate buffer
       
-      // x264 specific params - removed strict CBR for stability
-      '-x264-params', 'force-cfr=1',
+      // x264 parameters for constant framerate
+      '-x264-params', 'nal-hrd=cbr:force-cfr=1',
       
-      // Keyframe settings (YouTube requires keyframe every 2 seconds)
-      '-g', String(config.frameRate * 2),
-      '-keyint_min', String(config.frameRate * 2),
-      '-sc_threshold', '0',
+      // Keyframe settings - YouTube recommends GOP = half framerate (1 second)
+      '-g', String(gopSize),
+      '-keyint_min', String(gopSize),
+      '-sc_threshold', '0', // Disable scene change detection
       
-      // H.264 profile (main works better than high for streaming)
-      '-profile:v', 'main',
+      // H.264 High Profile (YouTube recommended)
+      '-profile:v', 'high',
       '-level', '4.1',
-      '-bf', '0',
+      '-bf', '2', // 2 B-frames (YouTube recommended)
+      '-coder', '1', // CABAC encoding
       
-      // Resolution and framerate (explicit)
+      // Resolution and framerate
       '-s', `${config.width}x${config.height}`,
       '-pix_fmt', 'yuv420p',
       '-r', String(config.frameRate),
@@ -263,13 +360,11 @@ export class RTMPStreamingService {
       
       // FLV output settings
       '-flvflags', 'no_duration_filesize',
-      '-flush_packets', '0', // Don't flush immediately for stability
-      '-max_interleave_delta', '0',
       '-f', 'flv',
       
-      // RTMP output with timeout settings
+      // RTMP output
       '-rtmp_live', 'live',
-      '-rtmp_buffer', '3000', // 3 second buffer
+      '-rtmp_buffer', '2000', // 2 second buffer
       rtmpUrl,
     ];
 
@@ -349,6 +444,7 @@ export class RTMPStreamingService {
 
   /**
    * Handle incoming video chunk from MediaRecorder
+   * UPDATED: Now uses frame buffer for smoother playback
    */
   private handleVideoChunk(socketId: string, chunk: ArrayBuffer): void {
     const activeStream = this.activeStreams.get(socketId);
@@ -361,38 +457,22 @@ export class RTMPStreamingService {
     activeStream.chunksReceived++;
     activeStream.lastChunkTime = Date.now(); // Update last chunk time
 
+    // Add chunk to buffer (will be drained by bufferDrainInterval)
+    activeStream.frameBuffer.push(buffer);
+
     // Log progress periodically
     if (activeStream.chunksReceived % 100 === 0) {
       const elapsed = (Date.now() - activeStream.startTime) / 1000;
       const mbReceived = activeStream.bytesReceived / 1024 / 1024;
       const bitrate = (activeStream.bytesReceived * 8 / elapsed / 1000).toFixed(0);
-      console.log(`[RTMPStreamingService] Received ${activeStream.chunksReceived} chunks, ${mbReceived.toFixed(2)} MB, ${bitrate} Kbps`);
-    }
-
-    // Write chunk to all FFmpeg processes
-    for (const [destId, ffmpeg] of activeStream.ffmpegProcesses) {
-      if (ffmpeg.stdin && !ffmpeg.stdin.destroyed && ffmpeg.stdin.writable) {
-        try {
-          const canWrite = ffmpeg.stdin.write(buffer);
-          if (!canWrite) {
-            // Buffer is full, wait for drain
-            ffmpeg.stdin.once('drain', () => {
-              // Buffer drained, can continue
-            });
-          }
-        } catch (e: any) {
-          // Ignore EPIPE errors - FFmpeg may have closed
-          if (e.code !== 'EPIPE' && e.code !== 'ERR_STREAM_DESTROYED') {
-            console.error(`[RTMPStreamingService] Error writing to FFmpeg ${destId}:`, e.message);
-          }
-        }
-      }
+      const bufferSize = activeStream.frameBuffer.size();
+      console.log(`[RTMPStreamingService] Received ${activeStream.chunksReceived} chunks, ${mbReceived.toFixed(2)} MB, ${bitrate} Kbps, buffer: ${bufferSize}`);
     }
   }
 
   /**
    * Handle stop request
-   * UPDATED: Clear heartbeat interval
+   * UPDATED: Clear heartbeat interval and buffer drain interval
    */
   private handleStop(socketId: string): void {
     const activeStream = this.activeStreams.get(socketId);
@@ -406,6 +486,14 @@ export class RTMPStreamingService {
     if (activeStream.heartbeatInterval) {
       clearInterval(activeStream.heartbeatInterval);
     }
+
+    // Clear buffer drain interval
+    if (activeStream.bufferDrainInterval) {
+      clearInterval(activeStream.bufferDrainInterval);
+    }
+
+    // Clear frame buffer
+    activeStream.frameBuffer.clear();
 
     // Close all FFmpeg processes
     for (const [destId, ffmpeg] of activeStream.ffmpegProcesses) {
