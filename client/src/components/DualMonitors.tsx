@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Maximize2, Settings, ArrowRight, Play } from 'lucide-react';
+import { Maximize2, Settings, ArrowRight, Play, X } from 'lucide-react';
 import VideoPreview from './VideoPreview';
 import { CameraId } from '../services/CameraControlService';
 import { CommentOverlay } from './CommentOverlay';
 import { BannerOverlay } from './BannerOverlay';
 import { OverlayFrame } from './OverlayFrame';
+import { BackdropFrame } from './BackdropFrame';
 import { MonitorSettingsMenu, getMonitorSettings, applySettingsToVideo } from './MonitorSettingsMenu';
 import { mediaSourceService, MediaSource } from '../services/MediaSourceService';
 import { backgroundService, CustomBackground } from '../services/BackgroundService';
@@ -253,9 +254,9 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
   };
 
   return (
-    <div className="flex gap-2 h-full items-stretch">
+    <div className="flex gap-4 h-full items-start justify-center" style={{ maxHeight: '100%', overflow: 'hidden' }}>
       {/* PREVIEW Monitor */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col max-w-[45%]">
         {/* Header */}
         <div className="flex items-center justify-between mb-2 px-2">
           <div className="flex items-center gap-3">
@@ -296,43 +297,49 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           anchorRef={previewSettingsRef}
         />
         
-        {/* Monitor */}
+        {/* Monitor - Proporção 16:9 */}
         <div 
-          className="flex-1 rounded-lg overflow-hidden relative"
+          className="rounded-lg overflow-hidden w-full"
           style={{
             ...backgroundService.getBackgroundCSS(previewBackground || currentBackground),
             border: '2px solid #00D9FF',
             boxShadow: '0 0 20px rgba(0, 217, 255, 0.2)',
+            aspectRatio: '16 / 9',
+            position: 'relative',
+            isolation: 'isolate', // Cria novo contexto de empilhamento
           }}
         >
-          {/* Renderizar stream de câmera, mídia ou placeholder */}
+          {/* CAMADA 1: Backdrop (fundo) - z-index: 1 */}
+          <BackdropFrame target="preview" />
+          
+          {/* CAMADA 2: Conteúdo (vídeo/câmera) - z-index: 15 */}
           {previewStream ? (
-            <div className="w-full h-full relative flex items-center justify-center bg-black">
+            <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 15, position: 'absolute' }}>
               <video
                 ref={previewStreamRef}
-                className="max-w-full max-h-full object-contain"
+                className="w-full h-full object-contain"
                 autoPlay
                 muted
                 playsInline
                 style={{ transform: 'scaleX(-1)' }}
               />
               {/* Label da câmera */}
-              <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-black/70 text-white text-xs">
+              <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-black/70 text-white text-xs" style={{ zIndex: 20 }}>
                 🎥 Câmera Local
               </div>
             </div>
           ) : previewMedia ? (
-            <div className="w-full h-full relative">
+            <div className="absolute inset-0" style={{ zIndex: 15, position: 'absolute' }}>
               {previewMedia.type === 'image' ? (
                 <img 
                   src={previewMedia.url} 
                   alt={previewMedia.name}
-                  className="w-full h-full object-contain bg-black"
+                  className="w-full h-full object-contain"
                 />
               ) : (
                 <video
                   ref={previewVideoRef}
-                  className="w-full h-full object-contain bg-black"
+                  className="w-full h-full object-contain"
                   autoPlay
                   loop
                   muted
@@ -340,26 +347,29 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
                 />
               )}
               {/* Nome da mídia */}
-              <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-black/70 text-white text-xs">
+              <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-black/70 text-white text-xs" style={{ zIndex: 20 }}>
                 {previewMedia.name}
               </div>
             </div>
           ) : (
-            <VideoPreview cameraId={previewCamera} />
+            <div className="absolute inset-0" style={{ zIndex: 15, position: 'absolute' }}>
+              <VideoPreview cameraId={previewCamera} target="preview" />
+            </div>
           )}
           
-          {/* Label */}
+          {/* Label - z-index: 40 */}
           <div 
             className="absolute top-3 left-3 px-3 py-1 rounded-md text-xs font-bold"
             style={{
               background: 'rgba(0, 217, 255, 0.9)',
               color: '#0A0E1A',
+              zIndex: 40,
             }}
           >
             PREVIEW
           </div>
           
-          {/* Overlay Frame - PREVIEW */}
+          {/* CAMADA 3: Moldura (overlay) - z-index: 30 */}
           <OverlayFrame target="preview" />
           
           {/* Banner Overlay - PREVIEW */}
@@ -410,7 +420,7 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
       </div>
 
       {/* PROGRAM Monitor */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col max-w-[45%]">
         {/* Header */}
         <div className="flex items-center justify-between mb-2 px-2">
           <div className="flex items-center gap-3">
@@ -455,6 +465,21 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           </div>
           
           <div className="flex items-center gap-2">
+            {/* Botão para limpar PROGRAM */}
+            {(programMedia || programStream) && (
+              <button
+                onClick={() => {
+                  setProgramMedia(null);
+                  setProgramStream(null);
+                  mediaSourceService.clearActive();
+                }}
+                className="p-2 rounded-lg transition-all duration-200 hover:bg-red-500/20"
+                style={{ color: '#EF4444' }}
+                title="Limpar PROGRAM"
+              >
+                <X size={18} />
+              </button>
+            )}
             <button
               ref={programSettingsRef}
               onClick={() => setProgramSettingsOpen(!programSettingsOpen)}
@@ -482,44 +507,50 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           anchorRef={programSettingsRef}
         />
         
-        {/* Monitor */}
+        {/* Monitor - Proporção 16:9 */}
         <div 
           data-monitor="program"
-          className="flex-1 rounded-lg overflow-hidden relative"
+          className="rounded-lg overflow-hidden w-full"
           style={{
             ...backgroundService.getBackgroundCSS(currentBackground),
             border: '2px solid #FF6B00',
             boxShadow: '0 0 20px rgba(255, 107, 0, 0.3)',
+            aspectRatio: '16 / 9',
+            position: 'relative',
+            isolation: 'isolate', // Cria novo contexto de empilhamento
           }}
         >
-          {/* Renderizar stream de câmera, mídia ou placeholder */}
+          {/* CAMADA 1: Backdrop (fundo) - z-index: 1 */}
+          <BackdropFrame target="program" />
+          
+          {/* CAMADA 2: Conteúdo (vídeo/câmera) - z-index: 15 */}
           {programStream ? (
-            <div className="w-full h-full relative flex items-center justify-center bg-black">
+            <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 15, position: 'absolute' }}>
               <video
                 ref={programStreamRef}
-                className="max-w-full max-h-full object-contain"
+                className="w-full h-full object-contain"
                 autoPlay
                 muted
                 playsInline
                 style={{ transform: 'scaleX(-1)' }}
               />
               {/* Label da câmera */}
-              <div className="absolute bottom-12 left-3 px-2 py-1 rounded bg-black/70 text-white text-xs">
+              <div className="absolute bottom-12 left-3 px-2 py-1 rounded bg-black/70 text-white text-xs" style={{ zIndex: 20 }}>
                 🎥 Câmera Local
               </div>
             </div>
           ) : programMedia ? (
-            <div className="w-full h-full relative">
+            <div className="absolute inset-0" style={{ zIndex: 15, position: 'absolute' }}>
               {programMedia.type === 'image' ? (
                 <img 
                   src={programMedia.url} 
                   alt={programMedia.name}
-                  className="w-full h-full object-contain bg-black"
+                  className="w-full h-full object-contain"
                 />
               ) : (
                 <video
                   ref={programVideoRef}
-                  className="w-full h-full object-contain bg-black"
+                  className="w-full h-full object-contain"
                   autoPlay
                   loop
                   muted
@@ -527,12 +558,14 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
                 />
               )}
               {/* Nome da mídia */}
-              <div className="absolute bottom-12 left-3 px-2 py-1 rounded bg-black/70 text-white text-xs">
+              <div className="absolute bottom-12 left-3 px-2 py-1 rounded bg-black/70 text-white text-xs" style={{ zIndex: 20 }}>
                 {programMedia.name}
               </div>
             </div>
           ) : (
-            <VideoPreview cameraId={programCamera} />
+            <div className="absolute inset-0" style={{ zIndex: 15, position: 'absolute' }}>
+              <VideoPreview cameraId={programCamera} target="program" />
+            </div>
           )}
           
           {/* LIVE indicator */}
@@ -590,35 +623,37 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
             </>
           )}
           
-          {/* Label */}
+          {/* Label - z-index: 40 */}
           <div 
             className="absolute bottom-3 left-3 px-3 py-1 rounded-md text-xs font-bold"
             style={{
               background: 'rgba(255, 107, 0, 0.9)',
               color: '#FFFFFF',
+              zIndex: 40,
             }}
           >
             {isLive ? 'LIVE' : 'PROGRAM'}
           </div>
           
-          {/* Resolution Indicator */}
+          {/* Resolution Indicator - z-index: 40 */}
           <div 
             className="absolute bottom-3 right-3 px-2 py-1 rounded-md text-xs font-semibold"
             style={{
               background: 'rgba(255, 107, 0, 0.2)',
               color: '#FF6B00',
               border: '1px solid #FF6B00',
+              zIndex: 40,
             }}
           >
             1080p
           </div>
           
-          {/* Comment Overlay */}
-          <div className="absolute inset-0 pointer-events-none">
+          {/* Comment Overlay - z-index: 35 */}
+          <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 35 }}>
             <CommentOverlay />
           </div>
           
-          {/* Overlay Frame - PROGRAM */}
+          {/* CAMADA 3: Moldura (overlay) - z-index: 30 */}
           <OverlayFrame target="program" />
           
           {/* Banner Overlay - PROGRAM */}

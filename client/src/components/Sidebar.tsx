@@ -371,8 +371,13 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
                 onClick={() => togglePanel(item.id)}
                 className="relative w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-200"
                 style={{
-                  background: isActive ? '#1E2842' : 'transparent',
-                  color: isActive ? '#00D9FF' : '#7A8BA3',
+                  background: isActive 
+                    ? (item.id === 'projects' ? '#3D2E0A' : '#1E2842') 
+                    : (item.id === 'projects' ? 'rgba(212, 168, 83, 0.1)' : 'transparent'),
+                  color: isActive 
+                    ? (item.id === 'projects' ? '#D4A853' : '#00D9FF') 
+                    : (item.id === 'projects' ? '#D4A853' : '#7A8BA3'),
+                  border: item.id === 'projects' ? '1px solid rgba(212, 168, 83, 0.3)' : 'none',
                 }}
                 title={item.label}
               >
@@ -380,7 +385,7 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
                 {isActive && (
                   <div
                     className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 rounded-r"
-                    style={{ background: '#00D9FF' }}
+                    style={{ background: item.id === 'projects' ? '#D4A853' : '#00D9FF' }}
                   />
                 )}
               </button>

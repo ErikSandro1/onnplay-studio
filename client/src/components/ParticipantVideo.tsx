@@ -55,14 +55,14 @@ export const ParticipantVideo: React.FC<ParticipantVideoProps> = ({
   }, [participantId, isLocal, getAudioTrack]);
 
   return (
-    <div className={`relative w-full h-full bg-gray-900 ${className}`}>
-      {/* Video element */}
+    <div className={`relative w-full h-full ${className}`}>
+      {/* Video element - usando object-contain para não cortar */}
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted={isLocal} // Mute local video to prevent echo
-        className={`w-full h-full object-cover ${isCameraOff ? 'hidden' : ''}`}
+        className={`w-full h-full object-contain ${isCameraOff ? 'hidden' : ''}`}
         style={{ transform: isLocal ? 'scaleX(-1)' : 'none' }} // Mirror local video
       />
 

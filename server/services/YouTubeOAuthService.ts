@@ -5,6 +5,8 @@
  * sem necessidade de Stream Key manual (igual StreamYard)
  */
 import { OAuth2Client } from 'google-auth-library';
+import { query, execute, queryOne } from '../db/connection';
+import { PreWarmService } from './PreWarmService';
 
 interface YouTubeChannel {
   id: string;
@@ -40,8 +42,69 @@ interface ConnectedYouTubeAccount {
   connectedAt: number;
 }
 
-// Store connected accounts in memory (in production, use database)
+// Store connected accounts in memory as cache, with database persistence
 const connectedAccounts: Map<string, ConnectedYouTubeAccount[]> = new Map();
+
+// Database helper functions for OAuth accounts persistence
+async function saveAccountToDb(userId: string, account: ConnectedYouTubeAccount): Promise<void> {
+  try {
+    const id = `${userId}-youtube-${account.channelId}`;
+    await execute(
+      `INSERT INTO connected_oauth_accounts 
+       (id, user_id, platform, platform_account_id, account_name, account_thumbnail, access_token, refresh_token, expires_at, is_active, created_at, updated_at)
+       VALUES (?, ?, 'youtube', ?, ?, ?, ?, ?, ?, TRUE, NOW(), NOW())
+       ON DUPLICATE KEY UPDATE 
+       account_name = VALUES(account_name),
+       account_thumbnail = VALUES(account_thumbnail),
+       access_token = VALUES(access_token),
+       refresh_token = VALUES(refresh_token),
+       expires_at = VALUES(expires_at),
+       is_active = TRUE,
+       updated_at = NOW()`,
+      [id, userId, account.channelId, account.channelTitle, account.channelThumbnail, 
+       account.accessToken, account.refreshToken, account.expiresAt]
+    );
+    console.log('[YouTubeOAuth] Account saved to database:', account.channelTitle);
+  } catch (error) {
+    console.error('[YouTubeOAuth] Failed to save account to database:', error);
+  }
+}
+
+async function loadAccountsFromDb(userId: string): Promise<ConnectedYouTubeAccount[]> {
+  try {
+    const rows = await query<any>(
+      `SELECT * FROM connected_oauth_accounts WHERE user_id = ? AND platform = 'youtube' AND is_active = TRUE`,
+      [userId]
+    );
+    return rows.map((row: any) => ({
+      id: `yt-${row.platform_account_id}-${new Date(row.created_at).getTime()}`,
+      channelId: row.platform_account_id,
+      channelTitle: row.account_name,
+      channelThumbnail: row.account_thumbnail || '',
+      accessToken: row.access_token,
+      refreshToken: row.refresh_token || '',
+      expiresAt: row.expires_at || Date.now() + 3600000,
+      connectedAt: new Date(row.created_at).getTime(),
+    }));
+  } catch (error) {
+    console.error('[YouTubeOAuth] Failed to load accounts from database:', error);
+    return [];
+  }
+}
+
+async function deleteAccountFromDb(userId: string, channelId: string): Promise<boolean> {
+  try {
+    const result = await execute(
+      `UPDATE connected_oauth_accounts SET is_active = FALSE, updated_at = NOW() 
+       WHERE user_id = ? AND platform = 'youtube' AND platform_account_id = ?`,
+      [userId, channelId]
+    );
+    return result.affectedRows > 0;
+  } catch (error) {
+    console.error('[YouTubeOAuth] Failed to delete account from database:', error);
+    return false;
+  }
+}
 
 export class YouTubeOAuthService {
   private client: OAuth2Client;
@@ -127,13 +190,16 @@ export class YouTubeOAuthService {
       connectedAt: Date.now(),
     };
 
-    // Store account
+    // Store account in memory cache
     const userAccounts = connectedAccounts.get(userId) || [];
     
     // Remove existing account for same channel
     const filteredAccounts = userAccounts.filter(a => a.channelId !== channelInfo.id);
     filteredAccounts.push(account);
     connectedAccounts.set(userId, filteredAccounts);
+
+    // Persist to database
+    await saveAccountToDb(userId, account);
 
     console.log('[YouTubeOAuth] Account connected successfully');
     return account;
@@ -174,21 +240,47 @@ export class YouTubeOAuthService {
   }
 
   /**
-   * Get connected accounts for a user
+   * Get connected accounts for a user (loads from database if not in cache)
    */
   getConnectedAccounts(userId: string): ConnectedYouTubeAccount[] {
     return connectedAccounts.get(userId) || [];
   }
 
   /**
+   * Get connected accounts for a user (async version that loads from database)
+   */
+  async getConnectedAccountsAsync(userId: string): Promise<ConnectedYouTubeAccount[]> {
+    // Check memory cache first
+    let accounts = connectedAccounts.get(userId);
+    
+    // If not in cache, load from database
+    if (!accounts || accounts.length === 0) {
+      accounts = await loadAccountsFromDb(userId);
+      if (accounts.length > 0) {
+        connectedAccounts.set(userId, accounts);
+        console.log('[YouTubeOAuth] Loaded', accounts.length, 'accounts from database for user:', userId);
+      }
+    }
+    
+    return accounts;
+  }
+
+  /**
    * Remove a connected account
    */
-  removeAccount(userId: string, accountId: string): boolean {
+  async removeAccount(userId: string, accountId: string): Promise<boolean> {
     const accounts = connectedAccounts.get(userId) || [];
+    const accountToRemove = accounts.find(a => a.id === accountId);
     const filtered = accounts.filter(a => a.id !== accountId);
     
     if (filtered.length !== accounts.length) {
       connectedAccounts.set(userId, filtered);
+      
+      // Also remove from database
+      if (accountToRemove) {
+        await deleteAccountFromDb(userId, accountToRemove.channelId);
+      }
+      
       return true;
     }
     return false;
@@ -372,6 +464,18 @@ export class YouTubeOAuthService {
     });
 
     console.log('[YouTubeOAuth] Broadcast stored for transition. Stream ID:', stream.id);
+
+    // Start pre-warming the stream so it becomes active faster
+    // This sends a placeholder stream to YouTube so the stream status becomes 'active'
+    console.log('[YouTubeOAuth] Starting pre-warm for instant go-live...');
+    PreWarmService.startPreWarm(
+      broadcast.id,
+      stream.id,
+      rtmpUrl,
+      streamKey,
+      userId,
+      accountId
+    );
 
     return {
       id: broadcast.id,
@@ -646,6 +750,95 @@ export class YouTubeOAuthService {
 
     console.error('[YouTubeOAuth] Timeout waiting for stream to become active');
     return false;
+  }
+
+  /**
+   * Get active live broadcasts for a user's account
+   * Returns broadcasts that are currently live or ready to go live
+   */
+  async getActiveBroadcasts(userId: string, accountId: string): Promise<YouTubeLiveBroadcast[]> {
+    const accounts = connectedAccounts.get(userId) || [];
+    const account = accounts.find(a => a.id === accountId);
+
+    if (!account) {
+      throw new Error('YouTube account not found');
+    }
+
+    const accessToken = await this.refreshAccessToken(account);
+
+    console.log('[YouTubeOAuth] Fetching active broadcasts...');
+
+    // Get broadcasts that are live or ready
+    const response = await fetch(
+      'https://www.googleapis.com/youtube/v3/liveBroadcasts?part=snippet,status,contentDetails&broadcastStatus=active&maxResults=10',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('[YouTubeOAuth] Failed to get broadcasts:', error);
+      throw new Error(`Failed to get broadcasts: ${error}`);
+    }
+
+    const data = await response.json();
+    
+    const broadcasts: YouTubeLiveBroadcast[] = (data.items || []).map((item: any) => ({
+      id: item.id,
+      title: item.snippet.title,
+      description: item.snippet.description,
+      scheduledStartTime: item.snippet.scheduledStartTime,
+      privacyStatus: item.status.privacyStatus,
+      liveChatId: item.snippet.liveChatId,
+      watchUrl: `https://youtube.com/watch?v=${item.id}`,
+    }));
+
+    console.log('[YouTubeOAuth] Found', broadcasts.length, 'active broadcasts');
+    return broadcasts;
+  }
+
+  /**
+   * Get all broadcasts (including upcoming and completed)
+   */
+  async getAllBroadcasts(userId: string, accountId: string, status?: 'all' | 'active' | 'upcoming' | 'completed'): Promise<YouTubeLiveBroadcast[]> {
+    const accounts = connectedAccounts.get(userId) || [];
+    const account = accounts.find(a => a.id === accountId);
+
+    if (!account) {
+      throw new Error('YouTube account not found');
+    }
+
+    const accessToken = await this.refreshAccessToken(account);
+
+    const broadcastStatus = status || 'all';
+    const response = await fetch(
+      `https://www.googleapis.com/youtube/v3/liveBroadcasts?part=snippet,status,contentDetails&broadcastStatus=${broadcastStatus}&maxResults=25`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to get broadcasts: ${error}`);
+    }
+
+    const data = await response.json();
+    
+    return (data.items || []).map((item: any) => ({
+      id: item.id,
+      title: item.snippet.title,
+      description: item.snippet.description,
+      scheduledStartTime: item.snippet.scheduledStartTime,
+      privacyStatus: item.status.privacyStatus,
+      liveChatId: item.snippet.liveChatId,
+      watchUrl: `https://youtube.com/watch?v=${item.id}`,
+    }));
   }
 }
 

@@ -1,13 +1,14 @@
 /**
  * UnifiedChat Component
  * Chat Unificado com design Cinematic Dark Mode (dourado/preto)
- * Baseado no design do OnnPlay Studio Pro
+ * Integrado com UnifiedChatService para YouTube e Twitch
+ * Suporta conexão automática via OAuth (igual StreamYard)
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Youtube, Facebook, Settings, Pin, Eye, EyeOff, X, Send, Filter, Trash2 } from 'lucide-react';
+import { MessageCircle, Youtube, Facebook, Pin, Eye, EyeOff, X, Send, Filter, Trash2, Link2, Unlink, Loader2, RefreshCw, User, LogIn } from 'lucide-react';
+import { unifiedChatService, UnifiedMessage, ConnectedAccount } from '../services/UnifiedChatService';
 import { commentOverlayService } from '../services/CommentOverlayService';
-import type { Comment } from '../types/comments';
 
 // Ícone do Twitch customizado
 const TwitchIcon = ({ size = 16, className = '' }: { size?: number; className?: string }) => (
@@ -16,33 +17,32 @@ const TwitchIcon = ({ size = 16, className = '' }: { size?: number; className?: 
   </svg>
 );
 
-interface ChatMessage {
-  id: string;
-  platform: 'youtube' | 'twitch' | 'facebook' | 'custom';
-  username: string;
-  avatarUrl?: string;
-  message: string;
-  timestamp: Date;
-  isPinned?: boolean;
-  isSelected?: boolean;
-  badges?: string[];
-}
-
 interface UnifiedChatProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
 export default function UnifiedChat({ isOpen, onClose }: UnifiedChatProps) {
-  // Iniciar com array vazio - mensagens reais virão das plataformas conectadas
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-
+  const [messages, setMessages] = useState<UnifiedMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [filterPlatform, setFilterPlatform] = useState<string>('all');
   const [showModeration, setShowModeration] = useState(false);
   const [autoShow, setAutoShow] = useState(false);
-  const [selectedMessage, setSelectedMessage] = useState<ChatMessage | null>(null);
+  const [selectedMessage, setSelectedMessage] = useState<UnifiedMessage | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Connection states
+  const [youtubeConnected, setYoutubeConnected] = useState(false);
+  const [twitchConnected, setTwitchConnected] = useState(false);
+  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
+  const [showConnectPanel, setShowConnectPanel] = useState(false);
+  const [isAutoConnecting, setIsAutoConnecting] = useState(false);
+
+  // Manual connection (fallback)
+  const [showManualConnect, setShowManualConnect] = useState(false);
+  const [youtubeVideoId, setYoutubeVideoId] = useState('');
+  const [twitchChannel, setTwitchChannel] = useState('');
+  const [isConnecting, setIsConnecting] = useState<'youtube' | 'twitch' | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -52,92 +52,129 @@ export default function UnifiedChat({ isOpen, onClose }: UnifiedChatProps) {
     scrollToBottom();
   }, [messages]);
 
-  // Função para adicionar mensagem externa (chamada por integrações reais)
-  const addExternalMessage = (msg: ChatMessage) => {
-    setMessages((prev) => [...prev.slice(-50), msg]);
-    
-    // Add to comment overlay system
-    const comment: Comment = {
-      id: msg.id,
-      platform: msg.platform,
-      author: {
-        id: msg.id,
-        name: msg.username,
-        avatarUrl: msg.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.username}`,
-        badges: [],
-      },
-      message: msg.message,
-      timestamp: msg.timestamp.getTime(),
-      isPinned: false,
-      isStarred: false,
-      isRead: false,
-    };
-    commentOverlayService.addComment(comment);
-  };
-
-  // Expor função para uso externo (integrações de plataformas)
+  // Subscribe to UnifiedChatService
   useEffect(() => {
-    // @ts-ignore - Expor para uso global temporário
-    window.addChatMessage = addExternalMessage;
+    // Load existing messages
+    setMessages(unifiedChatService.getMessages());
+
+    // Subscribe to new messages
+    const unsubMessage = unifiedChatService.onMessage((msg) => {
+      setMessages(prev => [...prev.slice(-99), msg]);
+    });
+
+    // Subscribe to connection changes
+    const unsubConnection = unifiedChatService.onConnectionChange((connections) => {
+      const youtube = connections.find(c => c.platform === 'youtube');
+      const twitch = connections.find(c => c.platform === 'twitch');
+      setYoutubeConnected(youtube?.isConnected || false);
+      setTwitchConnected(twitch?.isConnected || false);
+    });
+
+    // Subscribe to account changes
+    const unsubAccounts = unifiedChatService.onAccountsChange((accounts) => {
+      setConnectedAccounts(accounts);
+    });
+
+    // Check initial connection status
+    setYoutubeConnected(unifiedChatService.isConnected('youtube'));
+    setTwitchConnected(unifiedChatService.isConnected('twitch'));
+    setAutoShow(unifiedChatService.getAutoShow());
+    setConnectedAccounts(unifiedChatService.getConnectedAccounts());
+
     return () => {
-      // @ts-ignore
-      delete window.addChatMessage;
+      unsubMessage();
+      unsubConnection();
+      unsubAccounts();
     };
   }, []);
 
+  // Auto-connect when panel opens
+  useEffect(() => {
+    if (isOpen && connectedAccounts.length > 0) {
+      handleAutoConnect();
+    }
+  }, [isOpen]);
+
+  const handleAutoConnect = async () => {
+    setIsAutoConnecting(true);
+    await unifiedChatService.autoConnect();
+    setIsAutoConnecting(false);
+  };
+
+  const handleConnectYouTubeOAuth = () => {
+    unifiedChatService.connectYouTubeOAuth();
+  };
+
+  const handleConnectTwitchOAuth = () => {
+    unifiedChatService.connectTwitchOAuth();
+  };
+
+  const handleDisconnectAccount = async (accountId: string) => {
+    await unifiedChatService.disconnectAccount(accountId);
+  };
+
+  // Manual connection handlers (fallback)
+  const handleConnectYouTube = async () => {
+    if (!youtubeVideoId.trim()) return;
+    
+    setIsConnecting('youtube');
+    const success = await unifiedChatService.connectYouTube(youtubeVideoId.trim());
+    setIsConnecting(null);
+    
+    if (success) {
+      setShowManualConnect(false);
+    }
+  };
+
+  const handleConnectTwitch = () => {
+    if (!twitchChannel.trim()) return;
+    
+    setIsConnecting('twitch');
+    unifiedChatService.connectTwitch(twitchChannel.trim());
+    
+    setTimeout(() => {
+      setIsConnecting(null);
+      if (unifiedChatService.isConnected('twitch')) {
+        setShowManualConnect(false);
+      }
+    }, 2000);
+  };
+
+  const handleDisconnectYouTube = () => {
+    unifiedChatService.disconnectYouTube();
+    setYoutubeVideoId('');
+  };
+
+  const handleDisconnectTwitch = () => {
+    unifiedChatService.disconnectTwitch();
+    setTwitchChannel('');
+  };
+
   const handleSendMessage = () => {
     if (!newMessage.trim()) return;
-
-    const msg: ChatMessage = {
-      id: Date.now().toString(),
-      platform: 'custom',
-      username: 'Você (Host)',
-      avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Host',
-      message: newMessage,
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => [...prev, msg]);
+    unifiedChatService.addCustomMessage('Você (Host)', newMessage.trim());
     setNewMessage('');
   };
 
-  const handlePinMessage = (id: string) => {
-    setMessages((prev) =>
-      prev.map((msg) => (msg.id === id ? { ...msg, isPinned: !msg.isPinned } : msg))
-    );
-  };
-
-  const handleDeleteMessage = (id: string) => {
-    setMessages((prev) => prev.filter((msg) => msg.id !== id));
-  };
-
-  const handleSelectMessage = (msg: ChatMessage) => {
+  const handleSelectMessage = (msg: UnifiedMessage) => {
     const newSelected = selectedMessage?.id === msg.id ? null : msg;
     setSelectedMessage(newSelected);
     
-    // Pin to overlay if selected
     if (newSelected) {
-      const comment: Comment = {
-        id: newSelected.id,
-        platform: newSelected.platform,
-        author: {
-          id: newSelected.id,
-          name: newSelected.username,
-          avatarUrl: newSelected.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${newSelected.username}`,
-          badges: [],
-        },
-        message: newSelected.message,
-        timestamp: newSelected.timestamp.getTime(),
-        isPinned: true,
-        isStarred: false,
-        isRead: false,
-      };
-      // First add comment to service, then pin it
-      commentOverlayService.addComment(comment);
-      commentOverlayService.pinComment(comment.id);
+      unifiedChatService.pinToOverlay(newSelected.id);
     } else {
-      commentOverlayService.clearPinned();
+      unifiedChatService.clearPinnedOverlay();
     }
+  };
+
+  const handleDeleteMessage = (id: string) => {
+    setMessages(prev => prev.filter(msg => msg.id !== id));
+  };
+
+  const handleToggleAutoShow = () => {
+    const newAutoShow = !autoShow;
+    setAutoShow(newAutoShow);
+    unifiedChatService.setAutoShow(newAutoShow);
   };
 
   const getPlatformIcon = (platform: string, size: number = 16) => {
@@ -180,6 +217,9 @@ export default function UnifiedChat({ isOpen, onClose }: UnifiedChatProps) {
     (msg) => filterPlatform === 'all' || msg.platform === filterPlatform
   );
 
+  const youtubeAccounts = connectedAccounts.filter(a => a.platform === 'youtube');
+  const twitchAccounts = connectedAccounts.filter(a => a.platform === 'twitch');
+
   if (!isOpen) return null;
 
   return (
@@ -193,202 +233,369 @@ export default function UnifiedChat({ isOpen, onClose }: UnifiedChatProps) {
             </div>
             <div>
               <h2 className="text-xl font-bold text-[#d4a853] tracking-wide uppercase">
-                Multistream Chat Unificado
+                Chat Unificado
               </h2>
               <p className="text-xs text-gray-500">
-                {filteredMessages.length} mensagens • {filterPlatform === 'all' ? 'Todas as plataformas' : filterPlatform}
+                {filteredMessages.length} mensagens • 
+                {youtubeConnected && ' YouTube'} 
+                {twitchConnected && ' Twitch'}
+                {!youtubeConnected && !twitchConnected && ' Nenhuma plataforma conectada'}
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-[#2a2a2a] rounded-lg transition-colors"
-          >
-            <X size={24} className="text-gray-400 hover:text-white" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Auto-connect button */}
+            {connectedAccounts.length > 0 && (
+              <button
+                onClick={handleAutoConnect}
+                disabled={isAutoConnecting}
+                className="px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 bg-green-600/20 text-green-400 hover:bg-green-600/30"
+              >
+                {isAutoConnecting ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={14} />
+                )}
+                Auto-conectar
+              </button>
+            )}
+            <button
+              onClick={() => setShowConnectPanel(!showConnectPanel)}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
+                showConnectPanel
+                  ? 'bg-[#d4a853] text-black'
+                  : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#2a2a2a]'
+              }`}
+            >
+              <Link2 size={16} />
+              Contas
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-[#2a2a2a] rounded-lg transition-colors"
+            >
+              <X size={24} className="text-gray-400 hover:text-white" />
+            </button>
+          </div>
         </div>
 
-        {/* Filter Tabs */}
-        <div className="flex items-center gap-2 px-6 py-3 border-b border-[#2a2a2a] bg-[#0f0f0f]">
-          <Filter size={16} className="text-gray-500" />
-          <button
-            onClick={() => setFilterPlatform('all')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-              filterPlatform === 'all'
-                ? 'bg-gradient-to-r from-[#d4a853] to-[#b8934a] text-black'
-                : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#2a2a2a]'
-            }`}
-          >
-            Todos
-          </button>
-          <button
-            onClick={() => setFilterPlatform('youtube')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
-              filterPlatform === 'youtube'
-                ? 'bg-red-600 text-white'
-                : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#2a2a2a]'
-            }`}
-          >
-            <Youtube size={14} /> YouTube
-          </button>
-          <button
-            onClick={() => setFilterPlatform('twitch')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
-              filterPlatform === 'twitch'
-                ? 'bg-purple-600 text-white'
-                : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#2a2a2a]'
-            }`}
-          >
-            <TwitchIcon size={14} /> Twitch
-          </button>
-          <button
-            onClick={() => setFilterPlatform('facebook')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
-              filterPlatform === 'facebook'
-                ? 'bg-blue-600 text-white'
-                : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#2a2a2a]'
-            }`}
-          >
-            <Facebook size={14} /> Facebook
-          </button>
-          
-          <div className="flex-1"></div>
-          
-          <button
-            onClick={() => {
-              const newAutoShow = !autoShow;
-              setAutoShow(newAutoShow);
-              commentOverlayService.setAutoShow(newAutoShow);
-            }}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
-              autoShow
-                ? 'bg-cyan-600 text-white'
-                : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#2a2a2a]'
-            }`}
-            title="Mostrar todos os comentários automaticamente na tela"
-          >
-            {autoShow ? <Eye size={14} /> : <EyeOff size={14} />}
-            {autoShow ? 'Auto ON' : 'Auto OFF'}
-          </button>
-          <button
-            onClick={() => setShowModeration(!showModeration)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-              showModeration
-                ? 'bg-[#d4a853] text-black'
-                : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#2a2a2a]'
-            }`}
-          >
-            Moderação
-          </button>
+        {/* Connection Panel - OAuth Style */}
+        {showConnectPanel && (
+          <div className="px-6 py-4 border-b border-[#2a2a2a] bg-[#0f0f0f] space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-400 uppercase">Contas Conectadas</h3>
+              <button
+                onClick={() => setShowManualConnect(!showManualConnect)}
+                className="text-xs text-[#d4a853] hover:underline"
+              >
+                {showManualConnect ? 'Ocultar conexão manual' : 'Conexão manual'}
+              </button>
+            </div>
+            
+            {/* YouTube Section */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-gray-400">
+                <Youtube size={16} className="text-red-500" />
+                <span>YouTube</span>
+              </div>
+              
+              {youtubeAccounts.length > 0 ? (
+                youtubeAccounts.map(account => (
+                  <div key={account.id} className="flex items-center gap-3 p-3 bg-[#1a1a1a] rounded-lg">
+                    {account.profileImage ? (
+                      <img src={account.profileImage} alt="" className="w-10 h-10 rounded-full" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-red-600 flex items-center justify-center">
+                        <User size={20} className="text-white" />
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-white">{account.displayName}</p>
+                      <p className={`text-xs ${account.isConnected ? 'text-green-400' : 'text-gray-500'}`}>
+                        {account.isConnected ? '● Chat conectado' : '○ Chat desconectado'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleDisconnectAccount(account.id)}
+                      className="px-3 py-1.5 bg-red-600/20 text-red-400 rounded text-xs font-semibold hover:bg-red-600/30"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <button
+                  onClick={handleConnectYouTubeOAuth}
+                  className="w-full flex items-center justify-center gap-2 p-3 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors"
+                >
+                  <LogIn size={16} />
+                  Conectar conta YouTube
+                </button>
+              )}
+            </div>
+
+            {/* Twitch Section */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-gray-400">
+                <TwitchIcon size={16} className="text-purple-500" />
+                <span>Twitch</span>
+              </div>
+              
+              {twitchAccounts.length > 0 ? (
+                twitchAccounts.map(account => (
+                  <div key={account.id} className="flex items-center gap-3 p-3 bg-[#1a1a1a] rounded-lg">
+                    {account.profileImage ? (
+                      <img src={account.profileImage} alt="" className="w-10 h-10 rounded-full" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center">
+                        <User size={20} className="text-white" />
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-white">{account.displayName}</p>
+                      <p className={`text-xs ${account.isConnected ? 'text-green-400' : 'text-gray-500'}`}>
+                        {account.isConnected ? '● Chat conectado' : '○ Chat desconectado'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleDisconnectAccount(account.id)}
+                      className="px-3 py-1.5 bg-red-600/20 text-red-400 rounded text-xs font-semibold hover:bg-red-600/30"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <button
+                  onClick={handleConnectTwitchOAuth}
+                  className="w-full flex items-center justify-center gap-2 p-3 bg-purple-600 text-white rounded-lg text-sm font-semibold hover:bg-purple-700 transition-colors"
+                >
+                  <LogIn size={16} />
+                  Conectar conta Twitch
+                </button>
+              )}
+            </div>
+
+            {/* Manual Connection (Fallback) */}
+            {showManualConnect && (
+              <div className="pt-4 border-t border-[#2a2a2a] space-y-3">
+                <p className="text-xs text-gray-500">Conexão manual (sem conta vinculada):</p>
+                
+                {/* YouTube Manual */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={youtubeVideoId}
+                    onChange={(e) => setYoutubeVideoId(e.target.value)}
+                    placeholder="ID do vídeo YouTube"
+                    className="flex-1 px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
+                  />
+                  {youtubeConnected && !youtubeAccounts.some(a => a.isConnected) ? (
+                    <button
+                      onClick={handleDisconnectYouTube}
+                      className="px-3 py-2 bg-red-600/20 text-red-400 rounded text-sm hover:bg-red-600/30"
+                    >
+                      <Unlink size={14} />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleConnectYouTube}
+                      disabled={!youtubeVideoId.trim() || isConnecting === 'youtube'}
+                      className="px-3 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {isConnecting === 'youtube' ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
+                    </button>
+                  )}
+                </div>
+
+                {/* Twitch Manual */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={twitchChannel}
+                    onChange={(e) => setTwitchChannel(e.target.value)}
+                    placeholder="Nome do canal Twitch"
+                    className="flex-1 px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                  />
+                  {twitchConnected && !twitchAccounts.some(a => a.isConnected) ? (
+                    <button
+                      onClick={handleDisconnectTwitch}
+                      className="px-3 py-2 bg-purple-600/20 text-purple-400 rounded text-sm hover:bg-purple-600/30"
+                    >
+                      <Unlink size={14} />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleConnectTwitch}
+                      disabled={!twitchChannel.trim() || isConnecting === 'twitch'}
+                      className="px-3 py-2 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 disabled:opacity-50"
+                    >
+                      {isConnecting === 'twitch' ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Info */}
+            <p className="text-xs text-gray-600 text-center pt-2">
+              Conecte suas contas para o chat funcionar automaticamente quando você estiver ao vivo
+            </p>
+          </div>
+        )}
+
+        {/* Toolbar */}
+        <div className="flex items-center justify-between px-6 py-3 border-b border-[#2a2a2a] bg-[#0f0f0f]">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setFilterPlatform('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                filterPlatform === 'all'
+                  ? 'bg-[#d4a853] text-black'
+                  : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#2a2a2a]'
+              }`}
+            >
+              Todos
+            </button>
+            <button
+              onClick={() => setFilterPlatform('youtube')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                filterPlatform === 'youtube'
+                  ? 'bg-red-600 text-white'
+                  : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#2a2a2a]'
+              }`}
+            >
+              <Youtube size={12} /> YouTube
+            </button>
+            <button
+              onClick={() => setFilterPlatform('twitch')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                filterPlatform === 'twitch'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#2a2a2a]'
+              }`}
+            >
+              <TwitchIcon size={12} /> Twitch
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleToggleAutoShow}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                autoShow
+                  ? 'bg-green-600 text-white'
+                  : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#2a2a2a]'
+              }`}
+              title={autoShow ? 'Desativar exibição automática' : 'Ativar exibição automática'}
+            >
+              {autoShow ? <Eye size={12} /> : <EyeOff size={12} />}
+              Auto-exibir
+            </button>
+          </div>
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-          {filteredMessages.map((msg) => (
-            <div
-              key={msg.id}
-              onClick={() => handleSelectMessage(msg)}
-              className={`flex items-start gap-3 p-4 rounded-xl cursor-pointer transition-all ${
-                selectedMessage?.id === msg.id
-                  ? 'bg-[#d4a853]/20 border-2 border-[#d4a853] shadow-lg shadow-[#d4a853]/20'
-                  : msg.isPinned
-                  ? 'bg-[#d4a853]/10 border-2 border-[#d4a853]/50'
-                  : 'hover:bg-[#1a1a1a] border-2 border-transparent'
-              }`}
-            >
-              {/* Platform Icon */}
-              {getPlatformIcon(msg.platform)}
-
-              {/* Content */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-white">{msg.username}</span>
-                    {msg.badges?.map((badge, idx) => (
-                      <span
-                        key={idx}
-                        className="px-2 py-0.5 bg-[#2a2a2a] text-xs text-[#d4a853] rounded font-medium"
-                      >
-                        {badge}
-                      </span>
-                    ))}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          {filteredMessages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-500">
+              <MessageCircle size={48} className="mb-4 opacity-30" />
+              <p className="text-sm">Nenhuma mensagem ainda</p>
+              <p className="text-xs mt-1">
+                {youtubeConnected || twitchConnected
+                  ? 'Aguardando mensagens do chat...'
+                  : 'Conecte uma plataforma para receber mensagens'}
+              </p>
+            </div>
+          ) : (
+            filteredMessages.map((msg) => (
+              <div
+                key={msg.id}
+                onClick={() => handleSelectMessage(msg)}
+                className={`flex items-start gap-3 p-3 rounded-xl cursor-pointer transition-all ${
+                  selectedMessage?.id === msg.id
+                    ? 'bg-[#d4a853]/20 border border-[#d4a853]/50'
+                    : 'bg-[#1a1a1a] hover:bg-[#252525] border border-transparent'
+                }`}
+              >
+                {/* Avatar with platform indicator */}
+                <div className="relative">
+                  {msg.avatarUrl ? (
+                    <img
+                      src={msg.avatarUrl}
+                      alt={msg.displayName}
+                      className="w-10 h-10 rounded-full object-cover"
+                    />
+                  ) : (
+                    getPlatformIcon(msg.platform, 18)
+                  )}
+                  <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center ${
+                    msg.platform === 'youtube' ? 'bg-red-600' :
+                    msg.platform === 'twitch' ? 'bg-purple-600' :
+                    msg.platform === 'facebook' ? 'bg-blue-600' : 'bg-[#d4a853]'
+                  }`}>
+                    {msg.platform === 'youtube' && <Youtube size={8} className="text-white" />}
+                    {msg.platform === 'twitch' && <TwitchIcon size={8} className="text-white" />}
+                    {msg.platform === 'facebook' && <Facebook size={8} className="text-white" />}
                   </div>
-                  <span className="text-xs text-gray-500">{formatTime(msg.timestamp)}</span>
                 </div>
-                <p className="text-sm text-gray-300 mt-1 break-words">{msg.message}</p>
-              </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center gap-1 flex-shrink-0">
-                {/* Show on Screen Button (always visible) */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSelectMessage(msg);
-                  }}
-                  className={`p-2 rounded-lg transition-all ${
-                    selectedMessage?.id === msg.id
-                      ? 'bg-[#d4a853] text-black hover:bg-[#e0b563]'
-                      : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#2a2a2a] hover:text-white'
-                  }`}
-                  title={selectedMessage?.id === msg.id ? 'Remover da tela' : 'Mostrar na tela'}
-                >
-                  {selectedMessage?.id === msg.id ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-                
-                {/* Moderation Actions (only when moderation mode is ON) */}
-                {showModeration && (
-                  <>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePinMessage(msg.id);
-                      }}
-                      className={`p-2 rounded-lg hover:bg-[#2a2a2a] transition-colors ${
-                        msg.isPinned ? 'text-[#d4a853]' : 'text-gray-500'
-                      }`}
-                      title="Fixar mensagem"
+                {/* Message content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span 
+                      className="font-semibold text-sm truncate"
+                      style={{ color: msg.color || '#d4a853' }}
                     >
-                      <Pin size={16} />
-                    </button>
+                      {msg.displayName}
+                    </span>
+                    {msg.badges && msg.badges.length > 0 && (
+                      <div className="flex items-center gap-1">
+                        {msg.badges.slice(0, 3).map((badge, i) => (
+                          <span
+                            key={i}
+                            className="px-1.5 py-0.5 bg-[#2a2a2a] rounded text-[10px] text-gray-400 uppercase"
+                          >
+                            {badge}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <span className="text-[10px] text-gray-600 ml-auto">
+                      {formatTime(msg.timestamp)}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-200 break-words">
+                    {msg.message}
+                  </p>
+                  {msg.isSuperChat && msg.superChatAmount && (
+                    <div className="mt-2 px-2 py-1 bg-yellow-500/20 border border-yellow-500/50 rounded text-xs text-yellow-400">
+                      💰 Super Chat: {msg.superChatAmount}
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {selectedMessage?.id === msg.id && (
+                    <Pin size={14} className="text-[#d4a853]" />
+                  )}
+                  {showModeration && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDeleteMessage(msg.id);
                       }}
-                      className="p-2 rounded-lg hover:bg-red-900/50 text-gray-500 hover:text-red-400 transition-colors"
-                      title="Deletar mensagem"
+                      className="p-1 hover:bg-red-600/20 rounded"
                     >
-                      <Trash2 size={16} />
+                      <Trash2 size={14} className="text-red-400" />
                     </button>
-                  </>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
           <div ref={messagesEndRef} />
         </div>
-
-        {/* Selected Message Preview */}
-        {selectedMessage && (
-          <div className="px-6 py-3 border-t border-[#2a2a2a] bg-[#0f0f0f]">
-            <div className="flex items-center gap-3 p-3 bg-[#d4a853]/10 border border-[#d4a853]/30 rounded-lg">
-              <Eye size={16} className="text-[#d4a853]" />
-              <span className="text-sm text-[#d4a853]">
-                Mensagem de <strong>{selectedMessage.username}</strong> está sendo exibida no overlay
-              </span>
-              <button
-                onClick={() => {
-                  setSelectedMessage(null);
-                  commentOverlayService.clearPinned();
-                }}
-                className="ml-auto text-xs text-gray-400 hover:text-white"
-              >
-                Remover
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Input */}
         <div className="px-6 py-4 border-t border-[#2a2a2a] bg-[#0f0f0f]">
@@ -398,20 +605,19 @@ export default function UnifiedChat({ isOpen, onClose }: UnifiedChatProps) {
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder="Enviar mensagem para o chat..."
-              className="flex-1 px-4 py-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-[#d4a853] transition-colors"
+              placeholder="Enviar mensagem como Host..."
+              className="flex-1 px-4 py-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#d4a853] transition-colors"
             />
             <button
               onClick={handleSendMessage}
               disabled={!newMessage.trim()}
-              className="px-6 py-3 bg-gradient-to-r from-[#d4a853] to-[#b8934a] hover:from-[#e0b563] hover:to-[#c9a45a] disabled:from-gray-700 disabled:to-gray-700 disabled:cursor-not-allowed rounded-xl text-black font-bold transition-all flex items-center gap-2"
+              className="p-3 bg-[#d4a853] text-black rounded-xl hover:bg-[#c49843] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              <Send size={18} />
-              Enviar
+              <Send size={20} />
             </button>
           </div>
-          <p className="text-xs text-gray-500 mt-2 text-center">
-            💡 Clique em uma mensagem para exibi-la como overlay na transmissão
+          <p className="text-[10px] text-gray-600 mt-2 text-center">
+            Clique em uma mensagem para exibi-la na tela
           </p>
         </div>
       </div>

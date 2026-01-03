@@ -6,6 +6,7 @@
  */
 import { Router, Request, Response } from 'express';
 import { youtubeOAuthService } from '../services/YouTubeOAuthService';
+import { PreWarmService } from '../services/PreWarmService';
 
 const router = Router();
 
@@ -83,11 +84,11 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
  * GET /api/youtube/oauth/accounts
  * Get list of connected YouTube accounts
  */
-router.get('/oauth/accounts', (req: Request, res: Response) => {
+router.get('/oauth/accounts', async (req: Request, res: Response) => {
   try {
     const userId = req.query.userId as string || 'default-user';
     
-    const accounts = youtubeOAuthService.getConnectedAccounts(userId);
+    const accounts = await youtubeOAuthService.getConnectedAccountsAsync(userId);
     
     // Return safe account info (without tokens)
     const safeAccounts = accounts.map(a => ({
@@ -112,12 +113,12 @@ router.get('/oauth/accounts', (req: Request, res: Response) => {
  * DELETE /api/youtube/oauth/accounts/:accountId
  * Disconnect a YouTube account
  */
-router.delete('/oauth/accounts/:accountId', (req: Request, res: Response) => {
+router.delete('/oauth/accounts/:accountId', async (req: Request, res: Response) => {
   try {
     const { accountId } = req.params;
     const userId = req.query.userId as string || 'default-user';
 
-    const removed = youtubeOAuthService.removeAccount(userId, accountId);
+    const removed = await youtubeOAuthService.removeAccount(userId, accountId);
 
     if (removed) {
       res.json({ success: true, message: 'Account disconnected' });
@@ -221,6 +222,14 @@ router.post('/oauth/go-live', async (req: Request, res: Response) => {
 
     console.log('[YouTube OAuth] Transitioning to LIVE:', broadcastId);
 
+    // Stop pre-warm stream before transitioning (real stream will take over)
+    if (PreWarmService.hasSession(broadcastId)) {
+      console.log('[YouTube OAuth] Stopping pre-warm stream...');
+      PreWarmService.stopPreWarm(broadcastId);
+      // Wait a moment for pre-warm to fully stop
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
     // Wait for stream to become active and then transition to live
     const success = await youtubeOAuthService.waitAndGoLive(userId, accountId, broadcastId, 60000);
 
@@ -293,6 +302,66 @@ router.get('/oauth/chat/:liveChatId', async (req: Request, res: Response) => {
     console.error('[YouTube OAuth] Error getting chat:', error);
     res.status(500).json({
       error: 'Failed to get chat messages',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/youtube/oauth/active-broadcasts
+ * Get active live broadcasts for a connected account
+ */
+router.get('/oauth/active-broadcasts', async (req: Request, res: Response) => {
+  try {
+    const { accountId } = req.query;
+    const userId = req.query.userId as string || 'default-user';
+
+    if (!accountId) {
+      return res.status(400).json({ error: 'Account ID is required' });
+    }
+
+    const broadcasts = await youtubeOAuthService.getActiveBroadcasts(userId, accountId as string);
+
+    res.json({
+      broadcasts,
+      count: broadcasts.length,
+    });
+  } catch (error: any) {
+    console.error('[YouTube OAuth] Error getting active broadcasts:', error);
+    res.status(500).json({
+      error: 'Failed to get active broadcasts',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/youtube/oauth/all-broadcasts
+ * Get all broadcasts (active, upcoming, completed)
+ */
+router.get('/oauth/all-broadcasts', async (req: Request, res: Response) => {
+  try {
+    const { accountId, status } = req.query;
+    const userId = req.query.userId as string || 'default-user';
+
+    if (!accountId) {
+      return res.status(400).json({ error: 'Account ID is required' });
+    }
+
+    const broadcasts = await youtubeOAuthService.getAllBroadcasts(
+      userId, 
+      accountId as string,
+      status as 'all' | 'active' | 'upcoming' | 'completed'
+    );
+
+    res.json({
+      broadcasts,
+      count: broadcasts.length,
+    });
+  } catch (error: any) {
+    console.error('[YouTube OAuth] Error getting broadcasts:', error);
+    res.status(500).json({
+      error: 'Failed to get broadcasts',
       message: error.message,
     });
   }

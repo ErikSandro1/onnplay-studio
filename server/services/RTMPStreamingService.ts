@@ -10,6 +10,8 @@
  * 3. FFmpeg remuxes (no re-encoding) and sends to RTMP
  * 
  * This is the same architecture used by StreamYard, Restream, etc.
+ * 
+ * UPDATED: Increased timeouts and added heartbeat for stable long-running streams
  */
 
 import { spawn, ChildProcess } from 'child_process';
@@ -40,6 +42,8 @@ interface ActiveStream {
   bytesReceived: number;
   chunksReceived: number;
   startTime: number;
+  lastChunkTime: number; // Track last chunk received for health monitoring
+  heartbeatInterval?: NodeJS.Timeout; // Heartbeat interval
 }
 
 export class RTMPStreamingService {
@@ -52,6 +56,7 @@ export class RTMPStreamingService {
 
   /**
    * Initialize the Socket.IO server for streaming
+   * UPDATED: Increased timeouts significantly for stable streaming
    */
   initialize(httpServer: HTTPServer): void {
     this.io = new SocketIOServer(httpServer, {
@@ -60,9 +65,13 @@ export class RTMPStreamingService {
         origin: '*',
         methods: ['GET', 'POST'],
       },
-      maxHttpBufferSize: 10 * 1024 * 1024, // 10MB max for video chunks
-      pingTimeout: 60000,
-      pingInterval: 25000,
+      maxHttpBufferSize: 50 * 1024 * 1024, // 50MB max for video chunks (increased from 10MB)
+      pingTimeout: 120000,    // 2 minutes (increased from 60s) - time to wait for pong
+      pingInterval: 10000,    // 10 seconds (decreased from 25s) - more frequent pings
+      connectTimeout: 60000,  // 60 seconds connection timeout
+      upgradeTimeout: 30000,  // 30 seconds upgrade timeout
+      transports: ['websocket', 'polling'], // Prefer websocket but allow polling fallback
+      allowUpgrades: true,
     });
 
     this.io.on('connection', (socket: Socket) => {
@@ -81,23 +90,48 @@ export class RTMPStreamingService {
         this.handleVideoChunk(socket.id, chunk);
       });
 
+      // Handle heartbeat from client (keep-alive)
+      socket.on('heartbeat', () => {
+        const stream = this.activeStreams.get(socket.id);
+        if (stream) {
+          stream.lastChunkTime = Date.now();
+        }
+        socket.emit('heartbeat-ack', { timestamp: Date.now() });
+      });
+
       // Handle stop
       socket.on('stop', () => {
         this.handleStop(socket.id);
       });
 
-      // Handle disconnect
+      // Handle disconnect with reason logging
       socket.on('disconnect', (reason: string) => {
-        console.log('[RTMPStreamingService] Client disconnected:', socket.id, reason);
+        console.log('[RTMPStreamingService] Client disconnected:', socket.id, 'Reason:', reason);
+        
+        // Log more details about the disconnect
+        if (reason === 'ping timeout') {
+          console.warn('[RTMPStreamingService] ⚠️ Client disconnected due to ping timeout - possible network issue');
+        } else if (reason === 'transport close') {
+          console.warn('[RTMPStreamingService] ⚠️ Client disconnected due to transport close - connection was closed');
+        } else if (reason === 'transport error') {
+          console.error('[RTMPStreamingService] ❌ Client disconnected due to transport error');
+        }
+        
         this.handleStop(socket.id);
+      });
+
+      // Handle connection errors
+      socket.on('error', (error: Error) => {
+        console.error('[RTMPStreamingService] Socket error:', socket.id, error.message);
       });
     });
 
-    console.log('[RTMPStreamingService] Socket.IO server initialized');
+    console.log('[RTMPStreamingService] Socket.IO server initialized with enhanced stability settings');
   }
 
   /**
    * Handle start relay request
+   * UPDATED: Added heartbeat monitoring
    */
   private handleStartRelay(socket: Socket, destinations: StreamDestination[], config: StreamConfig): void {
     console.log('[RTMPStreamingService] Starting relay for', destinations.length, 'destinations');
@@ -112,6 +146,7 @@ export class RTMPStreamingService {
       bytesReceived: 0,
       chunksReceived: 0,
       startTime: Date.now(),
+      lastChunkTime: Date.now(),
     };
 
     // Start FFmpeg relay process for each destination
@@ -122,64 +157,109 @@ export class RTMPStreamingService {
       }
     }
 
+    // Start heartbeat monitoring - check every 30 seconds if stream is healthy
+    activeStream.heartbeatInterval = setInterval(() => {
+      this.checkStreamHealth(socket.id);
+    }, 30000);
+
     this.activeStreams.set(socket.id, activeStream);
     
     socket.emit('relay-started', { 
-      message: `Relay started to ${destinations.length} destinations` 
+      message: `Relay started to ${destinations.length} destinations`,
+      heartbeatInterval: 10000, // Tell client to send heartbeat every 10 seconds
     });
   }
 
   /**
+   * Check stream health - warn if no data received recently
+   */
+  private checkStreamHealth(socketId: string): void {
+    const stream = this.activeStreams.get(socketId);
+    if (!stream) return;
+
+    const timeSinceLastChunk = Date.now() - stream.lastChunkTime;
+    const elapsed = (Date.now() - stream.startTime) / 1000;
+
+    if (timeSinceLastChunk > 30000) {
+      console.warn(`[RTMPStreamingService] ⚠️ Stream ${socketId} - No data received for ${(timeSinceLastChunk/1000).toFixed(0)}s`);
+      stream.socket.emit('warning', { 
+        message: 'No video data received recently',
+        lastChunkAgo: timeSinceLastChunk 
+      });
+    } else {
+      console.log(`[RTMPStreamingService] ✅ Stream ${socketId} healthy - ${elapsed.toFixed(0)}s elapsed, ${stream.chunksReceived} chunks`);
+    }
+  }
+
+  /**
    * Start FFmpeg relay process for a destination
-   * FFmpeg receives WebM from stdin and remuxes to RTMP (minimal CPU usage)
+   * FFmpeg receives WebM from stdin and remuxes to RTMP
+   * Using proven parameters from working backup
    */
   private startRelayProcess(dest: StreamDestination, config: StreamConfig, socket: Socket): ChildProcess | null {
     const rtmpUrl = `${dest.rtmpUrl}/${dest.streamKey}`;
     console.log(`[RTMPStreamingService] Starting relay to ${dest.platform}: ${dest.rtmpUrl}/****`);
+    console.log(`[FFmpeg ${dest.platform}] Full RTMP URL:`, rtmpUrl);
 
-    // Force minimum bitrate for YouTube (3000k minimum)
-    const minBitrate = 3000000; // 3 Mbps minimum
-    const targetBitrate = Math.max(config.videoBitrate || minBitrate, minBitrate);
-    const bitrateStr = `${Math.floor(targetBitrate / 1000)}k`;
+    // Fixed output bitrates (proven to work)
+    const OUTPUT_VIDEO_BITRATE = 3000; // 3 Mbps
+    const OUTPUT_AUDIO_BITRATE = 128;  // 128 kbps
     
-    console.log(`[FFmpeg Relay ${dest.platform}] Target bitrate: ${bitrateStr}`);
+    const videoBitrate = `${OUTPUT_VIDEO_BITRATE}k`;
+    const audioBitrate = `${OUTPUT_AUDIO_BITRATE}k`;
+    const bufsize = `${OUTPUT_VIDEO_BITRATE * 2}k`;
     
-    // FFmpeg arguments for relay with proper YouTube settings
+    console.log(`[FFmpeg ${dest.platform}] Output: ${videoBitrate}`);
+    
+    // FFmpeg arguments - EXACT copy from working backup
     const ffmpegArgs = [
-      // Input from stdin (WebM from MediaRecorder)
-      '-i', 'pipe:0',
+      // Parameters for valid timestamps (diagnostic recommendation)
+      '-fflags', '+genpts',
+      '-use_wallclock_as_timestamps', '1',
+      '-thread_queue_size', '1024',
+      '-hide_banner', '-loglevel', 'info',
       
-      // Re-encode video with proper bitrate for YouTube
+      // Input from stdin (WebM from MediaRecorder)
+      '-f', 'webm', '-i', 'pipe:0',
+      
+      // Video encoding
       '-c:v', 'libx264',
       '-preset', 'veryfast',
       '-tune', 'zerolatency',
       
-      // Video settings for YouTube - FORCE HIGH BITRATE
-      '-b:v', bitrateStr,
-      '-minrate', bitrateStr,
-      '-maxrate', bitrateStr,
-      '-bufsize', `${Math.floor(targetBitrate * 2 / 1000)}k`,
+      // Video bitrate settings
+      '-b:v', videoBitrate,
+      '-minrate', videoBitrate,
+      '-maxrate', videoBitrate,
+      '-bufsize', bufsize,
+      
+      // x264 specific params for CBR
+      '-x264-params', 'nal-hrd=cbr:force-cfr=1',
       
       // Keyframe settings (YouTube requires keyframe every 2 seconds)
-      '-g', `${config.frameRate * 2}`,
-      '-keyint_min', `${config.frameRate * 2}`,
+      '-g', String(config.frameRate * 2),
+      '-keyint_min', String(config.frameRate * 2),
       '-sc_threshold', '0',
       
-      // H.264 profile for YouTube compatibility
-      '-profile:v', 'high',
+      // H.264 profile (main works better than high for streaming)
+      '-profile:v', 'main',
       '-level', '4.1',
-      '-bf', '2',
+      '-bf', '0',
       
-      // Pixel format
+      // Resolution and framerate (explicit)
+      '-s', `${config.width}x${config.height}`,
       '-pix_fmt', 'yuv420p',
+      '-r', String(config.frameRate),
       
       // Audio settings
       '-c:a', 'aac',
-      '-b:a', '128k',
+      '-b:a', audioBitrate,
       '-ar', '44100',
       '-ac', '2',
       
-      // Output format
+      // FLV output settings
+      '-flvflags', 'no_duration_filesize',
+      '-flush_packets', '1',
       '-f', 'flv',
       
       // RTMP output
@@ -263,6 +343,7 @@ export class RTMPStreamingService {
     const buffer = Buffer.from(chunk);
     activeStream.bytesReceived += buffer.length;
     activeStream.chunksReceived++;
+    activeStream.lastChunkTime = Date.now(); // Update last chunk time
 
     // Log progress periodically
     if (activeStream.chunksReceived % 100 === 0) {
@@ -286,6 +367,7 @@ export class RTMPStreamingService {
 
   /**
    * Handle stop request
+   * UPDATED: Clear heartbeat interval
    */
   private handleStop(socketId: string): void {
     const activeStream = this.activeStreams.get(socketId);
@@ -294,6 +376,11 @@ export class RTMPStreamingService {
     }
 
     console.log('[RTMPStreamingService] Stopping stream for', socketId);
+
+    // Clear heartbeat interval
+    if (activeStream.heartbeatInterval) {
+      clearInterval(activeStream.heartbeatInterval);
+    }
 
     // Close all FFmpeg processes
     for (const [destId, ffmpeg] of activeStream.ffmpegProcesses) {
@@ -345,6 +432,7 @@ export class RTMPStreamingService {
         bytesReceived: stream.bytesReceived,
         chunksReceived: stream.chunksReceived,
         duration: (Date.now() - stream.startTime) / 1000,
+        lastChunkAgo: (Date.now() - stream.lastChunkTime) / 1000,
       });
     }
     return { count: this.activeStreams.size, streams: stats };
@@ -358,6 +446,11 @@ export class RTMPStreamingService {
     
     for (const [socketId, stream] of this.activeStreams) {
       try {
+        // Clear heartbeat
+        if (stream.heartbeatInterval) {
+          clearInterval(stream.heartbeatInterval);
+        }
+        
         for (const [destId, ffmpeg] of stream.ffmpegProcesses) {
           if (ffmpeg && !ffmpeg.killed) {
             ffmpeg.kill('SIGTERM');

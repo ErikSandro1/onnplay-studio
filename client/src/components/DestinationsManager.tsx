@@ -480,7 +480,7 @@ export default function DestinationsManager({ onBroadcastReady, onStartStreaming
 
       setBroadcasts(prev => [...prev, newBroadcast]);
       
-      // Registrar destino no RTMPStreamService
+      // Registrar destino no RTMPStreamService com broadcastId e accountId para transição automática
       if (newBroadcast.rtmpUrl && newBroadcast.streamKey) {
         rtmpStreamService.addDestination({
           id: account.id,
@@ -489,7 +489,11 @@ export default function DestinationsManager({ onBroadcastReady, onStartStreaming
           rtmpUrl: newBroadcast.rtmpUrl,
           streamKey: newBroadcast.streamKey,
           enabled: true,
-        });
+          // Dados extras para transição automática para LIVE
+          broadcastId: newBroadcast.id,
+          accountId: account.id,
+          userId: 'default-user',
+        } as any);  // Type assertion para permitir campos extras
       }
       
       // Mostrar modal de sucesso

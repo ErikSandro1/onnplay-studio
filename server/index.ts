@@ -10,6 +10,7 @@ import { createUsageRoutes } from "./routes/usage";
 import { createBroadcastRoutes } from "./routes/broadcast";
 import youtubeRoutes from "./routes/youtube";
 import youtubeOAuthRoutes from "./routes/youtubeOAuth";
+import twitchOAuthRoutes from "./routes/twitchOAuth";
 import { AuthService } from "./services/AuthService";
 import { StripeService } from "./services/StripeService";
 import { UsageLimitService } from "./services/UsageLimitService";
@@ -67,6 +68,7 @@ async function startServer() {
   app.use("/api/broadcast", createBroadcastRoutes(broadcastService, authService));
   app.use("/api/youtube", youtubeRoutes);
   app.use("/api/youtube", youtubeOAuthRoutes);
+  app.use("/api/twitch", twitchOAuthRoutes);
 
   // Stream status endpoint
   app.get("/api/stream/status", (req, res) => {

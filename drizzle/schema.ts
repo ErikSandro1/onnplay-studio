@@ -292,3 +292,35 @@ export const broadcastSessions = sqliteTable("broadcast_sessions", {
 
 export type BroadcastSession = typeof broadcastSessions.$inferSelect;
 export type InsertBroadcastSession = typeof broadcastSessions.$inferInsert;
+
+
+/**
+ * Connected OAuth Accounts - Contas OAuth conectadas (YouTube, Twitch, etc.)
+ */
+export const connectedOAuthAccounts = sqliteTable("connected_oauth_accounts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: text("userId").notNull(), // ID do usuário (pode ser "default-user" para sessões não autenticadas)
+  /** Plataforma: youtube, twitch, facebook, instagram, tiktok */
+  platform: text("platform").notNull(),
+  /** ID único da conta na plataforma (channelId, twitchUserId, etc.) */
+  platformAccountId: text("platformAccountId").notNull(),
+  /** Nome/título da conta (nome do canal, username, etc.) */
+  accountName: text("accountName").notNull(),
+  /** Thumbnail/avatar da conta */
+  accountThumbnail: text("accountThumbnail"),
+  /** Access Token (criptografado em produção) */
+  accessToken: text("accessToken").notNull(),
+  /** Refresh Token (criptografado em produção) */
+  refreshToken: text("refreshToken"),
+  /** Timestamp de expiração do access token */
+  expiresAt: integer("expiresAt"),
+  /** Se a conta está ativa/habilitada */
+  isActive: integer("isActive", { mode: "boolean" }).default(true).notNull(),
+  /** Última vez que foi usada */
+  lastUsedAt: integer("lastUsedAt", { mode: "timestamp" }),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+});
+
+export type ConnectedOAuthAccount = typeof connectedOAuthAccounts.$inferSelect;
+export type InsertConnectedOAuthAccount = typeof connectedOAuthAccounts.$inferInsert;

@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { cameraControlService, CameraId } from '../services/CameraControlService';
 import { useDailyContext } from '../contexts/DailyContext';
 import { ParticipantVideo } from './ParticipantVideo';
+import { overlayService } from '../services/OverlayService';
 
 interface VideoPreviewProps {
   cameraId: CameraId;
   className?: string;
+  target?: 'preview' | 'program';
 }
 
 /**
@@ -14,8 +16,9 @@ interface VideoPreviewProps {
  * Renders a video preview with zoom, pan and rotation applied
  * Shows real participant video from Daily.co when connected
  */
-export default function VideoPreview({ cameraId, className = '' }: VideoPreviewProps) {
+export default function VideoPreview({ cameraId, className = '', target = 'program' }: VideoPreviewProps) {
   const [transformStyle, setTransformStyle] = useState<React.CSSProperties>({});
+  const [hasBackdrop, setHasBackdrop] = useState(false);
   const { participants, isConnected } = useDailyContext();
 
   useEffect(() => {
@@ -30,6 +33,18 @@ export default function VideoPreview({ cameraId, className = '' }: VideoPreviewP
 
     return unsubscribe;
   }, [cameraId]);
+
+  // Verificar se há backdrop ativo
+  useEffect(() => {
+    const checkBackdrop = () => {
+      const backdrop = overlayService.getBackdrop(target);
+      setHasBackdrop(!!backdrop);
+    };
+
+    checkBackdrop();
+    const unsubscribe = overlayService.subscribe(checkBackdrop);
+    return unsubscribe;
+  }, [target]);
 
   // Map camera IDs to participant indices
   const getParticipantForCamera = () => {
@@ -50,7 +65,14 @@ export default function VideoPreview({ cameraId, className = '' }: VideoPreviewP
   const participant = getParticipantForCamera();
 
   // Mock camera colors for visual feedback (when no participant)
-  const cameraColors: Record<CameraId, string> = {
+  // Se tiver backdrop, usar fundo transparente
+  const cameraColors: Record<CameraId, string> = hasBackdrop ? {
+    cam1: '',
+    cam2: '',
+    cam3: '',
+    screen: '',
+    media: '',
+  } : {
     cam1: 'from-blue-600 to-blue-800',
     cam2: 'from-green-600 to-green-800',
     cam3: 'from-purple-600 to-purple-800',
@@ -66,8 +88,11 @@ export default function VideoPreview({ cameraId, className = '' }: VideoPreviewP
     media: 'MEDIA',
   };
 
+  // Determinar a classe de fundo
+  const bgClass = hasBackdrop ? '' : `bg-gradient-to-br ${cameraColors[cameraId]}`;
+
   return (
-    <div className={`relative w-full h-full overflow-hidden bg-gray-900 ${className}`}>
+    <div className={`relative w-full h-full overflow-hidden ${className}`}>
       {/* Video Container with Transform */}
       <div
         className="absolute inset-0"
@@ -84,28 +109,30 @@ export default function VideoPreview({ cameraId, className = '' }: VideoPreviewP
           />
         ) : (
           // Mock camera placeholder when no participant
-          <div className={`w-full h-full bg-gradient-to-br ${cameraColors[cameraId]} flex items-center justify-center`}>
+          <div className={`w-full h-full ${bgClass} flex items-center justify-center`}>
             {/* Mock Camera Label */}
             <div className="text-white text-6xl font-bold opacity-30">
               {cameraLabels[cameraId]}
             </div>
 
-            {/* Grid overlay for visual reference */}
-            <div className="absolute inset-0 pointer-events-none">
-              {/* Vertical lines */}
-              <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white opacity-10"></div>
-              <div className="absolute left-2/3 top-0 bottom-0 w-px bg-white opacity-10"></div>
-              
-              {/* Horizontal lines */}
-              <div className="absolute top-1/3 left-0 right-0 h-px bg-white opacity-10"></div>
-              <div className="absolute top-2/3 left-0 right-0 h-px bg-white opacity-10"></div>
+            {/* Grid overlay for visual reference - só mostrar se não tiver backdrop */}
+            {!hasBackdrop && (
+              <div className="absolute inset-0 pointer-events-none">
+                {/* Vertical lines */}
+                <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white opacity-10"></div>
+                <div className="absolute left-2/3 top-0 bottom-0 w-px bg-white opacity-10"></div>
+                
+                {/* Horizontal lines */}
+                <div className="absolute top-1/3 left-0 right-0 h-px bg-white opacity-10"></div>
+                <div className="absolute top-2/3 left-0 right-0 h-px bg-white opacity-10"></div>
 
-              {/* Center crosshair */}
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                <div className="w-8 h-px bg-white opacity-30"></div>
-                <div className="w-px h-8 bg-white opacity-30 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"></div>
+                {/* Center crosshair */}
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                  <div className="w-8 h-px bg-white opacity-30"></div>
+                  <div className="w-px h-8 bg-white opacity-30 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"></div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>

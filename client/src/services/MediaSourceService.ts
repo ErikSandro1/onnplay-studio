@@ -525,6 +525,14 @@ class MediaSourceService {
   }
 
   /**
+   * Limpa a fonte ativa do PROGRAM
+   */
+  clearActive(): void {
+    this.setActiveSource(null);
+    console.log('[MediaSourceService] PROGRAM cleared');
+  }
+
+  /**
    * Registra callback para mudanças no PREVIEW
    */
   onPreviewChange(callback: PreviewSourceCallback): () => void {

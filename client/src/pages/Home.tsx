@@ -525,7 +525,7 @@ const HomeContent: React.FC = () => {
             </div>
 
             {/* Monitors */}
-            <div className="flex-1 min-h-0">
+            <div style={{ flex: '1 1 auto', minHeight: '200px', maxHeight: 'calc(100% - 200px)' }}>
               <DualMonitors 
                 isLive={isLive}
                 viewers={viewers}
@@ -539,7 +539,7 @@ const HomeContent: React.FC = () => {
             </div>
 
             {/* Participants Strip */}
-            <div style={{ height: '140px' }}>
+            <div style={{ flexShrink: 0, height: '140px' }}>
               <ParticipantsStrip 
                 participants={displayParticipants}
                 onToggleMute={(id) => {

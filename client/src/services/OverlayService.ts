@@ -1,8 +1,8 @@
 /**
- * OverlayService - Gerencia overlays/molduras decorativas
+ * OverlayService - Gerencia overlays/molduras e backdrops/fundos
  * 
- * Overlays são imagens PNG transparentes que ficam por cima do vídeo,
- * criando molduras temáticas como no StreamYard.
+ * BACKDROP = Imagem de FUNDO que fica ATRÁS do vídeo
+ * MOLDURA = Imagem PNG transparente que fica NA FRENTE do vídeo
  */
 
 import { OverlayPreset, OVERLAY_PRESETS, getOverlayById } from '../config/OverlayPresets';
@@ -10,8 +10,9 @@ import { OverlayPreset, OVERLAY_PRESETS, getOverlayById } from '../config/Overla
 export interface CustomOverlay {
   id: string;
   name: string;
-  imageUrl: string;  // Data URL ou URL da imagem
+  imageUrl: string;
   createdAt: number;
+  type?: 'frame' | 'backdrop'; // Tipo do overlay
 }
 
 export type ActiveOverlay = OverlayPreset | CustomOverlay | null;
@@ -19,18 +20,24 @@ export type ActiveOverlay = OverlayPreset | CustomOverlay | null;
 type OverlayListener = (overlay: ActiveOverlay) => void;
 
 class OverlayService {
-  private currentOverlay: ActiveOverlay = null;
-  private previewOverlay: ActiveOverlay = null;
+  // Molduras (ficam NA FRENTE do vídeo)
+  private currentFrame: ActiveOverlay = null;
+  private previewFrame: ActiveOverlay = null;
+  
+  // Backdrops (ficam ATRÁS do vídeo)
+  private currentBackdrop: ActiveOverlay = null;
+  private previewBackdrop: ActiveOverlay = null;
+  
+  // Overlays customizados
   private customOverlays: CustomOverlay[] = [];
+  
+  // Listeners
   private listeners: Set<OverlayListener> = new Set();
 
   constructor() {
     this.loadFromStorage();
   }
 
-  /**
-   * Carrega overlays customizados do localStorage
-   */
   private loadFromStorage(): void {
     try {
       const saved = localStorage.getItem('onnplay_custom_overlays');
@@ -39,19 +46,27 @@ class OverlayService {
         console.log('[OverlayService] Loaded', this.customOverlays.length, 'custom overlays');
       }
 
-      // Carregar overlay ativo
-      const activeId = localStorage.getItem('onnplay_active_overlay');
-      if (activeId) {
-        // Verificar se é um preset
-        const preset = getOverlayById(activeId);
+      // Carregar moldura ativa
+      const frameId = localStorage.getItem('onnplay_active_frame');
+      if (frameId) {
+        const preset = getOverlayById(frameId);
         if (preset) {
-          this.currentOverlay = preset;
+          this.currentFrame = preset;
         } else {
-          // Verificar se é customizado
-          const custom = this.customOverlays.find(o => o.id === activeId);
-          if (custom) {
-            this.currentOverlay = custom;
-          }
+          const custom = this.customOverlays.find(o => o.id === frameId);
+          if (custom) this.currentFrame = custom;
+        }
+      }
+
+      // Carregar backdrop ativo
+      const backdropId = localStorage.getItem('onnplay_active_backdrop');
+      if (backdropId) {
+        const preset = getOverlayById(backdropId);
+        if (preset) {
+          this.currentBackdrop = preset;
+        } else {
+          const custom = this.customOverlays.find(o => o.id === backdropId);
+          if (custom) this.currentBackdrop = custom;
         }
       }
     } catch (e) {
@@ -59,119 +74,127 @@ class OverlayService {
     }
   }
 
-  /**
-   * Salva overlays customizados no localStorage
-   */
   private saveToStorage(): void {
     try {
       localStorage.setItem('onnplay_custom_overlays', JSON.stringify(this.customOverlays));
       
-      // Salvar overlay ativo
-      if (this.currentOverlay) {
-        localStorage.setItem('onnplay_active_overlay', this.currentOverlay.id);
+      if (this.currentFrame) {
+        localStorage.setItem('onnplay_active_frame', this.currentFrame.id);
       } else {
-        localStorage.removeItem('onnplay_active_overlay');
+        localStorage.removeItem('onnplay_active_frame');
+      }
+
+      if (this.currentBackdrop) {
+        localStorage.setItem('onnplay_active_backdrop', this.currentBackdrop.id);
+      } else {
+        localStorage.removeItem('onnplay_active_backdrop');
       }
     } catch (e) {
       console.error('[OverlayService] Failed to save to storage:', e);
     }
   }
 
-  /**
-   * Define o overlay ativo no PROGRAM
-   */
+  // ==================== MOLDURAS (FRENTE) ====================
+
   setOverlay(overlay: ActiveOverlay): void {
-    this.currentOverlay = overlay;
+    this.currentFrame = overlay;
     this.saveToStorage();
     this.notifyListeners();
-    console.log('[OverlayService] Overlay set:', overlay?.name || 'none');
+    console.log('[OverlayService] Frame set:', overlay?.name || 'none');
   }
 
-  /**
-   * Define o overlay de preview
-   */
   setPreviewOverlay(overlay: ActiveOverlay): void {
-    this.previewOverlay = overlay;
+    this.previewFrame = overlay;
     this.notifyListeners();
-    console.log('[OverlayService] Preview overlay set:', overlay?.name || 'none');
+    console.log('[OverlayService] Preview frame set:', overlay?.name || 'none');
   }
 
-  /**
-   * Aplica o overlay do preview no program
-   */
+  clearOverlay(): void {
+    this.currentFrame = null;
+    this.saveToStorage();
+    this.notifyListeners();
+    console.log('[OverlayService] Frame cleared');
+  }
+
+  clearPreviewOverlay(): void {
+    this.previewFrame = null;
+    this.notifyListeners();
+    console.log('[OverlayService] Preview frame cleared');
+  }
+
+  getCurrentOverlay(): ActiveOverlay {
+    return this.currentFrame;
+  }
+
+  getPreviewOverlay(): ActiveOverlay {
+    return this.previewFrame;
+  }
+
+  // ==================== BACKDROPS (FUNDO) ====================
+
+  setBackdrop(overlay: ActiveOverlay, target: 'preview' | 'program' = 'program'): void {
+    if (target === 'preview') {
+      this.previewBackdrop = overlay;
+    } else {
+      this.currentBackdrop = overlay;
+      this.saveToStorage();
+    }
+    this.notifyListeners();
+    console.log('[OverlayService] Backdrop set for', target, ':', overlay?.name || 'none');
+  }
+
+  clearBackdrop(target: 'preview' | 'program' = 'program'): void {
+    if (target === 'preview') {
+      this.previewBackdrop = null;
+    } else {
+      this.currentBackdrop = null;
+      this.saveToStorage();
+    }
+    this.notifyListeners();
+    console.log('[OverlayService] Backdrop cleared for', target);
+  }
+
+  getBackdrop(target: 'preview' | 'program' = 'program'): ActiveOverlay {
+    return target === 'preview' ? this.previewBackdrop : this.currentBackdrop;
+  }
+
+  // ==================== TRANSIÇÃO ====================
+
   applyPreviewToProgram(): void {
-    this.currentOverlay = this.previewOverlay;
+    this.currentFrame = this.previewFrame;
+    this.currentBackdrop = this.previewBackdrop;
     this.saveToStorage();
     this.notifyListeners();
     console.log('[OverlayService] Applied preview to program');
   }
 
-  /**
-   * Remove o overlay ativo
-   */
-  clearOverlay(): void {
-    this.currentOverlay = null;
-    this.saveToStorage();
-    this.notifyListeners();
-    console.log('[OverlayService] Overlay cleared');
-  }
+  // ==================== CUSTOMIZADOS ====================
 
-  /**
-   * Remove o overlay de preview
-   */
-  clearPreviewOverlay(): void {
-    this.previewOverlay = null;
-    this.notifyListeners();
-    console.log('[OverlayService] Preview overlay cleared');
-  }
-
-  /**
-   * Obtém o overlay ativo no PROGRAM
-   */
-  getCurrentOverlay(): ActiveOverlay {
-    return this.currentOverlay;
-  }
-
-  /**
-   * Obtém o overlay de preview
-   */
-  getPreviewOverlay(): ActiveOverlay {
-    return this.previewOverlay;
-  }
-
-  /**
-   * Adiciona um overlay customizado
-   */
-  addCustomOverlay(name: string, imageUrl: string): CustomOverlay {
+  addCustomOverlay(name: string, imageUrl: string, type: 'frame' | 'backdrop' = 'frame'): CustomOverlay {
     const overlay: CustomOverlay = {
       id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name,
       imageUrl,
       createdAt: Date.now(),
+      type,
     };
 
     this.customOverlays.push(overlay);
     this.saveToStorage();
     this.notifyListeners();
-    console.log('[OverlayService] Custom overlay added:', name);
+    console.log('[OverlayService] Custom overlay added:', name, 'type:', type);
 
     return overlay;
   }
 
-  /**
-   * Remove um overlay customizado
-   */
   removeCustomOverlay(id: string): boolean {
     const index = this.customOverlays.findIndex(o => o.id === id);
     if (index === -1) return false;
 
-    // Se o overlay removido estava ativo, limpar
-    if (this.currentOverlay?.id === id) {
-      this.currentOverlay = null;
-    }
-    if (this.previewOverlay?.id === id) {
-      this.previewOverlay = null;
-    }
+    if (this.currentFrame?.id === id) this.currentFrame = null;
+    if (this.previewFrame?.id === id) this.previewFrame = null;
+    if (this.currentBackdrop?.id === id) this.currentBackdrop = null;
+    if (this.previewBackdrop?.id === id) this.previewBackdrop = null;
 
     this.customOverlays.splice(index, 1);
     this.saveToStorage();
@@ -181,35 +204,24 @@ class OverlayService {
     return true;
   }
 
-  /**
-   * Obtém todos os overlays customizados
-   */
   getCustomOverlays(): CustomOverlay[] {
     return [...this.customOverlays];
   }
 
-  /**
-   * Obtém todos os presets de overlays
-   */
   getPresets(): OverlayPreset[] {
     return OVERLAY_PRESETS;
   }
 
-  /**
-   * Inscreve um listener para mudanças
-   */
+  // ==================== LISTENERS ====================
+
   subscribe(listener: OverlayListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
-  /**
-   * Notifica todos os listeners
-   */
   private notifyListeners(): void {
-    this.listeners.forEach(listener => listener(this.currentOverlay));
+    this.listeners.forEach(listener => listener(this.currentFrame));
   }
 }
 
-// Singleton
 export const overlayService = new OverlayService();

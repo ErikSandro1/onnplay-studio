@@ -9,6 +9,8 @@
  * - Server only relays the stream (minimal CPU usage)
  * - Real-time streaming guaranteed
  * - Better quality (hardware encoding when available)
+ * 
+ * UPDATED: Added automatic reconnection and heartbeat for stable long-running streams
  */
 
 import { io, Socket } from 'socket.io-client';
@@ -30,8 +32,9 @@ export interface StreamStats {
   bitrate: number;
   fps: number;
   duration: number;
-  status: 'idle' | 'connecting' | 'streaming' | 'error';
+  status: 'idle' | 'connecting' | 'streaming' | 'reconnecting' | 'error';
   error?: string;
+  reconnectAttempts?: number;
 }
 
 type StreamCallback = (stats: StreamStats) => void;
@@ -58,6 +61,20 @@ class RTMPStreamService {
   // Callbacks
   private callbacks: Set<StreamCallback> = new Set();
   private statusCallbacks: Set<StatusCallback> = new Set();
+  
+  // Reconnection settings
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 10;
+  private reconnectDelay = 2000; // Start with 2 seconds
+  private maxReconnectDelay = 30000; // Max 30 seconds
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private heartbeatInterval: NodeJS.Timeout | null = null;
+  private lastHeartbeatAck = 0;
+  
+  // Keep-alive to prevent browser suspension
+  private keepAliveInterval: NodeJS.Timeout | null = null;
+  private wakeLock: WakeLockSentinel | null = null;
+  private audioContext: AudioContext | null = null;
   
   // Config - YouTube Professional Settings
   private config = {
@@ -237,6 +254,7 @@ class RTMPStreamService {
 
     console.log('[RTMPStreamService] Starting stream to', enabledDestinations.length, 'destinations');
     this.updateStatus('connecting');
+    this.reconnectAttempts = 0;
 
     // Find video element first (preferred)
     this.videoElement = this.findVideoElement();
@@ -276,13 +294,296 @@ class RTMPStreamService {
     
     // Start stats tracking
     this.startStatsTracking();
+    
+    // Start heartbeat
+    this.startHeartbeat();
+    
+    // Start keep-alive to prevent browser suspension
+    this.startKeepAlive();
 
     this.updateStatus('streaming');
     console.log('[RTMPStreamService] Stream started with MediaRecorder');
+
+    // Auto-transition YouTube broadcasts to LIVE after stream starts
+    await this.transitionYouTubeBroadcastsToLive();
+  }
+
+  /**
+   * Start heartbeat to keep connection alive
+   */
+  private startHeartbeat(): void {
+    this.lastHeartbeatAck = Date.now();
+    
+    // Send heartbeat every 10 seconds
+    this.heartbeatInterval = setInterval(() => {
+      if (this.socket?.connected) {
+        this.socket.emit('heartbeat');
+        
+        // Check if we haven't received ack in 30 seconds
+        const timeSinceAck = Date.now() - this.lastHeartbeatAck;
+        if (timeSinceAck > 30000) {
+          console.warn('[RTMPStreamService] ⚠️ No heartbeat ack for 30s, connection may be stale');
+        }
+      }
+    }, 10000);
+    
+    console.log('[RTMPStreamService] Heartbeat started');
+  }
+
+  /**
+   * Stop heartbeat
+   */
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+  }
+
+  /**
+   * Start keep-alive mechanisms to prevent browser from suspending the tab
+   * Uses multiple strategies: Wake Lock API, silent audio, and periodic activity
+   */
+  private async startKeepAlive(): Promise<void> {
+    console.log('[RTMPStreamService] Starting keep-alive mechanisms...');
+    
+    // Strategy 1: Wake Lock API (prevents screen from sleeping)
+    try {
+      if ('wakeLock' in navigator) {
+        this.wakeLock = await (navigator as any).wakeLock.request('screen');
+        console.log('[RTMPStreamService] ✅ Wake Lock acquired');
+        
+        // Re-acquire wake lock if it's released (e.g., when tab becomes visible again)
+        this.wakeLock.addEventListener('release', async () => {
+          console.log('[RTMPStreamService] Wake Lock released, re-acquiring...');
+          if (this.isStreaming) {
+            try {
+              this.wakeLock = await (navigator as any).wakeLock.request('screen');
+              console.log('[RTMPStreamService] ✅ Wake Lock re-acquired');
+            } catch (e) {
+              console.warn('[RTMPStreamService] Failed to re-acquire Wake Lock');
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[RTMPStreamService] Wake Lock not available:', e);
+    }
+    
+    // Strategy 2: Silent audio to keep browser active
+    try {
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = this.audioContext.createOscillator();
+      const gainNode = this.audioContext.createGain();
+      
+      // Set volume to 0 (silent)
+      gainNode.gain.value = 0;
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(this.audioContext.destination);
+      oscillator.start();
+      
+      console.log('[RTMPStreamService] ✅ Silent audio started');
+    } catch (e) {
+      console.warn('[RTMPStreamService] Silent audio not available:', e);
+    }
+    
+    // Strategy 3: Periodic activity to prevent tab throttling
+    this.keepAliveInterval = setInterval(() => {
+      if (this.isStreaming) {
+        // Touch the DOM to keep the tab active
+        const now = Date.now();
+        document.title = `🔴 LIVE - OnnPlay Studio`;
+        
+        // Log keep-alive activity
+        if (now % 60000 < 5000) { // Log every minute
+          console.log('[RTMPStreamService] Keep-alive tick - stream active');
+        }
+        
+        // Force a small layout recalculation to prevent throttling
+        const dummy = document.body.offsetHeight;
+      }
+    }, 5000); // Every 5 seconds
+    
+    // Strategy 4: Visibility change handler
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    
+    console.log('[RTMPStreamService] ✅ Keep-alive mechanisms started');
+  }
+  
+  /**
+   * Handle visibility change to re-acquire wake lock
+   */
+  private handleVisibilityChange = async (): Promise<void> => {
+    if (document.visibilityState === 'visible' && this.isStreaming) {
+      console.log('[RTMPStreamService] Tab became visible, checking wake lock...');
+      
+      if (!this.wakeLock && 'wakeLock' in navigator) {
+        try {
+          this.wakeLock = await (navigator as any).wakeLock.request('screen');
+          console.log('[RTMPStreamService] ✅ Wake Lock re-acquired on visibility change');
+        } catch (e) {
+          console.warn('[RTMPStreamService] Failed to re-acquire Wake Lock');
+        }
+      }
+    }
+  };
+  
+  /**
+   * Stop keep-alive mechanisms
+   */
+  private stopKeepAlive(): void {
+    console.log('[RTMPStreamService] Stopping keep-alive mechanisms...');
+    
+    // Release wake lock
+    if (this.wakeLock) {
+      this.wakeLock.release();
+      this.wakeLock = null;
+    }
+    
+    // Stop silent audio
+    if (this.audioContext) {
+      this.audioContext.close();
+      this.audioContext = null;
+    }
+    
+    // Clear keep-alive interval
+    if (this.keepAliveInterval) {
+      clearInterval(this.keepAliveInterval);
+      this.keepAliveInterval = null;
+    }
+    
+    // Remove visibility change listener
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    
+    // Reset title
+    document.title = 'OnnPlay Studio';
+    
+    console.log('[RTMPStreamService] ✅ Keep-alive mechanisms stopped');
+  }
+
+  /**
+   * Attempt to reconnect to server
+   */
+  private async attemptReconnect(): Promise<void> {
+    if (!this.isStreaming) {
+      console.log('[RTMPStreamService] Not streaming, skipping reconnect');
+      return;
+    }
+
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('[RTMPStreamService] Max reconnect attempts reached, stopping stream');
+      this.updateStatus('error', 'Connection lost after multiple reconnect attempts');
+      await this.stopStreaming();
+      return;
+    }
+
+    this.reconnectAttempts++;
+    const delay = Math.min(this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1), this.maxReconnectDelay);
+    
+    console.log(`[RTMPStreamService] Reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
+    this.updateStatus('reconnecting');
+    this.stats.reconnectAttempts = this.reconnectAttempts;
+
+    this.reconnectTimer = setTimeout(async () => {
+      try {
+        // Disconnect old socket
+        if (this.socket) {
+          this.socket.removeAllListeners();
+          this.socket.disconnect();
+          this.socket = null;
+        }
+
+        // Reconnect
+        await this.connectToServer();
+        
+        // Restart relay on server
+        const enabledDestinations = this.destinations.filter(d => d.enabled !== false);
+        this.socket!.emit('start-relay', {
+          destinations: enabledDestinations.map(d => ({
+            id: d.id,
+            platform: d.platform,
+            name: d.name,
+            rtmpUrl: d.rtmpUrl,
+            streamKey: d.streamKey,
+          })),
+          config: this.config,
+        });
+
+        console.log('[RTMPStreamService] ✅ Reconnected successfully!');
+        this.reconnectAttempts = 0;
+        this.updateStatus('streaming');
+        
+      } catch (error) {
+        console.error('[RTMPStreamService] Reconnect failed:', error);
+        this.attemptReconnect();
+      }
+    }, delay);
+  }
+
+  /**
+   * Transition YouTube broadcasts to LIVE status
+   * This is required because YouTube needs explicit transition after receiving stream
+   */
+  private async transitionYouTubeBroadcastsToLive(): Promise<void> {
+    // Find YouTube destinations
+    const youtubeDestinations = this.destinations.filter(
+      d => d.platform === 'youtube' && d.enabled !== false
+    );
+
+    if (youtubeDestinations.length === 0) {
+      console.log('[RTMPStreamService] No YouTube destinations to transition');
+      return;
+    }
+
+    console.log('[RTMPStreamService] Waiting 5 seconds for YouTube to receive stream...');
+    
+    // Wait for YouTube to receive and process the stream
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    for (const dest of youtubeDestinations) {
+      try {
+        // Extract broadcastId and accountId from destination
+        // The destination should have these stored when created
+        const broadcastId = (dest as any).broadcastId;
+        const accountId = (dest as any).accountId;
+        const userId = (dest as any).userId || 'default-user';
+
+        if (!broadcastId || !accountId) {
+          console.log('[RTMPStreamService] YouTube destination missing broadcastId or accountId:', dest.id);
+          continue;
+        }
+
+        console.log('[RTMPStreamService] Transitioning YouTube broadcast to LIVE:', broadcastId);
+
+        const response = await fetch('/api/youtube/oauth/go-live', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            accountId,
+            broadcastId,
+            userId,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log('[RTMPStreamService] YouTube broadcast is now LIVE!', data);
+        } else {
+          const error = await response.json();
+          console.error('[RTMPStreamService] Failed to transition YouTube broadcast:', error);
+        }
+      } catch (error) {
+        console.error('[RTMPStreamService] Error transitioning YouTube broadcast:', error);
+      }
+    }
   }
 
   /**
    * Connect to the streaming server
+   * UPDATED: Added reconnection logic and heartbeat handling
    */
   private async connectToServer(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -292,12 +593,14 @@ class RTMPStreamService {
       this.socket = io(serverUrl, {
         path: '/socket.io/stream',
         transports: ['websocket', 'polling'],
-        timeout: 10000,
+        timeout: 30000,           // Increased from 10s to 30s
+        reconnection: false,      // We handle reconnection manually
+        forceNew: true,           // Force new connection
       });
 
       const timeout = setTimeout(() => {
         reject(new Error('Connection timeout'));
-      }, 10000);
+      }, 30000);
 
       this.socket.on('connect', () => {
         console.log('[RTMPStreamService] Connected to server');
@@ -309,12 +612,31 @@ class RTMPStreamService {
         resolve();
       });
 
-      this.socket.on('relay-started', (data: { message: string }) => {
+      this.socket.on('relay-started', (data: { message: string; heartbeatInterval?: number }) => {
         console.log('[RTMPStreamService] Server relay started:', data.message);
       });
 
-      this.socket.on('status', (data: { target: string; status: string }) => {
+      this.socket.on('status', (data: { target: string; status: string; speed?: number; fps?: number }) => {
         console.log('[RTMPStreamService] Status update:', data);
+        
+        // If speed is too low, log warning
+        if (data.speed && data.speed < 0.8) {
+          console.warn('[RTMPStreamService] ⚠️ FFmpeg speed is low:', data.speed);
+        }
+      });
+
+      // Handle heartbeat acknowledgment
+      this.socket.on('heartbeat-ack', (data: { timestamp: number }) => {
+        this.lastHeartbeatAck = Date.now();
+        const latency = Date.now() - data.timestamp;
+        if (latency > 1000) {
+          console.warn('[RTMPStreamService] High latency detected:', latency, 'ms');
+        }
+      });
+
+      // Handle server warnings
+      this.socket.on('warning', (data: { message: string }) => {
+        console.warn('[RTMPStreamService] Server warning:', data.message);
       });
 
       this.socket.on('error', (data: { message: string }) => {
@@ -324,15 +646,27 @@ class RTMPStreamService {
 
       this.socket.on('disconnect', (reason: string) => {
         console.log('[RTMPStreamService] Disconnected:', reason);
+        
         if (this.isStreaming) {
-          this.updateStatus('error', `Disconnected: ${reason}`);
+          console.warn('[RTMPStreamService] ⚠️ Disconnected while streaming, attempting reconnect...');
+          
+          // Don't update status to error immediately, try to reconnect
+          if (reason !== 'io client disconnect') {
+            this.attemptReconnect();
+          }
         }
       });
 
       this.socket.on('connect_error', (error: Error) => {
         console.error('[RTMPStreamService] Connection error:', error);
         clearTimeout(timeout);
-        reject(error);
+        
+        if (this.isStreaming && this.reconnectAttempts > 0) {
+          // Already trying to reconnect, don't reject
+          console.log('[RTMPStreamService] Connection error during reconnect, will retry');
+        } else {
+          reject(error);
+        }
       });
     });
   }
@@ -389,6 +723,9 @@ class RTMPStreamService {
         if (this.chunksSent % 30 === 0) {
           console.log(`[RTMPStreamService] Sent chunk ${this.chunksSent}, ${(this.bytesSent / 1024 / 1024).toFixed(2)} MB total`);
         }
+      } else if (event.data.size > 0 && this.isStreaming && !this.socket?.connected) {
+        // Socket disconnected but we're still streaming - buffer or log
+        console.warn('[RTMPStreamService] Socket disconnected, chunk not sent');
       }
     };
 
@@ -435,55 +772,45 @@ class RTMPStreamService {
         } 
         // Priority 3: Fallback - draw placeholder
         else {
-          this.captureCtx.fillStyle = '#1a1a2e';
-          this.captureCtx.fillRect(0, 0, this.config.width, this.config.height);
-          
-          // Draw gradient background
+          // Draw a gradient background as placeholder
           const gradient = this.captureCtx.createLinearGradient(0, 0, this.config.width, this.config.height);
           gradient.addColorStop(0, '#1a1a2e');
           gradient.addColorStop(1, '#16213e');
           this.captureCtx.fillStyle = gradient;
           this.captureCtx.fillRect(0, 0, this.config.width, this.config.height);
           
-          // Draw LIVE indicator
-          this.captureCtx.fillStyle = '#FF6B00';
-          this.captureCtx.font = 'bold 72px Arial';
-          this.captureCtx.textAlign = 'center';
-          this.captureCtx.fillText('LIVE', this.config.width / 2, this.config.height / 2 - 20);
-          
-          // Draw studio name
+          // Draw "OnnPlay" text
           this.captureCtx.fillStyle = '#ffffff';
-          this.captureCtx.font = '36px Arial';
-          this.captureCtx.fillText('OnnPlay Studio', this.config.width / 2, this.config.height / 2 + 40);
+          this.captureCtx.font = 'bold 48px Arial';
+          this.captureCtx.textAlign = 'center';
+          this.captureCtx.textBaseline = 'middle';
+          this.captureCtx.fillText('OnnPlay Studio', this.config.width / 2, this.config.height / 2);
           
-          // Draw timestamp
-          const now = new Date();
-          const timeStr = now.toLocaleTimeString();
+          // Draw "Aguardando conteúdo..." subtitle
           this.captureCtx.font = '24px Arial';
           this.captureCtx.fillStyle = '#888888';
-          this.captureCtx.fillText(timeStr, this.config.width / 2, this.config.height / 2 + 80);
+          this.captureCtx.fillText('Aguardando conteúdo...', this.config.width / 2, this.config.height / 2 + 50);
         }
-      } catch (e) {
-        console.error('[RTMPStreamService] Error drawing frame:', e);
+      } catch (error) {
+        console.error('[RTMPStreamService] Error drawing frame:', error);
       }
 
       this.animationFrameId = requestAnimationFrame(drawFrame);
     };
 
-    this.animationFrameId = requestAnimationFrame(drawFrame);
-    console.log('[RTMPStreamService] Canvas capture started at', this.config.frameRate, 'fps');
+    drawFrame();
   }
 
   /**
-   * Set active media source manually
+   * Set video element to capture
    */
-  setActiveMediaSource(source: MediaSource | null): void {
-    this.activeMediaSource = source;
-    console.log('[RTMPStreamService] Active media source set:', source?.name || 'none');
+  setVideoElement(element: HTMLVideoElement | null): void {
+    this.videoElement = element;
+    console.log('[RTMPStreamService] Video element set:', element ? 'yes' : 'no');
   }
 
   /**
-   * Get current active media source
+   * Get active media source
    */
   getActiveMediaSource(): MediaSource | null {
     return this.activeMediaSource;
@@ -500,6 +827,18 @@ class RTMPStreamService {
 
     console.log('[RTMPStreamService] Stopping stream...');
     this.isStreaming = false;
+
+    // Clear reconnect timer
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    // Stop heartbeat
+    this.stopHeartbeat();
+    
+    // Stop keep-alive mechanisms
+    this.stopKeepAlive();
 
     // Stop animation frame
     if (this.animationFrameId) {
@@ -532,6 +871,7 @@ class RTMPStreamService {
       this.socket = null;
     }
 
+    this.reconnectAttempts = 0;
     this.updateStatus('idle');
     console.log('[RTMPStreamService] Stream stopped');
   }
@@ -558,7 +898,8 @@ class RTMPStreamService {
         bitrate: Math.round(bitrate),
         fps: this.config.frameRate,
         duration: Math.round(duration),
-        status: this.isStreaming ? 'streaming' : 'idle',
+        status: this.isStreaming ? (this.reconnectAttempts > 0 ? 'reconnecting' : 'streaming') : 'idle',
+        reconnectAttempts: this.reconnectAttempts,
       };
 
       lastBytesSent = this.bytesSent;

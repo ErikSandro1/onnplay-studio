@@ -301,4 +301,14 @@ class SDKServer {
   }
 }
 
-export const sdk = new SDKServer();
+// Lazy initialization to ensure environment variables are loaded
+let _sdk: SDKServer | null = null;
+
+export const sdk = new Proxy({} as SDKServer, {
+  get(_, prop) {
+    if (!_sdk) {
+      _sdk = new SDKServer();
+    }
+    return (_sdk as any)[prop];
+  }
+});

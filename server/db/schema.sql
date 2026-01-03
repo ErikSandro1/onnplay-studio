@@ -122,3 +122,23 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
   INDEX idx_token (token),
   INDEX idx_user_id (user_id)
 );
+
+
+-- Connected OAuth Accounts (YouTube, Twitch, Facebook, etc.)
+CREATE TABLE IF NOT EXISTS connected_oauth_accounts (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(255) NOT NULL, -- ID do usuário ou 'default-user' para sessões não autenticadas
+  platform VARCHAR(50) NOT NULL, -- 'youtube', 'twitch', 'facebook', 'instagram', 'tiktok'
+  platform_account_id VARCHAR(255) NOT NULL, -- ID único na plataforma (channelId, twitchUserId, etc.)
+  account_name VARCHAR(255) NOT NULL, -- Nome do canal/conta
+  account_thumbnail TEXT, -- URL do avatar/thumbnail
+  access_token TEXT NOT NULL, -- Access token
+  refresh_token TEXT, -- Refresh token
+  expires_at BIGINT, -- Timestamp de expiração do access token
+  is_active BOOLEAN DEFAULT TRUE,
+  last_used_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_user_platform_account (user_id, platform, platform_account_id),
+  INDEX idx_user_platform (user_id, platform)
+);
