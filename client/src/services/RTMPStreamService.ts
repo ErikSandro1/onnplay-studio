@@ -15,6 +15,7 @@
 
 import { io, Socket } from 'socket.io-client';
 import { mediaSourceService, MediaSource } from './MediaSourceService';
+import AudioMixerService, { AudioSource } from './AudioMixerService';
 
 export interface StreamDestination {
   id: string;
@@ -48,6 +49,7 @@ class RTMPStreamService {
   private captureCanvas: HTMLCanvasElement | null = null;
   private captureCtx: CanvasRenderingContext2D | null = null;
   private canvasStream: MediaStream | null = null;
+  // private masterGainNode: GainNode | null = null; // Para controle de volume mestre
   private animationFrameId: number | null = null;
   private statsInterval: NodeJS.Timeout | null = null;
   private videoElement: HTMLVideoElement | null = null;
@@ -76,12 +78,12 @@ class RTMPStreamService {
   private wakeLock: WakeLockSentinel | null = null;
   private audioContext: AudioContext | null = null;
   
-  // Config - YouTube Professional Settings (matched with server FFmpeg settings)
+  // Config - YouTube Professional Settings
   private config = {
     width: 1280,
     height: 720,
     frameRate: 30,
-    videoBitrate: 4500000,  // 4.5 Mbps for YouTube 720p (matches server)
+    videoBitrate: 4000000,  // 4 Mbps for YouTube 720p
     audioBitrate: 128000,
   };
 
@@ -219,22 +221,28 @@ class RTMPStreamService {
    * Get supported MIME type for MediaRecorder
    */
   private getSupportedMimeType(): string {
+    // IMPORTANTE: Incluir codecs de áudio para garantir que o áudio seja gravado
     const types = [
-      'video/webm;codecs=h264',
-      'video/webm;codecs=vp9',
-      'video/webm;codecs=vp8',
-      'video/webm',
-      'video/mp4',
+      'video/webm;codecs=vp9,opus',      // VP9 video + Opus audio (melhor qualidade)
+      'video/webm;codecs=vp8,opus',      // VP8 video + Opus audio
+      'video/webm;codecs=h264,opus',     // H264 video + Opus audio
+      'video/webm;codecs=vp9,vorbis',    // VP9 video + Vorbis audio
+      'video/webm;codecs=vp8,vorbis',    // VP8 video + Vorbis audio
+      'video/webm;codecs=h264',          // H264 sem codec de áudio específico
+      'video/webm;codecs=vp9',           // VP9 sem codec de áudio específico
+      'video/webm;codecs=vp8',           // VP8 sem codec de áudio específico
+      'video/webm',                       // WebM genérico
+      'video/mp4',                        // MP4 fallback
     ];
     
     for (const type of types) {
       if (MediaRecorder.isTypeSupported(type)) {
-        console.log('[RTMPStreamService] Using MIME type:', type);
+        console.log('[RTMPStreamService] ✅ Using MIME type:', type);
         return type;
       }
     }
     
-    console.warn('[RTMPStreamService] No preferred MIME type supported, using default');
+    console.warn('[RTMPStreamService] ⚠️ No preferred MIME type supported, using default');
     return '';
   }
 
@@ -682,20 +690,152 @@ class RTMPStreamService {
     // Start canvas animation loop
     this.startCanvasCapture();
 
-    // Create stream from canvas
-    this.canvasStream = this.captureCanvas.captureStream(this.config.frameRate);
+    // Create stream from canvas (video track)
+    const videoStream = this.captureCanvas.captureStream(this.config.frameRate);
     
-    // Try to add audio if available
-    try {
-      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioStream.getAudioTracks().forEach(track => {
-        this.canvasStream!.addTrack(track);
-      });
-      console.log('[RTMPStreamService] Audio track added');
-    } catch (e) {
-      console.log('[RTMPStreamService] No audio available, continuing without audio');
+    // Create a new stream for the MediaRecorder
+    const streamToRecord = new MediaStream();
+    
+    // 1. Add video track from canvas
+    videoStream.getVideoTracks().forEach(track => streamToRecord.addTrack(track));
+    
+    // 2. ABORDAGEM DIRETA: Capturar áudio diretamente do vídeo ativo
+    console.log('[RTMPStreamService] 🎵 Starting audio capture...');
+    
+    let audioAdded = false;
+    
+    // Tentar capturar áudio diretamente do vídeo no PROGRAM
+    const activeSource = mediaSourceService.getActiveSource();
+    console.log('[RTMPStreamService] Active source:', activeSource?.name, activeSource?.type);
+    
+    if (activeSource && activeSource.type === 'video') {
+      const videoElement = activeSource.videoElement || activeSource.element as HTMLVideoElement;
+      
+      if (videoElement) {
+        console.log('[RTMPStreamService] Found video element, attempting audio capture...');
+        
+        // Garantir que o vídeo não está mudo
+        videoElement.muted = false;
+        videoElement.volume = 1.0;
+        
+        // Se pausado, iniciar
+        if (videoElement.paused) {
+          try {
+            await videoElement.play();
+            console.log('[RTMPStreamService] Video started playing');
+          } catch (e) {
+            console.log('[RTMPStreamService] Could not auto-play video:', e);
+          }
+        }
+        
+        // IMPORTANTE: Aguardar um pouco para garantir que o vídeo está tocando com áudio
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Verificar se o vídeo tem áudio
+        const videoHasAudio = (videoElement as any).mozHasAudio !== undefined 
+          ? (videoElement as any).mozHasAudio 
+          : (videoElement as any).webkitAudioDecodedByteCount !== undefined 
+            ? (videoElement as any).webkitAudioDecodedByteCount > 0 
+            : true; // Assumir que tem áudio se não puder verificar
+        
+        console.log('[RTMPStreamService] Video state - muted:', videoElement.muted, 'volume:', videoElement.volume, 'paused:', videoElement.paused, 'hasAudio:', videoHasAudio, 'currentTime:', videoElement.currentTime);
+        
+        // Método 1: captureStream do elemento de vídeo
+        const videoWithCapture = videoElement as HTMLVideoElement & { 
+          captureStream?: () => MediaStream;
+          mozCaptureStream?: () => MediaStream;
+        };
+        
+        if (videoWithCapture.captureStream) {
+          try {
+            const capturedStream = videoWithCapture.captureStream();
+            const audioTracks = capturedStream.getAudioTracks();
+            console.log('[RTMPStreamService] captureStream() returned', audioTracks.length, 'audio tracks');
+            
+            if (audioTracks.length > 0) {
+              audioTracks.forEach(track => {
+                track.enabled = true;
+                streamToRecord.addTrack(track);
+                console.log('[RTMPStreamService] ✅ Added audio track from captureStream:', track.label);
+              });
+              audioAdded = true;
+            }
+          } catch (e) {
+            console.error('[RTMPStreamService] captureStream failed:', e);
+          }
+        }
+        
+        // Método 2: Se captureStream não funcionou, tentar videoElementStream
+        if (!audioAdded && activeSource.videoElementStream) {
+          const audioTracks = activeSource.videoElementStream.getAudioTracks();
+          console.log('[RTMPStreamService] videoElementStream has', audioTracks.length, 'audio tracks');
+          
+          if (audioTracks.length > 0) {
+            audioTracks.forEach(track => {
+              track.enabled = true;
+              streamToRecord.addTrack(track);
+              console.log('[RTMPStreamService] ✅ Added audio track from videoElementStream:', track.label);
+            });
+            audioAdded = true;
+          }
+        }
+        
+        // Método 3: Usar Web Audio API para capturar do elemento de vídeo
+        if (!audioAdded) {
+          try {
+            console.log('[RTMPStreamService] Trying Web Audio API approach...');
+            const audioContext = new AudioContext();
+            const source = audioContext.createMediaElementSource(videoElement);
+            const destination = audioContext.createMediaStreamDestination();
+            source.connect(destination);
+            source.connect(audioContext.destination); // Para ouvir localmente também
+            
+            const audioTracks = destination.stream.getAudioTracks();
+            if (audioTracks.length > 0) {
+              audioTracks.forEach(track => {
+                track.enabled = true;
+                streamToRecord.addTrack(track);
+                console.log('[RTMPStreamService] ✅ Added audio track from Web Audio API:', track.label);
+              });
+              audioAdded = true;
+            }
+          } catch (e) {
+            console.error('[RTMPStreamService] Web Audio API approach failed:', e);
+          }
+        }
+      }
     }
-
+    
+    // Fallback: Usar microfone se nenhum áudio de vídeo disponível
+    if (!audioAdded) {
+      console.log('[RTMPStreamService] ⚠️ No video audio available, trying microphone...');
+      try {
+        const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const micTrack = micStream.getAudioTracks()[0];
+        if (micTrack) {
+          micTrack.enabled = true;
+          streamToRecord.addTrack(micTrack);
+          console.log('[RTMPStreamService] ✅ Added microphone audio as fallback');
+          audioAdded = true;
+        }
+      } catch (e) {
+        console.log('[RTMPStreamService] Microphone not available:', e);
+      }
+    }
+    
+    // Log final
+    console.log('[RTMPStreamService] =================================');
+    console.log('[RTMPStreamService] Final stream to record:');
+    console.log('[RTMPStreamService] - Video tracks:', streamToRecord.getVideoTracks().length);
+    console.log('[RTMPStreamService] - Audio tracks:', streamToRecord.getAudioTracks().length);
+    streamToRecord.getAudioTracks().forEach((track, i) => {
+      console.log(`[RTMPStreamService] - Audio track ${i}:`, track.label, 'enabled:', track.enabled);
+    });
+    console.log('[RTMPStreamService] =================================');
+    
+    // Update this.canvasStream to the new mixed stream
+    this.canvasStream = streamToRecord;
+    
     // Get supported MIME type
     const mimeType = this.getSupportedMimeType();
     
@@ -709,7 +849,7 @@ class RTMPStreamService {
       options.mimeType = mimeType;
     }
 
-    this.mediaRecorder = new MediaRecorder(this.canvasStream, options);
+    this.mediaRecorder = new MediaRecorder(streamToRecord, options);
 
     // Send data chunks to server
     this.mediaRecorder.ondataavailable = async (event) => {
@@ -734,9 +874,8 @@ class RTMPStreamService {
       this.updateStatus('error', 'MediaRecorder error');
     };
 
-    // Start recording with 33ms timeslice (~30fps) for consistent frame rate
-    // Smaller chunks = more consistent bitrate = better stability
-    this.mediaRecorder.start(33); // ~30fps chunks for stable bitrate
+    // Start recording with small timeslice for low latency
+    this.mediaRecorder.start(100); // 100ms chunks for low latency
     console.log('[RTMPStreamService] MediaRecorder started with', mimeType || 'default codec');
   }
 
@@ -815,6 +954,83 @@ class RTMPStreamService {
    */
   getActiveMediaSource(): MediaSource | null {
     return this.activeMediaSource;
+  }
+
+  /**
+   * Add fallback audio to stream when AudioMixerService fails
+   */
+  private async addFallbackAudio(streamToRecord: MediaStream): Promise<void> {
+    console.log('[RTMPStreamService] Attempting to add fallback audio...');
+    
+    // Tentar 1: Capturar áudio diretamente do vídeo ativo
+    const activeSource = mediaSourceService.getActiveSource();
+    if (activeSource && activeSource.type === 'video') {
+      const videoElement = activeSource.videoElement || activeSource.element as HTMLVideoElement;
+      
+      if (videoElement) {
+        try {
+          // Garantir que o vídeo não está mudo
+          videoElement.muted = false;
+          videoElement.volume = 1.0;
+          
+          // Tentar captureStream
+          const videoWithCapture = videoElement as HTMLVideoElement & { 
+            captureStream?: () => MediaStream;
+            mozCaptureStream?: () => MediaStream;
+          };
+          
+          let videoStream: MediaStream | null = null;
+          if (videoWithCapture.captureStream) {
+            videoStream = videoWithCapture.captureStream();
+          } else if (videoWithCapture.mozCaptureStream) {
+            videoStream = videoWithCapture.mozCaptureStream();
+          }
+          
+          if (videoStream) {
+            const audioTracks = videoStream.getAudioTracks();
+            if (audioTracks.length > 0) {
+              audioTracks.forEach(track => {
+                track.enabled = true;
+                streamToRecord.addTrack(track);
+              });
+              console.log('[RTMPStreamService] ✅ Fallback: Added', audioTracks.length, 'audio tracks from video captureStream');
+              return;
+            }
+          }
+          
+          // Tentar videoElementStream
+          if (activeSource.videoElementStream) {
+            const audioTracks = activeSource.videoElementStream.getAudioTracks();
+            if (audioTracks.length > 0) {
+              audioTracks.forEach(track => {
+                track.enabled = true;
+                streamToRecord.addTrack(track);
+              });
+              console.log('[RTMPStreamService] ✅ Fallback: Added', audioTracks.length, 'audio tracks from videoElementStream');
+              return;
+            }
+          }
+        } catch (e) {
+          console.error('[RTMPStreamService] Fallback video audio failed:', e);
+        }
+      }
+    }
+    
+    // Tentar 2: Usar microfone como último recurso
+    try {
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioTrack = audioStream.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = true;
+        streamToRecord.addTrack(audioTrack);
+        console.log('[RTMPStreamService] ✅ Fallback: Using local microphone audio track');
+        return;
+      }
+    } catch (e) {
+      console.log('[RTMPStreamService] Fallback microphone not available:', e);
+    }
+    
+    console.log('[RTMPStreamService] ⚠️ No fallback audio available - stream will have no audio');
   }
 
   /**
@@ -941,6 +1157,202 @@ class RTMPStreamService {
     this.stats.error = error;
     this.statusCallbacks.forEach(cb => cb(status, error));
     this.notifyCallbacks();
+  }
+
+  /**
+   * Setup audio sources for the AudioMixerService
+   */
+  private async setupAudioSources(audioMixer: AudioMixerService): Promise<void> {
+    console.log('[RTMPStreamService] Setting up audio sources for mixer...');
+    
+    // 1. Add video audio source (if active source is a video)
+    const activeSource = mediaSourceService.getActiveSource();
+    console.log('[RTMPStreamService] Active source:', activeSource?.name, activeSource?.type);
+    
+    if (activeSource && activeSource.type === 'video') {
+      // Try to get audio from video element
+      const videoElement = activeSource.videoElement || activeSource.element as HTMLVideoElement;
+      console.log('[RTMPStreamService] Video element found:', !!videoElement);
+      
+      if (videoElement) {
+        try {
+          // IMPORTANTE: Garantir que o vídeo está tocando e não está mudo
+          videoElement.muted = false;
+          videoElement.volume = 1.0;
+          
+          // Se o vídeo estiver pausado, iniciar reprodução
+          if (videoElement.paused) {
+            console.log('[RTMPStreamService] Video is paused, starting playback...');
+            await videoElement.play();
+          }
+          
+          console.log('[RTMPStreamService] Video state - muted:', videoElement.muted, 'paused:', videoElement.paused, 'volume:', videoElement.volume, 'readyState:', videoElement.readyState);
+          
+          // Aguardar um pouco para garantir que o vídeo está tocando
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Create a MediaStream from the video element using captureStream
+          const videoElementWithCapture = videoElement as HTMLVideoElement & { 
+            captureStream?: () => MediaStream;
+            mozCaptureStream?: () => MediaStream;
+          };
+          
+          let videoStream: MediaStream | null = null;
+          
+          if (videoElementWithCapture.captureStream) {
+            videoStream = videoElementWithCapture.captureStream();
+            console.log('[RTMPStreamService] Used captureStream()');
+          } else if (videoElementWithCapture.mozCaptureStream) {
+            videoStream = videoElementWithCapture.mozCaptureStream();
+            console.log('[RTMPStreamService] Used mozCaptureStream()');
+          }
+          
+          if (videoStream) {
+            const audioTracks = videoStream.getAudioTracks();
+            const videoTracks = videoStream.getVideoTracks();
+            console.log('[RTMPStreamService] Video stream has', videoTracks.length, 'video tracks and', audioTracks.length, 'audio tracks');
+            
+            // Log detalhes das tracks de áudio
+            audioTracks.forEach((track, i) => {
+              console.log(`[RTMPStreamService] Audio track ${i}:`, track.label, 'enabled:', track.enabled, 'muted:', track.muted, 'readyState:', track.readyState);
+            });
+            
+            if (audioTracks.length > 0) {
+              // Garantir que as tracks estão habilitadas
+              audioTracks.forEach(track => {
+                track.enabled = true;
+              });
+              
+              const audioOnlyStream = new MediaStream(audioTracks);
+              
+              audioMixer.addSource({
+                id: `video-${activeSource.id}`,
+                name: activeSource.name || 'Video Audio',
+                type: 'video',
+                volume: 100,
+                isMuted: false,
+                isActive: true,
+                peakLevel: 0,
+                mediaStream: audioOnlyStream,
+              });
+              
+              console.log('[RTMPStreamService] ✅ Added video audio source to mixer with', audioTracks.length, 'tracks');
+            } else {
+              console.log('[RTMPStreamService] ⚠️ Video has no audio tracks from captureStream');
+              
+              // Tentar usar o videoElementStream pré-capturado
+              if (activeSource.videoElementStream) {
+                const preAudioTracks = activeSource.videoElementStream.getAudioTracks();
+                console.log('[RTMPStreamService] Pre-captured stream has', preAudioTracks.length, 'audio tracks');
+                
+                if (preAudioTracks.length > 0) {
+                  preAudioTracks.forEach(track => { track.enabled = true; });
+                  const audioOnlyStream = new MediaStream(preAudioTracks);
+                  
+                  audioMixer.addSource({
+                    id: `video-${activeSource.id}`,
+                    name: activeSource.name || 'Video Audio',
+                    type: 'video',
+                    volume: 100,
+                    isMuted: false,
+                    isActive: true,
+                    peakLevel: 0,
+                    mediaStream: audioOnlyStream,
+                  });
+                  
+                  console.log('[RTMPStreamService] ✅ Added video audio from pre-captured stream');
+                } else {
+                  // Último recurso: usar o elemento de vídeo diretamente
+                  console.log('[RTMPStreamService] Trying audioElement approach as last resort');
+                  audioMixer.addSource({
+                    id: `video-${activeSource.id}`,
+                    name: activeSource.name || 'Video Audio',
+                    type: 'video',
+                    volume: 100,
+                    isMuted: false,
+                    isActive: true,
+                    peakLevel: 0,
+                    audioElement: videoElement,
+                  });
+                  console.log('[RTMPStreamService] Added video element as audio source');
+                }
+              } else {
+                // Usar o elemento de vídeo diretamente
+                console.log('[RTMPStreamService] No pre-captured stream, using audioElement approach');
+                audioMixer.addSource({
+                  id: `video-${activeSource.id}`,
+                  name: activeSource.name || 'Video Audio',
+                  type: 'video',
+                  volume: 100,
+                  isMuted: false,
+                  isActive: true,
+                  peakLevel: 0,
+                  audioElement: videoElement,
+                });
+                console.log('[RTMPStreamService] Added video element as audio source');
+              }
+            }
+          } else {
+            console.log('[RTMPStreamService] ⚠️ captureStream not available');
+            
+            // Usar o videoElementStream se disponível
+            if (activeSource.videoElementStream) {
+              const audioTracks = activeSource.videoElementStream.getAudioTracks();
+              console.log('[RTMPStreamService] Using pre-captured stream with', audioTracks.length, 'audio tracks');
+              
+              if (audioTracks.length > 0) {
+                audioTracks.forEach(track => { track.enabled = true; });
+                const audioOnlyStream = new MediaStream(audioTracks);
+                
+                audioMixer.addSource({
+                  id: `video-${activeSource.id}`,
+                  name: activeSource.name || 'Video Audio',
+                  type: 'video',
+                  volume: 100,
+                  isMuted: false,
+                  isActive: true,
+                  peakLevel: 0,
+                  mediaStream: audioOnlyStream,
+                });
+                
+                console.log('[RTMPStreamService] ✅ Added video audio from pre-captured stream');
+              }
+            }
+          }
+        } catch (error) {
+          console.error('[RTMPStreamService] Error adding video audio source:', error);
+        }
+      }
+    } else {
+      console.log('[RTMPStreamService] No active video source to capture audio from');
+    }
+    
+    // 2. Add microphone source (optional, can be enabled by user)
+    try {
+      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      audioMixer.addSource({
+        id: 'microphone',
+        name: 'Microfone',
+        type: 'mic',
+        volume: 100,
+        isMuted: true, // Iniciar mutado por padrão
+        isActive: true,
+        peakLevel: 0,
+        mediaStream: micStream,
+      });
+      
+      console.log('[RTMPStreamService] Added microphone source to mixer (muted by default)');
+    } catch (error) {
+      console.log('[RTMPStreamService] Microphone not available:', error);
+    }
+    
+    // Log final das fontes de áudio
+    const sources = audioMixer.getSources();
+    console.log('[RTMPStreamService] Audio sources setup complete. Total sources:', sources.length);
+    sources.forEach(s => {
+      console.log(`[RTMPStreamService] - ${s.name} (${s.type}): volume=${s.volume}, muted=${s.isMuted}, active=${s.isActive}`);
+    });
   }
 
   /**

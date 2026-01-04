@@ -22,6 +22,8 @@ export interface MediaSource {
   isActive: boolean;
   duration?: number; // Para vídeos
   isPlaying?: boolean; // Para vídeos
+  videoElement?: HTMLVideoElement; // Referência ao elemento de vídeo
+  videoElementStream?: MediaStream; // Stream do elemento de vídeo (com áudio)
 }
 
 type MediaSourceCallback = (sources: MediaSource[]) => void;
@@ -192,6 +194,8 @@ class MediaSourceService {
           stream,
           element: video,
           canvas,
+          videoElement: video, // Referência ao elemento de vídeo
+          videoElementStream, // Stream do elemento de vídeo (com áudio e vídeo)
           isActive: false,
           duration: video.duration,
           isPlaying: false,
@@ -307,16 +311,24 @@ class MediaSourceService {
         // Criar stream do canvas
         const stream = canvas.captureStream(30);
         
-        // Tentar adicionar áudio do vídeo ao stream
+        // Capturar stream do vídeo diretamente (inclui áudio e vídeo)
+        let videoElementStream: MediaStream | null = null;
         try {
-          const audioCtx = new AudioContext();
-          const audioSource = audioCtx.createMediaElementSource(video);
-          const dest = audioCtx.createMediaStreamDestination();
-          audioSource.connect(dest);
-          audioSource.connect(audioCtx.destination); // Para ouvir localmente também
-          dest.stream.getAudioTracks().forEach(track => stream.addTrack(track));
+          // Usar captureStream() diretamente no elemento de vídeo
+          // Isso captura o áudio e o vídeo do elemento de vídeo
+          videoElementStream = (video as any).captureStream();
+          console.log('[MediaSourceService] Video element stream captured with', 
+            videoElementStream.getVideoTracks().length, 'video tracks and',
+            videoElementStream.getAudioTracks().length, 'audio tracks');
         } catch (e) {
-          console.log('[MediaSourceService] Video has no audio or audio capture failed');
+          console.log('[MediaSourceService] video.captureStream() failed, trying mozCaptureStream');
+          try {
+            // Firefox usa mozCaptureStream
+            videoElementStream = (video as any).mozCaptureStream();
+            console.log('[MediaSourceService] Video element stream captured via mozCaptureStream');
+          } catch (e2) {
+            console.log('[MediaSourceService] Video capture stream failed:', e2);
+          }
         }
         
         const source: MediaSource = {
@@ -328,6 +340,8 @@ class MediaSourceService {
           stream,
           element: video,
           canvas,
+          videoElement: video, // Referência ao elemento de vídeo
+          videoElementStream, // Stream do elemento de vídeo (com áudio e vídeo)
           isActive: false,
           duration: video.duration,
           isPlaying: false,
@@ -498,7 +512,9 @@ class MediaSourceService {
       if (prevSource) {
         prevSource.isActive = false;
         if (prevSource.type === 'video') {
-          (prevSource.element as HTMLVideoElement).pause();
+          const videoEl = prevSource.element as HTMLVideoElement;
+          videoEl.pause();
+          videoEl.muted = true; // Mutar vídeo anterior
           prevSource.isPlaying = false;
         }
       }
@@ -512,7 +528,53 @@ class MediaSourceService {
       if (source) {
         source.isActive = true;
         if (source.type === 'video') {
-          (source.element as HTMLVideoElement).play();
+          const videoEl = source.element as HTMLVideoElement;
+          
+          // IMPORTANTE: Desmutar o vídeo para capturar áudio
+          videoEl.muted = false;
+          videoEl.volume = 1.0;
+          
+          // Iniciar reprodução
+          videoEl.play().then(() => {
+            console.log('[MediaSourceService] Video playing with audio, muted:', videoEl.muted);
+            
+            // Recapturar o stream do vídeo agora que está tocando com áudio
+            try {
+              const videoWithCapture = videoEl as HTMLVideoElement & { 
+                captureStream?: () => MediaStream;
+                mozCaptureStream?: () => MediaStream;
+              };
+              
+              let newStream: MediaStream | null = null;
+              if (videoWithCapture.captureStream) {
+                newStream = videoWithCapture.captureStream();
+              } else if (videoWithCapture.mozCaptureStream) {
+                newStream = videoWithCapture.mozCaptureStream();
+              }
+              
+              if (newStream) {
+                const audioTracks = newStream.getAudioTracks();
+                const videoTracks = newStream.getVideoTracks();
+                console.log('[MediaSourceService] Recaptured stream:', videoTracks.length, 'video tracks,', audioTracks.length, 'audio tracks');
+                
+                // Atualizar o videoElementStream com o novo stream
+                source.videoElementStream = newStream;
+                
+                // Disparar evento para notificar que o áudio está disponível
+                window.dispatchEvent(new CustomEvent('media:audio-ready', {
+                  detail: { sourceId: id, audioTracks: audioTracks.length }
+                }));
+              }
+            } catch (e) {
+              console.error('[MediaSourceService] Error recapturing video stream:', e);
+            }
+          }).catch(err => {
+            console.error('[MediaSourceService] Error playing video:', err);
+            // Se falhar por política de autoplay, tentar com muted
+            videoEl.muted = true;
+            videoEl.play();
+          });
+          
           source.isPlaying = true;
         }
       }

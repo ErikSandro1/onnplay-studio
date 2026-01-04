@@ -256,7 +256,7 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
   return (
     <div className="flex gap-4 h-full items-start justify-center" style={{ maxHeight: '100%', overflow: 'hidden' }}>
       {/* PREVIEW Monitor */}
-      <div className="flex-1 flex flex-col max-w-[45%]">
+      <div className="flex-1 flex flex-col flex-grow">
         {/* Header */}
         <div className="flex items-center justify-between mb-2 px-2">
           <div className="flex items-center gap-3">
@@ -420,7 +420,7 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
       </div>
 
       {/* PROGRAM Monitor */}
-      <div className="flex-1 flex flex-col max-w-[45%]">
+      <div className="flex-1 flex flex-col flex-grow">
         {/* Header */}
         <div className="flex items-center justify-between mb-2 px-2">
           <div className="flex items-center gap-3">

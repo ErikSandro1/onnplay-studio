@@ -10,6 +10,7 @@ import { serveStatic, setupVite } from "./vite";
 import { setupRestRoutes } from "./rest-routes";
 import { runMigrations } from "../db/migrate";
 import { rtmpStreamingService } from "../services/RTMPStreamingService";
+import { webRTCStreamingService } from "../services/WebRTCStreamingService";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -64,9 +65,18 @@ async function startServer() {
   // Setup REST API routes (auth, payments, usage, broadcast)
   setupRestRoutes(app);
 
-  // Initialize RTMP Streaming Socket.IO server
+  // Initialize RTMP Streaming Socket.IO server (legacy)
   rtmpStreamingService.initialize(server);
   console.log('📺 RTMP Streaming service initialized (Socket.IO)');
+
+  // Initialize WebRTC Streaming service (professional)
+  try {
+    await webRTCStreamingService.initialize();
+    webRTCStreamingService.attach(server);
+    console.log('🎬 WebRTC Streaming service initialized (Mediasoup)');
+  } catch (error) {
+    console.error('Failed to initialize WebRTC streaming:', error);
+  }
 
   // Stream status endpoint
   app.get("/api/stream/status", (req, res) => {

@@ -63,6 +63,10 @@ class VideoCompositor {
       alpha: false,
       desynchronized: true, // Better performance
     })!;
+    
+    // Bind methods to preserve 'this' context
+    this.render = this.render.bind(this);
+    this.notifyStats = this.notifyStats.bind(this);
   }
 
   /**
@@ -304,7 +308,7 @@ class VideoCompositor {
   /**
    * Main render loop
    */
-  private render = (): void => {
+  private render(): void {
     if (!this.isRunning) return;
 
     const now = performance.now();
@@ -325,7 +329,7 @@ class VideoCompositor {
     }
 
     this.animationFrameId = requestAnimationFrame(this.render);
-  };
+  }
 
   /**
    * Draw a single frame
