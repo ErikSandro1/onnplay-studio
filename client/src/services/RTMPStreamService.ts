@@ -168,9 +168,10 @@ class RTMPStreamService {
   }
 
   /**
-   * Update streaming config
+   * Update streaming config (Legacy)
+   * @deprecated Use updateConfig() instead (new version with detailed logs)
    */
-  updateConfig(config: Partial<typeof this.config>): void {
+  updateConfigLegacy(config: Partial<typeof this.config>): void {
     this.config = { ...this.config, ...config };
     if (this.captureCanvas) {
       this.captureCanvas.width = this.config.width;
