@@ -16,6 +16,7 @@
 import { io, Socket } from 'socket.io-client';
 import { mediaSourceService, MediaSource } from './MediaSourceService';
 import { StreamBuffer } from './StreamBuffer';
+import { ChunkQueue } from './ChunkQueue';
 
 export interface StreamDestination {
   id: string;
@@ -85,6 +86,11 @@ class RTMPStreamService {
   
   // StreamBuffer - "Capacitor" para streaming suave
   private streamBuffer: StreamBuffer | null = null;
+  
+  // ChunkQueue - Fila local de chunks (BACKUP24 FIX)
+  private chunkQueue: ChunkQueue | null = null;
+  private isProcessingQueue = false;
+  private backpressureActive = false;
   
   // Config - YouTube Professional Settings
   private config = {
@@ -312,6 +318,11 @@ class RTMPStreamService {
     this.chunksSent = 0;
     this.bytesSent = 0;
     this.startTime = Date.now();
+
+    // BACKUP24 FIX: Initialize ChunkQueue
+    this.chunkQueue = new ChunkQueue(5, 50); // 5MB or 50 chunks
+    this.backpressureActive = false;
+    console.log('[RTMPStreamService] 📦 ChunkQueue initialized (5MB / 50 chunks)');
 
     // Start canvas capture and MediaRecorder
     await this.startMediaRecorder();
@@ -616,7 +627,7 @@ class RTMPStreamService {
 
       this.socket = io(serverUrl, {
         path: '/socket.io/stream',
-        transports: ['websocket', 'polling'],
+        transports: ['websocket'],  // BACKUP24 FIX: WebSocket only (no polling)
         timeout: 30000,           // Increased from 10s to 30s
         reconnection: false,      // We handle reconnection manually
         forceNew: true,           // Force new connection
@@ -656,6 +667,25 @@ class RTMPStreamService {
         if (latency > 1000) {
           console.warn('[RTMPStreamService] High latency detected:', latency, 'ms');
         }
+      });
+
+      // BACKUP24 FIX: Handle backpressure event from server
+      this.socket.on('backpressure', (data: { reason: string; speed?: number; queueSize?: number }) => {
+        console.warn('[RTMPStreamService] 🔴 BACKPRESSURE from server:', data);
+        this.backpressureActive = true;
+        
+        // Auto-reduce bitrate if speed is too low
+        if (data.speed && data.speed < 0.8 && this.config.videoBitrate > 1000000) {
+          const newBitrate = Math.max(1000000, this.config.videoBitrate * 0.75);
+          console.warn(`[RTMPStreamService] ⚠️ Auto-reducing bitrate: ${this.config.videoBitrate / 1000000}Mbps → ${newBitrate / 1000000}Mbps`);
+          this.config.videoBitrate = newBitrate;
+        }
+        
+        // Clear backpressure after 5 seconds
+        setTimeout(() => {
+          this.backpressureActive = false;
+          console.log('[RTMPStreamService] 🟢 Backpressure cleared');
+        }, 5000);
       });
 
       // Handle server warnings
@@ -776,12 +806,25 @@ class RTMPStreamService {
     console.log('[RTMPStreamService] 🚀 StreamBuffer (capacitor) started');
     // ========== FIM STREAM BUFFER ==========
 
-    // Send data chunks to StreamBuffer (not directly to socket)
+    // BACKUP24 FIX: Send data chunks to ChunkQueue (not directly to socket)
     this.mediaRecorder.ondataavailable = async (event) => {
-      if (event.data.size > 0 && this.isStreaming) {
+      if (event.data.size > 0 && this.isStreaming && this.chunkQueue) {
+        const startTime = performance.now();
         const arrayBuffer = await event.data.arrayBuffer();
-        // Envia para o buffer em vez de enviar direto
-        this.streamBuffer?.push(arrayBuffer);
+        const conversionTime = performance.now() - startTime;
+        
+        // Enqueue chunk (will drop old chunks if queue is full)
+        this.chunkQueue.enqueue(arrayBuffer);
+        
+        // Log conversion time if it's taking too long
+        if (conversionTime > 50) {
+          console.warn(`[RTMPStreamService] ⚠️ Blob→ArrayBuffer took ${conversionTime.toFixed(2)}ms`);
+        }
+        
+        // Start processing queue if not already processing
+        if (!this.isProcessingQueue) {
+          this.processChunkQueue();
+        }
       }
     };
 
@@ -992,6 +1035,18 @@ class RTMPStreamService {
       console.log('[RTMPStreamService] StreamBuffer stopped');
     }
 
+    // BACKUP24 FIX: Clear ChunkQueue
+    if (this.chunkQueue) {
+      const stats = this.chunkQueue.getStats();
+      console.log('[RTMPStreamService] 📦 Final Queue Stats:', {
+        chunksDropped: stats.chunksDropped,
+        chunksSent: stats.chunksSent,
+      });
+      this.chunkQueue.clear();
+      this.chunkQueue = null;
+      console.log('[RTMPStreamService] ChunkQueue cleared');
+    }
+
     // Stop MediaRecorder
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       this.mediaRecorder.stop();
@@ -1100,6 +1155,72 @@ class RTMPStreamService {
    */
   getIsStreaming(): boolean {
     return this.isStreaming;
+  }
+
+  /**
+   * Process chunk queue (BACKUP24 FIX)
+   * 
+   * Processes chunks from the queue one at a time (microtask) to avoid blocking the main thread.
+   * Uses emit 'volatile' to avoid backlog when the server is slow.
+   */
+  private async processChunkQueue(): Promise<void> {
+    if (this.isProcessingQueue || !this.chunkQueue || !this.socket) {
+      return;
+    }
+
+    this.isProcessingQueue = true;
+
+    while (!this.chunkQueue.isEmpty() && this.isStreaming) {
+      // Check if backpressure is active
+      if (this.backpressureActive) {
+        console.warn('[RTMPStreamService] ⚠️ Backpressure active, pausing queue processing');
+        await new Promise(resolve => setTimeout(resolve, 100)); // Wait 100ms
+        continue;
+      }
+
+      const chunk = this.chunkQueue.dequeue();
+      if (!chunk) {
+        break;
+      }
+
+      const startTime = performance.now();
+
+      // BACKUP24 FIX: Use emit 'volatile' to avoid backlog
+      // volatile = if the packet cannot be sent immediately, it will be dropped
+      this.socket.volatile.emit('video-chunk', {
+        data: chunk,
+        destinations: this.destinations.filter(d => d.enabled !== false).map(d => d.id),
+      });
+
+      const emitTime = performance.now() - startTime;
+
+      // Log if emit is taking too long
+      if (emitTime > 10) {
+        console.warn(`[RTMPStreamService] ⚠️ Emit took ${emitTime.toFixed(2)}ms`);
+      }
+
+      this.chunksSent++;
+      this.bytesSent += chunk.byteLength;
+
+      // Log queue stats every 100 chunks
+      if (this.chunksSent % 100 === 0) {
+        const stats = this.chunkQueue.getStats();
+        console.log('[RTMPStreamService] 📊 Queue Stats:', {
+          queueLength: stats.queueLength,
+          bytesPending: (stats.bytesPending / 1024).toFixed(2) + ' KB',
+          chunksDropped: stats.chunksDropped,
+          chunksSent: stats.chunksSent,
+          chunksPerSecond: stats.chunksPerSecond.toFixed(2),
+        });
+      }
+
+      // Yield to event loop every 5 chunks to avoid blocking
+      if (this.chunksSent % 5 === 0) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    }
+
+    this.isProcessingQueue = false;
   }
 
   /**

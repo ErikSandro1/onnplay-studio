@@ -34,6 +34,15 @@ interface StreamConfig {
   audioBitrate: number;
 }
 
+// BACKUP24 FIX: Queue per destination for backpressure
+interface DestinationQueue {
+  chunks: Buffer[];
+  totalBytes: number;
+  dropsCount: number;
+  lastDrainTime: number;
+  backpressureActive: boolean;
+}
+
 interface ActiveStream {
   socket: Socket;
   destinations: StreamDestination[];
@@ -44,7 +53,21 @@ interface ActiveStream {
   startTime: number;
   lastChunkTime: number; // Track last chunk received for health monitoring
   heartbeatInterval?: NodeJS.Timeout; // Heartbeat interval
+  // BACKUP24 FIX: Queue and backpressure properties
+  destinationQueues: Map<string, DestinationQueue>;
+  chunksDropped: number;
+  lastBackpressureTime: number;
+  lastMetricsTime: number;
 }
+
+// BACKUP24 FIX: Feature flags and limits
+const ENABLE_BACKPRESSURE = true;
+const ENABLE_QUEUE = true;
+const MAX_QUEUE_BYTES = 5 * 1024 * 1024; // 5MB per destination
+const MAX_QUEUE_CHUNKS = 50; // 50 chunks per destination
+const BACKPRESSURE_SPEED_THRESHOLD = 0.95; // Emit backpressure if speed < 0.95x
+const BACKPRESSURE_COOLDOWN_MS = 5000; // 5 seconds cooldown between backpressure events
+const METRICS_INTERVAL_MS = 5000; // Send metrics every 5 seconds
 
 export class RTMPStreamingService {
   private io: SocketIOServer | null = null;
@@ -147,6 +170,11 @@ export class RTMPStreamingService {
       chunksReceived: 0,
       startTime: Date.now(),
       lastChunkTime: Date.now(),
+      // BACKUP24 FIX: Queue and backpressure properties
+      destinationQueues: new Map(),
+      chunksDropped: 0,
+      lastBackpressureTime: 0,
+      lastMetricsTime: Date.now(),
     };
 
     // Start FFmpeg relay process for each destination
@@ -154,6 +182,15 @@ export class RTMPStreamingService {
       const ffmpeg = this.startRelayProcess(dest, config, socket);
       if (ffmpeg) {
         activeStream.ffmpegProcesses.set(dest.id, ffmpeg);
+        
+        // BACKUP24 FIX: Initialize queue for this destination
+        activeStream.destinationQueues.set(dest.id, {
+          chunks: [],
+          totalBytes: 0,
+          dropsCount: 0,
+          lastDrainTime: Date.now(),
+          backpressureActive: false,
+        });
       }
     }
 
@@ -201,24 +238,24 @@ export class RTMPStreamingService {
     console.log(`[RTMPStreamingService] Starting relay to ${dest.platform}: ${dest.rtmpUrl}/****`);
     console.log(`[FFmpeg ${dest.platform}] Full RTMP URL:`, rtmpUrl);
 
-    // Fixed output bitrates (proven to work)
-    const OUTPUT_VIDEO_BITRATE = 2500; // 2.5 Mbps (reduced for stability)
+    // Fixed output bitrates - optimized for stability
+    const OUTPUT_VIDEO_BITRATE = 2000; // 2 Mbps for smoother streaming
     const OUTPUT_AUDIO_BITRATE = 128;  // 128 kbps
     
     const videoBitrate = `${OUTPUT_VIDEO_BITRATE}k`;
     const audioBitrate = `${OUTPUT_AUDIO_BITRATE}k`;
-    const bufsize = `${OUTPUT_VIDEO_BITRATE * 4}k`; // 4x buffer for stability
+    const bufsize = `${OUTPUT_VIDEO_BITRATE * 2}k`; // 2x buffer for lower latency
     
     console.log(`[FFmpeg ${dest.platform}] Output: ${videoBitrate}`);
     
-    // FFmpeg arguments - optimized for stability with VBR
+    // FFmpeg arguments - OPTIMIZED for STABILITY (not low latency)
     const ffmpegArgs = [
-      // Parameters for valid timestamps and stability
-      '-fflags', '+genpts+igndts+discardcorrupt',
+      // Parameters for STABLE streaming with larger buffers
+      '-fflags', '+genpts+discardcorrupt+igndts',
       '-use_wallclock_as_timestamps', '1',
-      '-thread_queue_size', '8192', // Large buffer
-      '-probesize', '32M',
-      '-analyzeduration', '32M',
+      '-thread_queue_size', '4096', // Much larger buffer for stability
+      '-probesize', '10M', // Larger probe for better detection
+      '-analyzeduration', '10M', // Longer analysis
       '-err_detect', 'ignore_err', // Ignore input errors
       '-hide_banner', '-loglevel', 'warning',
       
@@ -226,50 +263,50 @@ export class RTMPStreamingService {
       '-f', 'webm',
       '-i', 'pipe:0',
       
-      // Video encoding - optimized for streaming stability
+      // Video encoding - STABLE settings
       '-c:v', 'libx264',
-      '-preset', 'ultrafast',
+      '-preset', 'veryfast', // Better quality than ultrafast, still fast
       '-tune', 'zerolatency',
-      '-threads', '0', // Auto-detect threads
+      '-threads', '0', // Auto threads
       
-      // Video bitrate settings - VBR for better stability
+      // Video bitrate settings - larger buffers for smoother output
       '-b:v', videoBitrate,
-      '-maxrate', `${OUTPUT_VIDEO_BITRATE * 1.5}k`, // Allow 50% burst
-      '-bufsize', bufsize,
+      '-maxrate', `${OUTPUT_VIDEO_BITRATE * 2}k`, // Allow 100% burst for peaks
+      '-bufsize', `${OUTPUT_VIDEO_BITRATE * 6}k`, // 6x buffer for maximum stability
       
-      // x264 specific params - removed strict CBR for stability
-      '-x264-params', 'force-cfr=1',
+      // x264 specific params - optimized for smooth playback
+      '-x264-params', 'force-cfr=1:nal-hrd=cbr:vbv-maxrate=' + OUTPUT_VIDEO_BITRATE * 2 + ':vbv-bufsize=' + OUTPUT_VIDEO_BITRATE * 6,
       
       // Keyframe settings (YouTube requires keyframe every 2 seconds)
       '-g', String(config.frameRate * 2),
       '-keyint_min', String(config.frameRate * 2),
       '-sc_threshold', '0',
       
-      // H.264 profile (main works better than high for streaming)
+      // H.264 profile
       '-profile:v', 'main',
       '-level', '4.1',
       '-bf', '0',
       
-      // Resolution and framerate (explicit)
+      // Resolution and framerate
       '-s', `${config.width}x${config.height}`,
       '-pix_fmt', 'yuv420p',
       '-r', String(config.frameRate),
+      '-vsync', 'cfr', // Constant frame rate for stable output
       
-      // Audio settings
+      // Audio settings - optimized for smooth playback
       '-c:a', 'aac',
       '-b:a', audioBitrate,
       '-ar', '44100',
       '-ac', '2',
+      '-af', 'aresample=async=1:min_hard_comp=0.100000:first_pts=0', // Smooth audio sync
       
       // FLV output settings
       '-flvflags', 'no_duration_filesize',
-      '-flush_packets', '0', // Don't flush immediately for stability
-      '-max_interleave_delta', '0',
       '-f', 'flv',
       
-      // RTMP output with timeout settings
+      // RTMP output with larger buffer for stability
       '-rtmp_live', 'live',
-      '-rtmp_buffer', '3000', // 3 second buffer
+      '-rtmp_buffer', '5000', // 5 second buffer for stability
       rtmpUrl,
     ];
 
@@ -348,7 +385,7 @@ export class RTMPStreamingService {
   }
 
   /**
-   * Handle incoming video chunk from MediaRecorder
+   * BACKUP24 FIX: Handle video chunk with backpressure and queue management
    */
   private handleVideoChunk(socketId: string, chunk: ArrayBuffer): void {
     const activeStream = this.activeStreams.get(socketId);
@@ -359,35 +396,168 @@ export class RTMPStreamingService {
     const buffer = Buffer.from(chunk);
     activeStream.bytesReceived += buffer.length;
     activeStream.chunksReceived++;
-    activeStream.lastChunkTime = Date.now(); // Update last chunk time
+    activeStream.lastChunkTime = Date.now();
 
-    // Log progress periodically
+    // BACKUP24 FIX: Log progress with queue stats
     if (activeStream.chunksReceived % 100 === 0) {
       const elapsed = (Date.now() - activeStream.startTime) / 1000;
       const mbReceived = activeStream.bytesReceived / 1024 / 1024;
       const bitrate = (activeStream.bytesReceived * 8 / elapsed / 1000).toFixed(0);
-      console.log(`[RTMPStreamingService] Received ${activeStream.chunksReceived} chunks, ${mbReceived.toFixed(2)} MB, ${bitrate} Kbps`);
+      
+      // Calculate total queue stats
+      let totalQueueBytes = 0;
+      let totalQueueChunks = 0;
+      for (const [, queue] of activeStream.destinationQueues) {
+        totalQueueBytes += queue.totalBytes;
+        totalQueueChunks += queue.chunks.length;
+      }
+      
+      console.log(`[RTMPStreamingService] 📊 Stats: ${activeStream.chunksReceived} chunks, ${mbReceived.toFixed(2)} MB, ${bitrate} Kbps | Queue: ${totalQueueChunks} chunks, ${(totalQueueBytes / 1024).toFixed(2)} KB | Drops: ${activeStream.chunksDropped}`);
     }
 
-    // Write chunk to all FFmpeg processes
+    // BACKUP24 FIX: Send metrics to client periodically
+    const now = Date.now();
+    if (now - activeStream.lastMetricsTime >= METRICS_INTERVAL_MS) {
+      this.sendMetricsToClient(activeStream);
+      activeStream.lastMetricsTime = now;
+    }
+
+    // Write chunk to all FFmpeg processes with backpressure
     for (const [destId, ffmpeg] of activeStream.ffmpegProcesses) {
-      if (ffmpeg.stdin && !ffmpeg.stdin.destroyed && ffmpeg.stdin.writable) {
-        try {
-          const canWrite = ffmpeg.stdin.write(buffer);
-          if (!canWrite) {
-            // Buffer is full, wait for drain
-            ffmpeg.stdin.once('drain', () => {
-              // Buffer drained, can continue
+      if (!ffmpeg.stdin || ffmpeg.stdin.destroyed || !ffmpeg.stdin.writable) {
+        continue;
+      }
+
+      const queue = activeStream.destinationQueues.get(destId);
+      if (!queue) continue;
+
+      // BACKUP24 FIX: Check if we need to drop chunks (queue full)
+      if (ENABLE_QUEUE && (queue.totalBytes >= MAX_QUEUE_BYTES || queue.chunks.length >= MAX_QUEUE_CHUNKS)) {
+        // Drop oldest chunk to make room (continuity > quality)
+        const dropped = queue.chunks.shift();
+        if (dropped) {
+          queue.totalBytes -= dropped.length;
+          queue.dropsCount++;
+          activeStream.chunksDropped++;
+          console.warn(`[RTMPStreamingService] ⚠️ DROPPED chunk for ${destId} (queue full: ${queue.chunks.length} chunks, ${(queue.totalBytes / 1024).toFixed(2)} KB)`);
+        }
+      }
+
+      // Try to write directly first
+      try {
+        const canWrite = ffmpeg.stdin.write(buffer);
+        
+        if (!canWrite) {
+          // BACKUP24 FIX: Buffer is full - apply backpressure
+          queue.backpressureActive = true;
+          const drainStartTime = Date.now();
+          
+          // Enqueue chunk instead of blocking
+          if (ENABLE_QUEUE) {
+            queue.chunks.push(buffer);
+            queue.totalBytes += buffer.length;
+          }
+          
+          // Set up drain handler to process queue
+          ffmpeg.stdin.once('drain', () => {
+            const drainTime = Date.now() - drainStartTime;
+            queue.lastDrainTime = Date.now();
+            queue.backpressureActive = false;
+            
+            // Log if drain took too long
+            if (drainTime > 100) {
+              console.warn(`[RTMPStreamingService] ⚠️ Drain for ${destId} took ${drainTime}ms`);
+            }
+            
+            // Process queued chunks
+            this.processDestinationQueue(activeStream, destId);
+          });
+          
+          // BACKUP24 FIX: Emit backpressure event to client
+          if (ENABLE_BACKPRESSURE && now - activeStream.lastBackpressureTime >= BACKPRESSURE_COOLDOWN_MS) {
+            activeStream.lastBackpressureTime = now;
+            activeStream.socket.emit('backpressure', {
+              reason: 'stdin_buffer_full',
+              destId,
+              queueSize: queue.chunks.length,
+              queueBytes: queue.totalBytes,
             });
+            console.warn(`[RTMPStreamingService] 🔴 BACKPRESSURE emitted to client (${destId})`);
           }
-        } catch (e: any) {
-          // Ignore EPIPE errors - FFmpeg may have closed
-          if (e.code !== 'EPIPE' && e.code !== 'ERR_STREAM_DESTROYED') {
-            console.error(`[RTMPStreamingService] Error writing to FFmpeg ${destId}:`, e.message);
-          }
+        }
+      } catch (e: any) {
+        if (e.code !== 'EPIPE' && e.code !== 'ERR_STREAM_DESTROYED') {
+          console.error(`[RTMPStreamingService] Error writing to FFmpeg ${destId}:`, e.message);
         }
       }
     }
+  }
+
+  /**
+   * BACKUP24 FIX: Process queued chunks for a destination
+   */
+  private processDestinationQueue(activeStream: ActiveStream, destId: string): void {
+    const queue = activeStream.destinationQueues.get(destId);
+    const ffmpeg = activeStream.ffmpegProcesses.get(destId);
+    
+    if (!queue || !ffmpeg || !ffmpeg.stdin || ffmpeg.stdin.destroyed || !ffmpeg.stdin.writable) {
+      return;
+    }
+
+    while (queue.chunks.length > 0) {
+      const chunk = queue.chunks[0];
+      
+      try {
+        const canWrite = ffmpeg.stdin.write(chunk);
+        
+        if (canWrite) {
+          // Successfully written, remove from queue
+          queue.chunks.shift();
+          queue.totalBytes -= chunk.length;
+        } else {
+          // Buffer full again, wait for next drain
+          queue.backpressureActive = true;
+          ffmpeg.stdin.once('drain', () => {
+            queue.backpressureActive = false;
+            this.processDestinationQueue(activeStream, destId);
+          });
+          break;
+        }
+      } catch (e: any) {
+        if (e.code !== 'EPIPE' && e.code !== 'ERR_STREAM_DESTROYED') {
+          console.error(`[RTMPStreamingService] Error processing queue for ${destId}:`, e.message);
+        }
+        break;
+      }
+    }
+  }
+
+  /**
+   * BACKUP24 FIX: Send metrics to client
+   */
+  private sendMetricsToClient(activeStream: ActiveStream): void {
+    let totalQueueBytes = 0;
+    let totalQueueChunks = 0;
+    let totalDrops = 0;
+    
+    for (const [, queue] of activeStream.destinationQueues) {
+      totalQueueBytes += queue.totalBytes;
+      totalQueueChunks += queue.chunks.length;
+      totalDrops += queue.dropsCount;
+    }
+    
+    const elapsed = (Date.now() - activeStream.startTime) / 1000;
+    const bitrate = (activeStream.bytesReceived * 8 / elapsed / 1000).toFixed(0);
+    
+    activeStream.socket.emit('metrics', {
+      queueBytes: totalQueueBytes,
+      queueChunks: totalQueueChunks,
+      dropsServer: totalDrops,
+      chunksReceived: activeStream.chunksReceived,
+      bytesReceived: activeStream.bytesReceived,
+      bitrate: parseInt(bitrate),
+      elapsed: elapsed,
+    });
   }
 
   /**
