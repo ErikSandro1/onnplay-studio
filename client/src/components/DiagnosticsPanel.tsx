@@ -16,6 +16,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { rtmpStreamService } from '../services/RTMPStreamService';
+import { getStreamingMode, setStreamingMode, StreamingMode } from '../services/streamingConfig';
 
 interface DiagnosticsConfig {
   resolution: '1080p' | '720p' | '480p' | '360p';
@@ -68,6 +69,7 @@ export const DiagnosticsPanel: React.FC = () => {
   });
 
   const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingMode, setStreamingModeState] = useState<StreamingMode>(getStreamingMode());
 
   useEffect(() => {
     // Check if streaming
@@ -81,6 +83,12 @@ export const DiagnosticsPanel: React.FC = () => {
 
     return () => clearInterval(interval);
   }, []);
+
+  const handleStreamingModeChange = (mode: StreamingMode) => {
+    setStreamingMode(mode);
+    setStreamingModeState(mode);
+    console.log('[DiagnosticsPanel] Streaming mode changed to:', mode);
+  };
 
   const handleApplyConfig = () => {
     const resolutionData = RESOLUTION_OPTIONS.find(r => r.value === config.resolution);
@@ -238,6 +246,40 @@ export const DiagnosticsPanel: React.FC = () => {
             </option>
           ))}
         </select>
+      </div>
+
+      {/* Streaming Mode Toggle */}
+      <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+        <label className="block text-sm font-medium text-purple-700 dark:text-purple-300 mb-2">
+          🚀 Modo de Streaming
+        </label>
+        <div className="flex gap-2">
+          <button
+            onClick={() => handleStreamingModeChange('mediarecorder')}
+            className={`flex-1 px-3 py-2 text-sm rounded-md transition-colors ${
+              streamingMode === 'mediarecorder'
+                ? 'bg-purple-600 text-white'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+            }`}
+          >
+            📹 MediaRecorder
+          </button>
+          <button
+            onClick={() => handleStreamingModeChange('webrtc')}
+            className={`flex-1 px-3 py-2 text-sm rounded-md transition-colors ${
+              streamingMode === 'webrtc'
+                ? 'bg-purple-600 text-white'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+            }`}
+          >
+            🌐 WebRTC Pro
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-purple-600 dark:text-purple-400">
+          {streamingMode === 'webrtc' 
+            ? '✨ Modo profissional: RTP contínuo, clock único, baixa latência'
+            : '⚡ Modo estável: Compatível com mais navegadores'}
+        </p>
       </div>
 
       {/* Buffer Profile */}

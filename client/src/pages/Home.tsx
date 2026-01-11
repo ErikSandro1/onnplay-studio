@@ -36,6 +36,8 @@ import { recordingService } from '../services/RecordingService';
 import { aiAssistantService } from '../services/AIAssistantService';
 import { cameraControlService } from '../services/CameraControlService';
 import { rtmpStreamService } from '../services/RTMPStreamService';
+import { webRTCStreamService } from '../services/WebRTCStreamService';
+import { getStreamingMode, isWebRTCEnabled } from '../services/streamingConfig';
 
 // Context
 import { DailyProvider, useDailyContext } from '../contexts/DailyContext';
@@ -201,7 +203,13 @@ const HomeContent: React.FC = () => {
     try {
       if (isLive) {
         // Stop streaming
+        // Parar streaming no serviço correto
+      const useWebRTC = isWebRTCEnabled();
+      if (useWebRTC) {
+        await webRTCStreamService.stopStreaming();
+      } else {
         await rtmpStreamService.stopStreaming();
+      }
         setIsLive(false);
         
         // End broadcast tracking
@@ -231,7 +239,27 @@ const HomeContent: React.FC = () => {
         }
         
         // Start actual streaming
+        // Usar serviço baseado no modo configurado
+      const useWebRTC = isWebRTCEnabled();
+      console.log('[Home] Starting streaming with mode:', useWebRTC ? 'WebRTC' : 'MediaRecorder');
+      
+      if (useWebRTC) {
+        // WebRTC Professional Mode
+        const serverUrl = window.location.origin;
+        await webRTCStreamService.connect(serverUrl);
+        const destinations = rtmpStreamService.getDestinations().map(d => ({
+          id: d.id,
+          platform: d.platform,
+          name: d.name,
+          rtmpUrl: d.streamUrl || 'rtmp://a.rtmp.youtube.com/live2',
+          streamKey: d.streamKey,
+          enabled: d.isActive,
+        }));
+        await webRTCStreamService.startStreaming(destinations);
+      } else {
+        // MediaRecorder Mode (fallback)
         await rtmpStreamService.startStreaming();
+      }
         
         // Auto-transition YouTube broadcasts to LIVE after stream stabilizes
         setTimeout(async () => {
