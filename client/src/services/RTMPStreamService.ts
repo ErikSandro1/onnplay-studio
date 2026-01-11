@@ -93,11 +93,12 @@ class RTMPStreamService {
   private backpressureActive = false;
   
   // Config - YouTube Professional Settings
+  // Starting with 480p for stability, can increase later
   private config = {
-    width: 1280,
-    height: 720,
+    width: 854,
+    height: 480,
     frameRate: 30,
-    videoBitrate: 4000000,  // 4 Mbps for YouTube 720p
+    videoBitrate: 2000000,  // 2 Mbps for 480p
     audioBitrate: 128000,
     bufferSize: 64,  // KB (MED profile)
   };
@@ -249,22 +250,31 @@ class RTMPStreamService {
    * Get supported MIME type for MediaRecorder
    */
   private getSupportedMimeType(): string {
+    // Priority: H.264 first (best for RTMP/YouTube), then VP9, then VP8
+    // H.264 allows FFmpeg to do simple remux without re-encoding
     const types = [
-      'video/webm;codecs=h264',
-      'video/webm;codecs=vp9',
-      'video/webm;codecs=vp8',
-      'video/webm',
-      'video/mp4',
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',  // H.264 Baseline + AAC
+      'video/mp4;codecs=avc1.4D401E,mp4a.40.2',  // H.264 Main + AAC  
+      'video/mp4;codecs=avc1.64001E,mp4a.40.2',  // H.264 High + AAC
+      'video/webm;codecs=h264,opus',              // WebM with H.264
+      'video/webm;codecs=h264',                   // WebM with H.264 (no audio codec specified)
+      'video/mp4',                                // MP4 container
+      'video/webm;codecs=vp9,opus',               // VP9 (fallback)
+      'video/webm;codecs=vp8,opus',               // VP8 (fallback)
+      'video/webm',                               // WebM default
     ];
     
+    console.log('[RTMPStreamService] Checking supported MIME types...');
     for (const type of types) {
-      if (MediaRecorder.isTypeSupported(type)) {
-        console.log('[RTMPStreamService] Using MIME type:', type);
+      const supported = MediaRecorder.isTypeSupported(type);
+      console.log(`[RTMPStreamService]   ${type}: ${supported ? '✅' : '❌'}`);
+      if (supported) {
+        console.log('[RTMPStreamService] 🎬 Selected MIME type:', type);
         return type;
       }
     }
     
-    console.warn('[RTMPStreamService] No preferred MIME type supported, using default');
+    console.warn('[RTMPStreamService] No preferred MIME type supported, using browser default');
     return '';
   }
 
@@ -319,10 +329,8 @@ class RTMPStreamService {
     this.bytesSent = 0;
     this.startTime = Date.now();
 
-    // BACKUP24 FIX: Initialize ChunkQueue
-    this.chunkQueue = new ChunkQueue(5, 50); // 5MB or 50 chunks
+    // SIMPLIFIED: No ChunkQueue, direct streaming
     this.backpressureActive = false;
-    console.log('[RTMPStreamService] 📦 ChunkQueue initialized (5MB / 50 chunks)');
 
     // Start canvas capture and MediaRecorder
     await this.startMediaRecorder();
@@ -654,6 +662,12 @@ class RTMPStreamService {
       this.socket.on('status', (data: { target: string; status: string; speed?: number; fps?: number }) => {
         console.log('[RTMPStreamService] Status update:', data);
         
+        // Detectar quando o stream morre (FFmpeg fechou)
+        if (data.status === 'error' || data.status === 'stopped') {
+          console.warn('[RTMPStreamService] Stream ended:', data.status);
+          this.updateStatus('error', 'Stream ended by server');
+        }
+        
         // If speed is too low, log warning
         if (data.speed && data.speed < 0.8) {
           console.warn('[RTMPStreamService] ⚠️ FFmpeg speed is low:', data.speed);
@@ -669,23 +683,10 @@ class RTMPStreamService {
         }
       });
 
-      // BACKUP24 FIX: Handle backpressure event from server
+      // SIMPLIFIED: Just log backpressure, don't stop sending
       this.socket.on('backpressure', (data: { reason: string; speed?: number; queueSize?: number }) => {
-        console.warn('[RTMPStreamService] 🔴 BACKPRESSURE from server:', data);
-        this.backpressureActive = true;
-        
-        // Auto-reduce bitrate if speed is too low
-        if (data.speed && data.speed < 0.8 && this.config.videoBitrate > 1000000) {
-          const newBitrate = Math.max(1000000, this.config.videoBitrate * 0.75);
-          console.warn(`[RTMPStreamService] ⚠️ Auto-reducing bitrate: ${this.config.videoBitrate / 1000000}Mbps → ${newBitrate / 1000000}Mbps`);
-          this.config.videoBitrate = newBitrate;
-        }
-        
-        // Clear backpressure after 5 seconds
-        setTimeout(() => {
-          this.backpressureActive = false;
-          console.log('[RTMPStreamService] 🟢 Backpressure cleared');
-        }, 5000);
+        console.warn('[RTMPStreamService] ⚠️ Server backpressure (ignoring):', data);
+        // Don't set backpressureActive - keep sending data
       });
 
       // Handle server warnings
@@ -775,55 +776,30 @@ class RTMPStreamService {
 
     this.mediaRecorder = new MediaRecorder(this.canvasStream, options);
 
-    // ========== STREAM BUFFER (CAPACITOR) ==========
-    // Cria o buffer que suaviza o envio de dados
-    this.streamBuffer = new StreamBuffer({
-      minBufferSize: 256 * 1024,  // 256KB antes de começar a enviar
-      maxBufferSize: 3 * 1024 * 1024, // 3MB máximo
-      sendInterval: 50, // 50ms = 20 envios por segundo
-      chunkSize: 64 * 1024, // 64KB por envio
-      onSend: (data: ArrayBuffer) => {
-        if (this.socket?.connected && this.isStreaming) {
-          this.socket.emit('video-chunk', data);
-          this.chunksSent++;
-          this.bytesSent += data.byteLength;
-          
-          if (this.chunksSent % 100 === 0) {
-            const status = this.streamBuffer?.getStatus();
-            console.log(`[RTMPStreamService] Sent ${this.chunksSent} chunks, ${(this.bytesSent / 1024 / 1024).toFixed(2)} MB, buffer: ${(status?.bufferSize || 0) / 1024}KB`);
-          }
-        }
-      },
-      onStatus: (status) => {
-        if (status.isBuffering) {
-          console.log(`[RTMPStreamService] 📦 Buffering: ${(status.bufferSize / 1024).toFixed(0)}KB / ${(256).toFixed(0)}KB`);
-        }
-      }
-    });
-    
-    // Inicia o buffer
-    this.streamBuffer.start();
-    console.log('[RTMPStreamService] 🚀 StreamBuffer (capacitor) started');
-    // ========== FIM STREAM BUFFER ==========
+    // ========== SIMPLIFIED DIRECT STREAMING ==========
+    // Send chunks directly to socket - no intermediate buffers
+    // This is how StreamYard and professional streaming services work
+    console.log('[RTMPStreamService] 🚀 Using DIRECT streaming (no buffers)');
 
-    // BACKUP24 FIX: Send data chunks to ChunkQueue (not directly to socket)
     this.mediaRecorder.ondataavailable = async (event) => {
-      if (event.data.size > 0 && this.isStreaming && this.chunkQueue) {
-        const startTime = performance.now();
-        const arrayBuffer = await event.data.arrayBuffer();
-        const conversionTime = performance.now() - startTime;
-        
-        // Enqueue chunk (will drop old chunks if queue is full)
-        this.chunkQueue.enqueue(arrayBuffer);
-        
-        // Log conversion time if it's taking too long
-        if (conversionTime > 50) {
-          console.warn(`[RTMPStreamService] ⚠️ Blob→ArrayBuffer took ${conversionTime.toFixed(2)}ms`);
-        }
-        
-        // Start processing queue if not already processing
-        if (!this.isProcessingQueue) {
-          this.processChunkQueue();
+      if (event.data.size > 0 && this.isStreaming && this.socket?.connected) {
+        try {
+          const arrayBuffer = await event.data.arrayBuffer();
+          
+          // Send directly to socket - simple and reliable
+          this.socket.emit('video-chunk', arrayBuffer);
+          
+          this.chunksSent++;
+          this.bytesSent += arrayBuffer.byteLength;
+          
+          // Log progress every 50 chunks (~5 seconds at 100ms timeslice)
+          if (this.chunksSent % 50 === 0) {
+            const elapsed = (Date.now() - this.startTime) / 1000;
+            const bitrate = (this.bytesSent * 8 / elapsed / 1000).toFixed(0);
+            console.log(`[RTMPStreamService] 📊 Sent ${this.chunksSent} chunks, ${(this.bytesSent / 1024 / 1024).toFixed(2)} MB, ${bitrate} kbps`);
+          }
+        } catch (err) {
+          console.error('[RTMPStreamService] Error sending chunk:', err);
         }
       }
     };

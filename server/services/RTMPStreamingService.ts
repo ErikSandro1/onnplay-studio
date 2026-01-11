@@ -61,8 +61,8 @@ interface ActiveStream {
 }
 
 // BACKUP24 FIX: Feature flags and limits
-const ENABLE_BACKPRESSURE = true;
-const ENABLE_QUEUE = true;
+const ENABLE_BACKPRESSURE = false; // DISABLED - causes audio issues
+const ENABLE_QUEUE = false; // DISABLED - direct pipe to FFmpeg
 const MAX_QUEUE_BYTES = 5 * 1024 * 1024; // 5MB per destination
 const MAX_QUEUE_CHUNKS = 50; // 50 chunks per destination
 const BACKPRESSURE_SPEED_THRESHOLD = 0.95; // Emit backpressure if speed < 0.95x
@@ -109,8 +109,17 @@ export class RTMPStreamingService {
       });
 
       // Handle video chunks from MediaRecorder
-      socket.on('video-chunk', (chunk: ArrayBuffer) => {
-        this.handleVideoChunk(socket.id, chunk);
+      socket.on('video-chunk', (payload: ArrayBuffer | { data: ArrayBuffer; destinations?: string[] }) => {
+        // BACKUP25 FIX: Accept both old format (ArrayBuffer) and new format ({data, destinations})
+        let chunk: ArrayBuffer;
+        if (payload && typeof payload === 'object' && 'data' in payload) {
+          chunk = (payload as { data: ArrayBuffer }).data;
+        } else {
+          chunk = payload as ArrayBuffer;
+        }
+        if (chunk) {
+          this.handleVideoChunk(socket.id, chunk);
+        }
       });
 
       // Handle heartbeat from client (keep-alive)
@@ -238,75 +247,79 @@ export class RTMPStreamingService {
     console.log(`[RTMPStreamingService] Starting relay to ${dest.platform}: ${dest.rtmpUrl}/****`);
     console.log(`[FFmpeg ${dest.platform}] Full RTMP URL:`, rtmpUrl);
 
-    // Fixed output bitrates - optimized for stability
-    const OUTPUT_VIDEO_BITRATE = 2000; // 2 Mbps for smoother streaming
-    const OUTPUT_AUDIO_BITRATE = 128;  // 128 kbps
+    // Dynamic output bitrates based on resolution - supports up to 4K
+    // YouTube recommended bitrates:
+    // 4K (2160p): 20,000-51,000 kbps
+    // 1440p: 9,000-18,000 kbps  
+    // 1080p: 4,500-9,000 kbps
+    // 720p: 2,500-6,500 kbps
+    // 480p: 1,000-2,000 kbps
+    let OUTPUT_VIDEO_BITRATE: number;
+    if (config.height >= 2160) {
+      OUTPUT_VIDEO_BITRATE = 20000; // 4K
+    } else if (config.height >= 1440) {
+      OUTPUT_VIDEO_BITRATE = 12000; // 1440p
+    } else if (config.height >= 1080) {
+      OUTPUT_VIDEO_BITRATE = 6000; // 1080p
+    } else if (config.height >= 720) {
+      OUTPUT_VIDEO_BITRATE = 3000; // 720p - balanced quality/stability
+    } else {
+      OUTPUT_VIDEO_BITRATE = 2000; // 480p or lower
+    }
+    const OUTPUT_AUDIO_BITRATE = 128;  // 128 kbps AAC
     
     const videoBitrate = `${OUTPUT_VIDEO_BITRATE}k`;
     const audioBitrate = `${OUTPUT_AUDIO_BITRATE}k`;
-    const bufsize = `${OUTPUT_VIDEO_BITRATE * 2}k`; // 2x buffer for lower latency
     
-    console.log(`[FFmpeg ${dest.platform}] Output: ${videoBitrate}`);
+    console.log(`[FFmpeg ${dest.platform}] Resolution: ${config.width}x${config.height}, Output: ${videoBitrate}`);
     
-    // FFmpeg arguments - OPTIMIZED for STABILITY (not low latency)
+    // FFmpeg arguments - PROFESSIONAL STREAMING
+    // Tries to copy video if H.264, otherwise re-encodes with ultrafast preset
     const ffmpegArgs = [
-      // Parameters for STABLE streaming with larger buffers
-      '-fflags', '+genpts+discardcorrupt+igndts',
-      '-use_wallclock_as_timestamps', '1',
-      '-thread_queue_size', '4096', // Much larger buffer for stability
-      '-probesize', '10M', // Larger probe for better detection
-      '-analyzeduration', '10M', // Longer analysis
-      '-err_detect', 'ignore_err', // Ignore input errors
-      '-hide_banner', '-loglevel', 'info', // DIAGNOSTIC: More verbose logging
-      
-      // Input from stdin (WebM from MediaRecorder)
-      '-f', 'webm',
+      // Input settings - auto-detect format (WebM or MP4)
+      '-fflags', '+genpts+discardcorrupt+igndts+nobuffer',
+      '-flags', 'low_delay',
+      '-thread_queue_size', '4096',
+      '-probesize', '500k',
+      '-analyzeduration', '500k',
+      '-err_detect', 'ignore_err',
       '-i', 'pipe:0',
       
-      // Video encoding - STABLE settings
+      '-hide_banner', '-loglevel', 'info',
+      
+      // Video: Try to copy H.264, otherwise re-encode
+      // Using libx264 with ultrafast for compatibility
       '-c:v', 'libx264',
-      '-preset', 'veryfast', // Better quality than ultrafast, still fast
+      '-preset', 'ultrafast',
       '-tune', 'zerolatency',
-      '-threads', '0', // Auto threads
-      
-      // Video bitrate settings - larger buffers for smoother output
       '-b:v', videoBitrate,
-      '-maxrate', `${OUTPUT_VIDEO_BITRATE * 2}k`, // Allow 100% burst for peaks
-      '-bufsize', `${OUTPUT_VIDEO_BITRATE * 6}k`, // 6x buffer for maximum stability
-      
-      // x264 specific params - optimized for smooth playback
-      '-x264-params', 'force-cfr=1:nal-hrd=cbr:vbv-maxrate=' + OUTPUT_VIDEO_BITRATE * 2 + ':vbv-bufsize=' + OUTPUT_VIDEO_BITRATE * 6,
-      
-      // Keyframe settings (YouTube requires keyframe every 2 seconds)
-      '-g', String(config.frameRate * 2),
-      '-keyint_min', String(config.frameRate * 2),
+      '-maxrate', `${OUTPUT_VIDEO_BITRATE * 1.2}k`,
+      '-bufsize', `${OUTPUT_VIDEO_BITRATE * 2}k`,
+      '-g', String(config.frameRate * 2), // Keyframe every 2 seconds
+      '-keyint_min', String(config.frameRate),
       '-sc_threshold', '0',
-      
-      // H.264 profile
-      '-profile:v', 'main',
+      '-profile:v', 'baseline',
       '-level', '4.1',
-      '-bf', '0',
-      
-      // Resolution and framerate
-      '-s', `${config.width}x${config.height}`,
+      '-bf', '0', // No B-frames for lower latency
+      '-threads', '0', // Use 4 threads
       '-pix_fmt', 'yuv420p',
       '-r', String(config.frameRate),
-      '-vsync', 'cfr', // Constant frame rate for stable output
+      '-vsync', 'cfr',
       
-      // Audio settings - optimized for smooth playback
+      // Audio: Always re-encode to AAC for RTMP compatibility
       '-c:a', 'aac',
       '-b:a', audioBitrate,
-      '-ar', '48000', // YouTube recommends 48kHz
+      '-ar', '48000',
       '-ac', '2',
-      '-af', 'aresample=async=1:min_hard_comp=0.100000:first_pts=0', // Smooth audio sync
+      '-af', 'adelay=480|480,aresample=async=0',
       
-      // FLV output settings
+      // FLV output for RTMP
       '-flvflags', 'no_duration_filesize',
       '-f', 'flv',
       
-      // RTMP output with larger buffer for stability
+      // RTMP settings
       '-rtmp_live', 'live',
-      '-rtmp_buffer', '5000', // 5 second buffer for stability
+      '-rtmp_buffer', '1000',
       rtmpUrl,
     ];
 
