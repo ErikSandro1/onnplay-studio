@@ -465,17 +465,18 @@ export class YouTubeOAuthService {
 
     console.log('[YouTubeOAuth] Broadcast stored for transition. Stream ID:', stream.id);
 
-    // Start pre-warming the stream so it becomes active faster
-    // This sends a placeholder stream to YouTube so the stream status becomes 'active'
-    console.log('[YouTubeOAuth] Starting pre-warm for instant go-live...');
-    PreWarmService.startPreWarm(
-      broadcast.id,
-      stream.id,
-      rtmpUrl,
-      streamKey,
-      userId,
-      accountId
-    );
+    // DESATIVADO: PreWarm estava fazendo a live entrar ao ar automaticamente
+    // A live agora fica em modo "ready" até o usuário clicar em GO LIVE no studio
+    // console.log('[YouTubeOAuth] Starting pre-warm for instant go-live...');
+    // PreWarmService.startPreWarm(
+    //   broadcast.id,
+    //   stream.id,
+    //   rtmpUrl,
+    //   streamKey,
+    //   userId,
+    //   accountId
+    // );
+    console.log('[YouTubeOAuth] Broadcast created in READY mode. Waiting for GO LIVE...');
 
     return {
       id: broadcast.id,

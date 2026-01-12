@@ -178,12 +178,12 @@ const LiveCreatedModal = ({
   broadcast, 
   account, 
   onClose, 
-  onStartNow 
+  onGoToStudio 
 }: { 
   broadcast: ActiveBroadcast; 
   account: ConnectedAccount;
   onClose: () => void;
-  onStartNow: () => void;
+  onGoToStudio: () => void;
 }) => {
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
@@ -290,11 +290,11 @@ const LiveCreatedModal = ({
           {/* Botão */}
           <div className="pt-2">
             <button
-              onClick={onClose}
+              onClick={onGoToStudio}
               className="w-full py-3 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
             >
               <Check size={18} />
-              Entendido - Preparar Live
+              Entendido - Ir para o Studio
             </button>
           </div>
         </div>
@@ -1011,23 +1011,7 @@ export default function DestinationsManager({ onBroadcastReady, onStartStreaming
         )}
       </div>
 
-      {/* Start Streaming Button */}
-      {broadcasts.length > 0 && !isStreaming && (
-        <button
-          onClick={onStartStreaming}
-          className={`w-full py-4 rounded-lg font-bold text-lg transition-all flex items-center justify-center gap-3 ${
-            isTimeToGoLive 
-              ? 'bg-red-600 hover:bg-red-500 text-white animate-pulse shadow-[0_0_30px_rgba(220,38,38,0.5)]' 
-              : 'bg-orange-600 hover:bg-orange-500 text-white'
-          }`}
-        >
-          <StudioLight status={isTimeToGoLive ? 'ready' : 'standby'} size="md" />
-          {isTimeToGoLive ? '🔴 GO LIVE!' : '▶️ Iniciar Transmissão'}
-          <span className="text-sm font-normal opacity-75">
-            ({broadcasts.length} destino{broadcasts.length > 1 ? 's' : ''})
-          </span>
-        </button>
-      )}
+      {/* Botão de Iniciar Transmissão removido - usuário deve usar GO LIVE no studio */}
 
       {/* Modal de Live Criada */}
       {showCreatedModal && lastCreatedBroadcast && lastCreatedAccount && (
@@ -1035,9 +1019,10 @@ export default function DestinationsManager({ onBroadcastReady, onStartStreaming
           broadcast={lastCreatedBroadcast}
           account={lastCreatedAccount}
           onClose={() => setShowCreatedModal(false)}
-          onStartNow={() => {
+          onGoToStudio={() => {
             setShowCreatedModal(false);
-            if (onStartStreaming) onStartStreaming();
+            // Fechar o painel de destinos e ir para o studio
+            if (onClose) onClose();
           }}
         />
       )}
