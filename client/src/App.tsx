@@ -20,7 +20,7 @@ import ResetPassword from "./pages/ResetPassword";
 import EmailVerified from "./pages/EmailVerified";
 import CheckoutSuccess from "./pages/CheckoutSuccess";
 import JoinRoom from "./pages/JoinRoom";
-import DiagnosticsPanel from "./components/DiagnosticsPanel";
+// DiagnosticsPanel movido para a Sidebar
 
 /**
  * OnnPlay Studio - Main Application Router
@@ -115,8 +115,7 @@ function App() {
           <TooltipProvider>
             <Toaster />
             <Router />
-            {/* ETAPA 1 - Diagnostics Panel (Manual Controls) */}
-            <DiagnosticsPanel />
+            {/* DiagnosticsPanel movido para a Sidebar */}
           </TooltipProvider>
         </ThemeProvider>
       </AuthProvider>

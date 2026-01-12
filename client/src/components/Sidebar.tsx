@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Video, FileText, LayoutGrid, Settings, X, Plus, MessageSquare, Youtube, Eye, RefreshCw, Link2, Unlink, Facebook, Instagram, Twitch, Music, Image, Film, Type, ArrowRight, Play, Monitor, Palette, Layers, Save } from 'lucide-react';
+import { Video, FileText, LayoutGrid, Settings, X, Plus, MessageSquare, Youtube, Eye, RefreshCw, Link2, Unlink, Facebook, Instagram, Twitch, Music, Image, Film, Type, ArrowRight, Play, Monitor, Palette, Layers, Save, Wrench } from 'lucide-react';
 import { commentOverlayService } from '../services/CommentOverlayService';
 import { mediaSourceService } from '../services/MediaSourceService';
 import { BannerPanel } from './BannerPanel';
@@ -7,13 +7,14 @@ import { ScenePanelSidebar } from './ScenePanelSidebar';
 import { BackgroundPanel } from './BackgroundPanel';
 import { OverlayPanel } from './OverlayPanel';
 import { ProjectPanel } from './ProjectPanel';
+import DiagnosticsPanel from './DiagnosticsPanel';
 
 interface SidebarProps {
   activeSection?: string;
   onSectionChange?: (section: string) => void;
 }
 
-type PanelType = 'sources' | 'chat' | 'scenes' | 'layouts' | 'settings' | 'banners' | 'backgrounds' | 'overlays' | 'projects' | null;
+type PanelType = 'sources' | 'chat' | 'scenes' | 'layouts' | 'settings' | 'banners' | 'backgrounds' | 'overlays' | 'projects' | 'diagnostics' | null;
 
 interface VideoSource {
   id: string;
@@ -489,6 +490,7 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
     { id: 'scenes' as PanelType, icon: FileText, label: 'Scenes' },
     { id: 'layouts' as PanelType, icon: LayoutGrid, label: 'Layouts' },
     { id: 'projects' as PanelType, icon: Save, label: 'Projetos' },
+    { id: 'diagnostics' as PanelType, icon: Wrench, label: 'Diagnóstico' },
   ];
 
   return (
@@ -1017,6 +1019,39 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
           isOpen={true} 
           onClose={() => setActivePanel(null)} 
         />
+      )}
+
+      {/* Expandable Panel - DIAGNOSTICS */}
+      {activePanel === 'diagnostics' && (
+        <div
+          className="h-full flex flex-col"
+          style={{
+            width: '320px',
+            background: '#0F1419',
+            borderRight: '1px solid #1E2842',
+          }}
+        >
+          {/* Header */}
+          <div
+            className="flex items-center justify-between px-4 py-3"
+            style={{ borderBottom: '1px solid #1E2842' }}
+          >
+            <div className="flex items-center gap-2">
+              <Wrench size={18} className="text-blue-400" />
+              <span className="font-semibold text-white">DIAGNÓSTICO</span>
+            </div>
+            <button
+              onClick={() => setActivePanel(null)}
+              className="p-1 rounded hover:bg-[#1E2842] transition-colors"
+            >
+              <X size={18} className="text-gray-400" />
+            </button>
+          </div>
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-4">
+            <DiagnosticsPanel embedded={true} />
+          </div>
+        </div>
       )}
     </div>
   );

@@ -58,8 +58,12 @@ const BUFFER_PROFILE_OPTIONS = [
   { value: 'HIGH', label: 'HIGH (128 KB)', size: 128 },
 ];
 
-export const DiagnosticsPanel: React.FC = () => {
-  const [isOpen, setIsOpen] = useState(false);
+interface DiagnosticsPanelProps {
+  embedded?: boolean;
+}
+
+export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ embedded = false }) => {
+  const [isOpen, setIsOpen] = useState(embedded);
   const [config, setConfig] = useState<DiagnosticsConfig>({
     resolution: '720p',
     fps: 30,
@@ -142,33 +146,32 @@ export const DiagnosticsPanel: React.FC = () => {
     console.log('[DiagnosticsPanel] 📋 Preset Conservative loaded (for slow networks)');
   };
 
-  if (!isOpen) {
-    return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-4 left-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 z-40"
-        title="Open Diagnostics Panel"
-      >
-        🔧 Diagnóstico
-      </button>
-    );
+  // Se embedded, sempre mostra o conteúdo
+  // Se não embedded e não aberto, mostra o botão flutuante
+  if (!isOpen && !embedded) {
+    return null; // Não mostra mais o botão flutuante - agora está na sidebar
   }
 
   return (
-    <div className="fixed bottom-4 left-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-2xl p-6 w-96 z-40 max-h-[70vh] overflow-y-auto">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-          🔧 Painel de Diagnóstico
-        </h3>
-        <button
-          onClick={() => setIsOpen(false)}
-          className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-        >
-          ✕
-        </button>
-      </div>
+    <div className={embedded 
+      ? "bg-transparent w-full" 
+      : "fixed bottom-4 left-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-2xl p-6 w-96 z-40 max-h-[70vh] overflow-y-auto"
+    }>
+      {!embedded && (
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+            🔧 Painel de Diagnóstico
+          </h3>
+          <button
+            onClick={() => setIsOpen(false)}
+            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
-      <div className="text-sm text-gray-600 dark:text-gray-400 mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded border border-yellow-200 dark:border-yellow-800">
+      <div className={`text-sm mb-4 p-3 rounded border ${embedded ? 'bg-yellow-900/20 border-yellow-800 text-gray-300' : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 text-gray-600 dark:text-gray-400'}`}>
         <strong>⚠️ ETAPA 1:</strong> Instrumentação Total
         <br />
         Controles manuais para diagnóstico.
@@ -178,13 +181,13 @@ export const DiagnosticsPanel: React.FC = () => {
 
       {/* Resolution */}
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        <label className={`block text-sm font-medium mb-2 ${embedded ? 'text-gray-300' : 'text-gray-700 dark:text-gray-300'}`}>
           Resolução
         </label>
         <select
           value={config.resolution}
           onChange={(e) => setConfig({ ...config, resolution: e.target.value as any })}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          className={`w-full px-3 py-2 rounded-md ${embedded ? 'bg-[#1E2842] border-[#2D3A5C] text-white' : 'border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white'}`}
         >
           {RESOLUTION_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -196,13 +199,13 @@ export const DiagnosticsPanel: React.FC = () => {
 
       {/* FPS */}
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        <label className={`block text-sm font-medium mb-2 ${embedded ? 'text-gray-300' : 'text-gray-700 dark:text-gray-300'}`}>
           FPS (Frames por Segundo)
         </label>
         <select
           value={config.fps}
           onChange={(e) => setConfig({ ...config, fps: parseInt(e.target.value) as any })}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          className={`w-full px-3 py-2 rounded-md ${embedded ? 'bg-[#1E2842] border-[#2D3A5C] text-white' : 'border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white'}`}
         >
           {FPS_OPTIONS.map((fps) => (
             <option key={fps} value={fps}>
@@ -214,13 +217,13 @@ export const DiagnosticsPanel: React.FC = () => {
 
       {/* Video Bitrate */}
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        <label className={`block text-sm font-medium mb-2 ${embedded ? 'text-gray-300' : 'text-gray-700 dark:text-gray-300'}`}>
           Bitrate de Vídeo
         </label>
         <select
           value={config.videoBitrate}
           onChange={(e) => setConfig({ ...config, videoBitrate: parseInt(e.target.value) })}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          className={`w-full px-3 py-2 rounded-md ${embedded ? 'bg-[#1E2842] border-[#2D3A5C] text-white' : 'border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white'}`}
         >
           {VIDEO_BITRATE_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -232,13 +235,13 @@ export const DiagnosticsPanel: React.FC = () => {
 
       {/* Audio Bitrate */}
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        <label className={`block text-sm font-medium mb-2 ${embedded ? 'text-gray-300' : 'text-gray-700 dark:text-gray-300'}`}>
           Bitrate de Áudio
         </label>
         <select
           value={config.audioBitrate}
           onChange={(e) => setConfig({ ...config, audioBitrate: parseInt(e.target.value) })}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          className={`w-full px-3 py-2 rounded-md ${embedded ? 'bg-[#1E2842] border-[#2D3A5C] text-white' : 'border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white'}`}
         >
           {AUDIO_BITRATE_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -249,8 +252,8 @@ export const DiagnosticsPanel: React.FC = () => {
       </div>
 
       {/* Streaming Mode Toggle */}
-      <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
-        <label className="block text-sm font-medium text-purple-700 dark:text-purple-300 mb-2">
+      <div className={`mb-4 p-3 rounded-lg border ${embedded ? 'bg-purple-900/20 border-purple-800' : 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800'}`}>
+        <label className={`block text-sm font-medium mb-2 ${embedded ? 'text-purple-300' : 'text-purple-700 dark:text-purple-300'}`}>
           🚀 Modo de Streaming
         </label>
         <div className="flex gap-2">
@@ -284,13 +287,13 @@ export const DiagnosticsPanel: React.FC = () => {
 
       {/* Buffer Profile */}
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        <label className={`block text-sm font-medium mb-2 ${embedded ? 'text-gray-300' : 'text-gray-700 dark:text-gray-300'}`}>
           Perfil de Buffer
         </label>
         <select
           value={config.bufferProfile}
           onChange={(e) => setConfig({ ...config, bufferProfile: e.target.value as any })}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          className={`w-full px-3 py-2 rounded-md ${embedded ? 'bg-[#1E2842] border-[#2D3A5C] text-white' : 'border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white'}`}
         >
           {BUFFER_PROFILE_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -324,7 +327,7 @@ export const DiagnosticsPanel: React.FC = () => {
         ✅ Aplicar Configuração
       </button>
 
-      <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+      <div className={`mt-4 text-xs ${embedded ? 'text-gray-400' : 'text-gray-500 dark:text-gray-400'}`}>
         <strong>Nota:</strong> As mudanças só terão efeito após reiniciar a transmissão.
       </div>
     </div>
