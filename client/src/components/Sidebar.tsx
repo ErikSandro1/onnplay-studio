@@ -29,6 +29,13 @@ interface YouTubeComment {
   authorProfileImageUrl: string;
   textDisplay: string;
   publishedAt: string;
+  // Badges
+  isChatOwner?: boolean;      // Dono do canal
+  isChatModerator?: boolean;  // Moderador
+  isChatSponsor?: boolean;    // Membro (assinante)
+  memberMonths?: number;      // Meses como membro
+  isSuperChat?: boolean;      // Super Chat
+  superChatAmount?: string;   // Valor do Super Chat
 }
 
 export default function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
@@ -884,9 +891,33 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
                             className={`w-6 h-6 rounded-full flex-shrink-0 ${isPinned ? 'ring-2 ring-green-400' : ''}`}
                           />
                           <div className="flex-1 min-w-0">
-                            <p className={`text-xs font-medium truncate ${isPinned ? 'text-green-400' : 'text-cyan-400'}`}>
-                              {comment.authorDisplayName}
-                            </p>
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <p className={`text-xs font-medium truncate ${isPinned ? 'text-green-400' : 'text-cyan-400'}`}>
+                                {comment.authorDisplayName}
+                              </p>
+                              {/* Badges */}
+                              {comment.isChatOwner && (
+                                <span className="px-1 py-0.5 bg-yellow-500/20 text-yellow-400 text-[9px] font-bold rounded" title="Dono do canal">
+                                  DONO
+                                </span>
+                              )}
+                              {comment.isChatModerator && !comment.isChatOwner && (
+                                <span className="px-1 py-0.5 bg-blue-500/20 text-blue-400 text-[9px] font-bold rounded" title="Moderador">
+                                  MOD
+                                </span>
+                              )}
+                              {comment.isChatSponsor && (
+                                <span className="px-1 py-0.5 bg-green-500/20 text-green-400 text-[9px] font-bold rounded flex items-center gap-0.5" title={`Membro h\u00e1 ${comment.memberMonths || 1} ${(comment.memberMonths || 1) === 1 ? 'm\u00eas' : 'meses'}`}>
+                                  <span>👑</span>
+                                  <span>#{comment.memberMonths || 1}</span>
+                                </span>
+                              )}
+                              {comment.isSuperChat && (
+                                <span className="px-1 py-0.5 bg-red-500/20 text-red-400 text-[9px] font-bold rounded" title="Super Chat">
+                                  ${comment.superChatAmount}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-gray-300 break-words">
                               {comment.textDisplay}
                             </p>

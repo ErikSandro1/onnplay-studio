@@ -19,6 +19,11 @@ interface YouTubeComment {
   likeCount: number;
   isSuperChat?: boolean;
   superChatAmount?: string;
+  // Badges
+  isChatOwner?: boolean;      // Dono do canal
+  isChatModerator?: boolean;  // Moderador
+  isChatSponsor?: boolean;    // Membro (assinante)
+  memberMonths?: number;      // Meses como membro
 }
 
 // Cache for liveChatId to avoid repeated API calls
@@ -86,17 +91,36 @@ async function fetchLiveChatMessages(liveChatId: string, pageToken?: string): Pr
 
     const data = await response.json();
 
-    const comments: YouTubeComment[] = (data.items || []).map((item: any) => ({
-      id: item.id,
-      authorDisplayName: item.authorDetails?.displayName || 'Unknown',
-      authorProfileImageUrl: item.authorDetails?.profileImageUrl || '',
-      authorChannelId: item.authorDetails?.channelId || '',
-      textDisplay: item.snippet?.displayMessage || item.snippet?.textMessageDetails?.messageText || '',
-      publishedAt: item.snippet?.publishedAt || new Date().toISOString(),
-      likeCount: 0,
-      isSuperChat: item.snippet?.type === 'superChatEvent',
-      superChatAmount: item.snippet?.superChatDetails?.amountDisplayString,
-    }));
+    const comments: YouTubeComment[] = (data.items || []).map((item: any) => {
+      // Calcular meses de membro baseado no badge
+      let memberMonths = 0;
+      if (item.authorDetails?.isChatSponsor) {
+        // A API do YouTube não retorna diretamente os meses, mas podemos extrair do badge
+        // Por enquanto, marcamos como membro (1 mês mínimo)
+        memberMonths = 1;
+        // Se houver informação de superChatDetails ou memberMilestoneChatDetails, podemos extrair mais
+        if (item.snippet?.memberMilestoneChatDetails?.memberMonth) {
+          memberMonths = parseInt(item.snippet.memberMilestoneChatDetails.memberMonth) || 1;
+        }
+      }
+
+      return {
+        id: item.id,
+        authorDisplayName: item.authorDetails?.displayName || 'Unknown',
+        authorProfileImageUrl: item.authorDetails?.profileImageUrl || '',
+        authorChannelId: item.authorDetails?.channelId || '',
+        textDisplay: item.snippet?.displayMessage || item.snippet?.textMessageDetails?.messageText || '',
+        publishedAt: item.snippet?.publishedAt || new Date().toISOString(),
+        likeCount: 0,
+        isSuperChat: item.snippet?.type === 'superChatEvent',
+        superChatAmount: item.snippet?.superChatDetails?.amountDisplayString,
+        // Badges
+        isChatOwner: item.authorDetails?.isChatOwner || false,
+        isChatModerator: item.authorDetails?.isChatModerator || false,
+        isChatSponsor: item.authorDetails?.isChatSponsor || false,
+        memberMonths: memberMonths,
+      };
+    });
 
     return {
       comments,
