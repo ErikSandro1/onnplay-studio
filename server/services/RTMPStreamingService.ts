@@ -273,53 +273,55 @@ export class RTMPStreamingService {
     
     console.log(`[FFmpeg ${dest.platform}] Resolution: ${config.width}x${config.height}, Output: ${videoBitrate}`);
     
-    // FFmpeg arguments - PROFESSIONAL STREAMING
-    // Tries to copy video if H.264, otherwise re-encodes with ultrafast preset
+    // FFmpeg arguments - OPTIMIZED FOR LOW LATENCY
+    // Key improvements:
+    // 1. Minimal buffers for lowest latency
+    // 2. Real-time processing with no delays
+    // 3. Direct passthrough when possible
     const ffmpegArgs = [
-      // Input settings - auto-detect format (WebM or MP4)
-      '-fflags', '+genpts+discardcorrupt+igndts+nobuffer',
-      '-flags', 'low_delay',
-      '-thread_queue_size', '4096',
-      '-probesize', '500k',
-      '-analyzeduration', '500k',
-      '-err_detect', 'ignore_err',
+      // Input settings - minimal buffering for real-time
+      '-fflags', '+genpts+nobuffer+flush_packets',  // No buffering, flush immediately
+      '-flags', 'low_delay',  // Low delay mode
+      '-thread_queue_size', '512',  // Minimal queue
+      '-probesize', '32k',  // Small probe for fast start
+      '-analyzeduration', '0',  // No analysis delay
       '-i', 'pipe:0',
       
-      '-hide_banner', '-loglevel', 'info',
+      '-hide_banner', '-loglevel', 'warning',
       
-      // Video: Try to copy H.264, otherwise re-encode
-      // Using libx264 with ultrafast for compatibility
+      // Video encoding - ultra low latency
       '-c:v', 'libx264',
       '-preset', 'ultrafast',
       '-tune', 'zerolatency',
       '-b:v', videoBitrate,
-      '-maxrate', `${OUTPUT_VIDEO_BITRATE * 1.2}k`,
-      '-bufsize', `${OUTPUT_VIDEO_BITRATE * 2}k`,
-      '-g', String(config.frameRate * 2), // Keyframe every 2 seconds
+      '-maxrate', videoBitrate,  // No burst, constant rate
+      '-bufsize', `${OUTPUT_VIDEO_BITRATE / 2}k`,  // Minimal buffer (0.5 second)
+      '-g', String(config.frameRate), // Keyframe every 1 second for faster sync
       '-keyint_min', String(config.frameRate),
       '-sc_threshold', '0',
       '-profile:v', 'baseline',
       '-level', '4.1',
-      '-bf', '0', // No B-frames for lower latency
-      '-threads', '0', // Use 4 threads
+      '-bf', '0', // No B-frames
+      '-refs', '1', // Single reference frame
+      '-threads', '4', // Fixed threads for consistent performance
       '-pix_fmt', 'yuv420p',
-      '-r', String(config.frameRate),
       '-vsync', 'cfr',
+      '-r', String(config.frameRate),
       
-      // Audio: Always re-encode to AAC for RTMP compatibility
+      // Audio: Low latency AAC
       '-c:a', 'aac',
       '-b:a', audioBitrate,
       '-ar', '48000',
       '-ac', '2',
-      '-af', 'adelay=480|480,aresample=async=0',
+      '-af', 'aresample=async=1:min_hard_comp=0.1:first_pts=0',  // Minimal async
       
       // FLV output for RTMP
       '-flvflags', 'no_duration_filesize',
       '-f', 'flv',
       
-      // RTMP settings
+      // RTMP settings - minimal buffer
       '-rtmp_live', 'live',
-      '-rtmp_buffer', '1000',
+      '-rtmp_buffer', '500',  // 500ms buffer only
       rtmpUrl,
     ];
 

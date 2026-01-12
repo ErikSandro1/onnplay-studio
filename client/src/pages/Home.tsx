@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { io, Socket } from 'socket.io-client';
 import Sidebar from '../components/Sidebar';
 import MainHeader from '../components/MainHeader';
 import BroadcastPanel from '../components/BroadcastPanel';
@@ -12,6 +13,7 @@ import LayoutIcons, { LayoutType } from '../components/LayoutIcons';
 import TransitionSystem from '../components/TransitionSystem';
 import ParticipantManager from '../components/ParticipantManager';
 import AdvancedAudioMixer from '../components/AdvancedAudioMixer';
+import ProAudioMixer from '../components/ProAudioMixer';
 import CameraControl from '../components/CameraControl';
 import OverlayManager from '../components/OverlayManager';
 import StreamingConfig from '../components/StreamingConfig';
@@ -22,6 +24,10 @@ import LiveCommentsPanel from '../components/LiveCommentsPanel';
 import AdvancedSettings from '../components/AdvancedSettings';
 import { AIChat } from '../components/AIChat';
 import { JoinRoomModal } from '../components/JoinRoomModal';
+import InvitePanel from '../components/InvitePanel';
+import CameraPanel from '../components/CameraPanel';
+import GreenRoom from '../components/GreenRoom';
+import RemoteAudioPlayer from '../components/RemoteAudioPlayer';
 import { EmailVerificationBanner } from '../components/EmailVerificationBanner';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
@@ -49,6 +55,20 @@ const HomeContent: React.FC = () => {
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const [isJoinRoomModalOpen, setIsJoinRoomModalOpen] = useState(false);
+  const [isInvitePanelOpen, setIsInvitePanelOpen] = useState(false);
+  const [isCameraPanelOpen, setIsCameraPanelOpen] = useState(false);
+  const [isGreenRoomOpen, setIsGreenRoomOpen] = useState(false);
+  const [waitingGuestsCount, setWaitingGuestsCount] = useState(0);
+  const greenRoomSocketRef = useRef<Socket | null>(null);
+  
+  // Room ID único para convites (persistido no localStorage para consistência)
+  const [studioRoomId] = useState(() => {
+    const stored = localStorage.getItem('onnplay-studio-room-id');
+    if (stored) return stored;
+    const newId = `studio-${Date.now()}`;
+    localStorage.setItem('onnplay-studio-room-id', newId);
+    return newId;
+  });
   
   // Daily.co context
   const dailyContext = useDailyContext();
@@ -76,6 +96,10 @@ const HomeContent: React.FC = () => {
   const [previewCamera, setPreviewCamera] = useState<'cam1' | 'cam2' | 'cam3' | 'media' | 'screen'>('cam1');
   const [programCamera, setProgramCamera] = useState<'cam1' | 'cam2' | 'cam3' | 'media' | 'screen'>('cam2');
   const [currentLayout, setCurrentLayout] = useState<LayoutType>('single');
+  
+  // Preview/Program participant states (like StreamYard)
+  const [previewParticipants, setPreviewParticipants] = useState<string[]>([]);
+  const [programParticipants, setProgramParticipants] = useState<string[]>([]);
   
   // Broadcast stats
   const [viewers, setViewers] = useState(0);
@@ -164,6 +188,48 @@ const HomeContent: React.FC = () => {
       setBitrate('0 Kbps');
     }
   }, [isLive]);
+
+  // Connect to Green Room socket to track waiting guests count
+  useEffect(() => {
+    const socket = io(window.location.origin, {
+      path: '/greenroom',
+      transports: ['websocket', 'polling']
+    });
+
+    greenRoomSocketRef.current = socket;
+
+    socket.on('connect', () => {
+      console.log('[Home] Connected to Green Room socket');
+      // Join as admin to receive guest updates
+      socket.emit('admin-join-room', { roomId: studioRoomId });
+    });
+
+    socket.on('waiting-guests-list', (data: { guests: any[] }) => {
+      console.log('[Home] Received waiting guests list:', data.guests.length);
+      setWaitingGuestsCount(data.guests.length);
+    });
+
+    socket.on('guest-joined', () => {
+      setWaitingGuestsCount(prev => prev + 1);
+    });
+
+    socket.on('guest-left', () => {
+      setWaitingGuestsCount(prev => Math.max(0, prev - 1));
+    });
+
+    socket.on('guest-admitted-confirm', () => {
+      setWaitingGuestsCount(prev => Math.max(0, prev - 1));
+    });
+
+    socket.on('guest-rejected-confirm', () => {
+      setWaitingGuestsCount(prev => Math.max(0, prev - 1));
+    });
+
+    return () => {
+      socket.disconnect();
+      greenRoomSocketRef.current = null;
+    };
+  }, [studioRoomId]);
 
   // Listen for camera:preview event from Sidebar sources
   useEffect(() => {
@@ -403,7 +469,7 @@ const HomeContent: React.FC = () => {
       case 'people':
         return <ParticipantManager isOpen={true} onClose={handleCloseTool} />;
       case 'audio':
-        return <AdvancedAudioMixer isOpen={true} onClose={handleCloseTool} />;
+        return <ProAudioMixer isOpen={true} onClose={handleCloseTool} />;
       case 'camera':
         return <CameraControl onCameraChange={handleCameraChange} onLayoutChange={handleLayoutChange} onClose={handleCloseTool} />;
       case 'destinations':
@@ -530,6 +596,9 @@ const HomeContent: React.FC = () => {
       className="flex h-screen overflow-hidden"
       style={{ background: '#0A0E1A' }}
     >
+      {/* Remote Audio Player - reproduz áudio dos participantes remotos */}
+      <RemoteAudioPlayer />
+      
       {/* Left Sidebar */}
       {sidebarOpen && <Sidebar />}
 
@@ -563,6 +632,7 @@ const HomeContent: React.FC = () => {
                 previewCamera={previewCamera}
                 programCamera={programCamera}
                 isTransitioning={isTransitioning}
+                layout={currentLayout}
               />
             </div>
 
@@ -572,11 +642,48 @@ const HomeContent: React.FC = () => {
                 participants={displayParticipants}
                 onToggleMute={(id) => {
                   console.log('[Home] Toggle mute for participant:', id);
-                  // TODO: Implement via Daily.co
+                  // Enviar comando via socket para o convidado mutar
+                  if (greenRoomSocketRef.current) {
+                    greenRoomSocketRef.current.emit('admin-mute-participant', {
+                      participantId: id,
+                      roomId: studioRoomId
+                    });
+                    toast.info('Comando de mute enviado');
+                  }
                 }}
                 onToggleCamera={(id) => {
                   console.log('[Home] Toggle camera for participant:', id);
-                  // TODO: Implement via Daily.co
+                  // Enviar comando via socket para o convidado desligar câmera
+                  if (greenRoomSocketRef.current) {
+                    greenRoomSocketRef.current.emit('admin-toggle-camera-participant', {
+                      participantId: id,
+                      roomId: studioRoomId
+                    });
+                    toast.info('Comando de câmera enviado');
+                  }
+                }}
+                onRemoveParticipant={(id) => {
+                  console.log('[Home] Remove participant:', id);
+                  // Encontrar o nome do participante
+                  const participant = displayParticipants.find(p => p.id === id);
+                  const participantName = participant?.name || '';
+                  
+                  console.log('[Home] Participant to remove:', { id, name: participantName, roomId: studioRoomId });
+                  console.log('[Home] Socket connected:', greenRoomSocketRef.current?.connected);
+                  
+                  // Enviar comando via socket para remover o convidado
+                  if (greenRoomSocketRef.current && greenRoomSocketRef.current.connected) {
+                    greenRoomSocketRef.current.emit('admin-remove-participant', {
+                      participantId: id,
+                      participantName: participantName,
+                      roomId: studioRoomId
+                    });
+                    console.log('[Home] Remove command sent');
+                    toast.success('Convidado removido da sala');
+                  } else {
+                    console.error('[Home] Socket not connected, cannot remove participant');
+                    toast.error('Erro: Socket não conectado');
+                  }
                 }}
                 onParticipantClick={(id) => {
                   console.log('[Home] Participant clicked:', id);
@@ -608,6 +715,53 @@ const HomeContent: React.FC = () => {
                     toast.success(`${participant.name} enviado para PREVIEW`);
                   }
                 }}
+                onTogglePreview={(id) => {
+                  console.log('[Home] Toggle preview for participant:', id);
+                  const participant = displayParticipants.find(p => p.id === id);
+                  
+                  setPreviewParticipants(prev => {
+                    if (prev.includes(id)) {
+                      // Remove from preview
+                      toast.info(`${participant?.name || 'Participante'} removido do Preview`);
+                      return prev.filter(pId => pId !== id);
+                    } else {
+                      // Add to preview
+                      toast.success(`${participant?.name || 'Participante'} adicionado ao Preview`);
+                      
+                      // Disparar evento para DualMonitors mostrar o participante
+                      window.dispatchEvent(new CustomEvent('participant:preview', {
+                        detail: { participantId: id, participant }
+                      }));
+                      
+                      return [...prev, id];
+                    }
+                  });
+                }}
+                onSendToProgram={(id) => {
+                  console.log('[Home] Send to program:', id);
+                  const participant = displayParticipants.find(p => p.id === id);
+                  
+                  // Remove from preview and add to program
+                  setPreviewParticipants(prev => prev.filter(pId => pId !== id));
+                  setProgramParticipants(prev => {
+                    if (!prev.includes(id)) {
+                      toast.success(`${participant?.name || 'Participante'} está LIVE!`, {
+                        description: 'Participante enviado para o Program'
+                      });
+                      
+                      // Disparar evento para DualMonitors mostrar o participante no Program
+                      window.dispatchEvent(new CustomEvent('participant:program', {
+                        detail: { participantId: id, participant }
+                      }));
+                      
+                      return [...prev, id];
+                    }
+                    return prev;
+                  });
+                }}
+                previewParticipants={previewParticipants}
+                programParticipants={programParticipants}
+                onInvite={() => setIsInvitePanelOpen(true)}
               />
             </div>
 
@@ -620,7 +774,7 @@ const HomeContent: React.FC = () => {
                 onToggleMute={handleToggleMute}
                 onToggleCamera={handleToggleCamera}
                 onToggleScreenShare={handleToggleScreenShare}
-                onInvite={() => alert('Invite feature coming soon!')}
+                onInvite={() => setIsInvitePanelOpen(true)}
                 onLeave={() => {
                   if (confirm('Are you sure you want to leave the studio?')) {
                     dailyContext.leaveRoom();
@@ -719,6 +873,68 @@ const HomeContent: React.FC = () => {
         title="Operador IA"
       >
         🤖
+      </button>
+      
+      {/* Camera Button (floating) */}
+      <button
+        onClick={() => setIsCameraPanelOpen(true)}
+        className="fixed bottom-6 right-44 w-14 h-14 rounded-full bg-gradient-to-r from-cyan-500 to-teal-500 shadow-lg hover:shadow-xl hover:scale-110 transition-all flex items-center justify-center text-2xl z-40"
+        title="Câmera & Microfone"
+      >
+        📷
+      </button>
+      
+      {/* Invite Panel */}
+      <InvitePanel
+        roomName="OnnPlay Studio"
+        roomUrl={`${window.location.origin}/join?room=${studioRoomId}`}
+        isOpen={isInvitePanelOpen}
+        onClose={() => setIsInvitePanelOpen(false)}
+      />
+      
+      {/* Camera Panel */}
+      <CameraPanel
+        isOpen={isCameraPanelOpen}
+        onClose={() => setIsCameraPanelOpen(false)}
+      />
+      
+      {/* Green Room (Sala de Espera) */}
+      <GreenRoom
+        isOpen={isGreenRoomOpen}
+        onClose={() => setIsGreenRoomOpen(false)}
+        roomId={studioRoomId}
+        onAdmitGuest={(guestId, destination, dailyRoomUrl) => {
+          console.log(`Admitindo convidado ${guestId} para ${destination}, Daily URL: ${dailyRoomUrl}`);
+          toast.success(`Convidado admitido no ${destination.toUpperCase()}`);
+          
+          // Automatically connect to Daily.co room when guest is admitted
+          if (dailyRoomUrl && !dailyContext.isConnected) {
+            console.log('[Home] Connecting to Daily.co room:', dailyRoomUrl);
+            dailyContext.joinRoom(dailyRoomUrl, 'Host').catch(err => {
+              console.error('[Home] Error joining Daily room:', err);
+              toast.error('Erro ao conectar à sala de vídeo');
+            });
+          }
+        }}
+        onRejectGuest={(guestId) => {
+          console.log(`Recusando convidado ${guestId}`);
+          toast.info('Convidado removido da sala de espera');
+        }}
+      />
+      
+      {/* Botão Green Room */}
+      <button
+        onClick={() => setIsGreenRoomOpen(true)}
+        className="fixed bottom-24 right-6 z-40 flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-full shadow-lg transition-all hover:scale-105"
+        title="Sala de Espera (Green Room)"
+      >
+        <span className="text-lg">👥</span>
+        <span className="font-medium">Green Room</span>
+        {waitingGuestsCount > 0 && (
+          <span className="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full animate-pulse">
+            {waitingGuestsCount}
+          </span>
+        )}
       </button>
     </div>
   );

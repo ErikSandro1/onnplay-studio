@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Maximize2, Settings, ArrowRight, Play, X } from 'lucide-react';
+import { MediaControls } from './MediaControls';
 import VideoPreview from './VideoPreview';
 import { CameraId } from '../services/CameraControlService';
 import { CommentOverlay } from './CommentOverlay';
@@ -10,6 +11,10 @@ import { MonitorSettingsMenu, getMonitorSettings, applySettingsToVideo } from '.
 import { mediaSourceService, MediaSource } from '../services/MediaSourceService';
 import { backgroundService, CustomBackground } from '../services/BackgroundService';
 import { BackgroundPreset } from '../config/BackgroundPresets';
+import ParticipantGrid from './ParticipantGrid';
+import { useDailyContext } from '../contexts/DailyContext';
+
+type LayoutType = 'single' | 'split' | 'grid' | 'pip';
 
 interface DualMonitorsProps {
   isLive: boolean;
@@ -20,6 +25,7 @@ interface DualMonitorsProps {
   lastTransition?: string;
   transitionTimestamp?: string;
   isTransitioning?: boolean;
+  layout?: LayoutType;
 }
 
 const DualMonitors: React.FC<DualMonitorsProps> = ({
@@ -31,9 +37,13 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
   lastTransition = 'none',
   transitionTimestamp = '',
   isTransitioning = false,
+  layout = 'grid',
 }) => {
   const previewLabel = previewCamera.toUpperCase().replace('CAM', 'CAM ');
   const programLabel = programCamera.toUpperCase().replace('CAM', 'CAM ');
+  
+  // Hook do Daily.co para verificar se está conectado
+  const { isConnected: isDailyConnected, participants } = useDailyContext();
   
   const [hasPreviewContent, setHasPreviewContent] = useState(false);
   const [isTransitioningLocal, setIsTransitioningLocal] = useState(false);
@@ -54,6 +64,9 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
   const previewStreamRef = useRef<HTMLVideoElement>(null);
   const programStreamRef = useRef<HTMLVideoElement>(null);
   
+  // Estado para controlar se o PROGRAM foi limpo manualmente (não mostrar fallback)
+  const [programCleared, setProgramCleared] = useState(false);
+  
   // Estado para modo de edição de posição do banner
   const [bannerEditMode, setBannerEditMode] = useState(false);
   const previewMonitorRef = useRef<HTMLDivElement>(null);
@@ -63,6 +76,19 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
   const [programSettingsOpen, setProgramSettingsOpen] = useState(false);
   const previewSettingsRef = useRef<HTMLButtonElement>(null);
   const programSettingsRef = useRef<HTMLButtonElement>(null);
+  
+  // Estado para participante remoto no PREVIEW (quando clica no olho)
+  const [previewParticipantId, setPreviewParticipantId] = useState<string | null>(null);
+  const [previewParticipantName, setPreviewParticipantName] = useState<string>('');
+  const remotePreviewVideoRef = useRef<HTMLVideoElement>(null);
+  
+  // Estado para participante remoto no PROGRAM
+  const [programParticipantId, setProgramParticipantId] = useState<string | null>(null);
+  const [programParticipantName, setProgramParticipantName] = useState<string>('');
+  const remoteProgramVideoRef = useRef<HTMLVideoElement>(null);
+  
+  // Obter funções do Daily.co
+  const { getVideoTrack } = useDailyContext();
 
   // Escutar eventos de preview de mídia e mudanças no MediaSourceService
   useEffect(() => {
@@ -144,6 +170,7 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
       if (stream && (type === 'camera' || type === 'screen')) {
         setPreviewStream(stream);
         setPreviewMedia(null); // Limpar mídia de imagem/vídeo
+        setPreviewParticipantId(null); // Limpar participante remoto
         setHasPreviewContent(true);
         // Limpar a fonte de mídia no MediaSourceService também
         mediaSourceService.setPreviewSource(null);
@@ -156,6 +183,29 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
       window.removeEventListener('camera:preview', handleCameraPreview as EventListener);
     };
   }, []);
+  
+  // Escutar evento participant:preview para mostrar vídeo de participante remoto no PREVIEW
+  useEffect(() => {
+    const handleParticipantPreview = (event: CustomEvent) => {
+      const { participantId, participant } = event.detail;
+      console.log('[DualMonitors] Participant preview event:', { participantId, participant });
+      
+      if (participantId) {
+        setPreviewParticipantId(participantId);
+        setPreviewParticipantName(participant?.name || 'Guest');
+        setPreviewStream(null); // Limpar stream de câmera local
+        setPreviewMedia(null); // Limpar mídia
+        setHasPreviewContent(true);
+        mediaSourceService.setPreviewSource(null);
+      }
+    };
+    
+    window.addEventListener('participant:preview', handleParticipantPreview as EventListener);
+    
+    return () => {
+      window.removeEventListener('participant:preview', handleParticipantPreview as EventListener);
+    };
+  }, []);
 
   // Atualizar vídeo do stream de câmera/tela
   useEffect(() => {
@@ -164,6 +214,60 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
       previewStreamRef.current.play().catch((e) => console.error('Error playing stream:', e));
     }
   }, [previewStream]);
+  
+  // Atualizar vídeo do participante remoto no PREVIEW
+  useEffect(() => {
+    if (!previewParticipantId || !remotePreviewVideoRef.current) return;
+    
+    const updateRemoteVideo = () => {
+      const track = getVideoTrack(previewParticipantId);
+      if (track && remotePreviewVideoRef.current) {
+        const stream = new MediaStream([track]);
+        remotePreviewVideoRef.current.srcObject = stream;
+        remotePreviewVideoRef.current.play().catch((e) => console.error('Error playing remote preview:', e));
+      }
+    };
+    
+    // Atualizar imediatamente
+    updateRemoteVideo();
+    
+    // Verificar periodicamente (tracks podem demorar para chegar)
+    const interval = setInterval(updateRemoteVideo, 500);
+    
+    return () => {
+      clearInterval(interval);
+      if (remotePreviewVideoRef.current) {
+        remotePreviewVideoRef.current.srcObject = null;
+      }
+    };
+  }, [previewParticipantId, getVideoTrack]);
+  
+  // Atualizar vídeo do participante remoto no PROGRAM
+  useEffect(() => {
+    if (!programParticipantId || !remoteProgramVideoRef.current) return;
+    
+    const updateRemoteVideo = () => {
+      const track = getVideoTrack(programParticipantId);
+      if (track && remoteProgramVideoRef.current) {
+        const stream = new MediaStream([track]);
+        remoteProgramVideoRef.current.srcObject = stream;
+        remoteProgramVideoRef.current.play().catch((e) => console.error('Error playing remote program:', e));
+      }
+    };
+    
+    // Atualizar imediatamente
+    updateRemoteVideo();
+    
+    // Verificar periodicamente (tracks podem demorar para chegar)
+    const interval = setInterval(updateRemoteVideo, 500);
+    
+    return () => {
+      clearInterval(interval);
+      if (remoteProgramVideoRef.current) {
+        remoteProgramVideoRef.current.srcObject = null;
+      }
+    };
+  }, [programParticipantId, getVideoTrack]);
 
   // Atualizar vídeos quando as fontes mudarem
   useEffect(() => {
@@ -175,9 +279,27 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
     }
   }, [previewMedia]);
 
+  // Referência para o vídeo anterior do PROGRAM
+  const previousProgramMediaRef = useRef<MediaSource | null>(null);
+  
   useEffect(() => {
+    // Se tinha um vídeo anterior e agora mudou, parar o vídeo anterior
+    if (previousProgramMediaRef.current?.type === 'video' && previousProgramMediaRef.current !== programMedia) {
+      const prevVideo = previousProgramMediaRef.current.element as HTMLVideoElement;
+      prevVideo.pause();
+      prevVideo.muted = true;
+      prevVideo.currentTime = 0;
+      console.log('[DualMonitors] Stopped previous program video element:', previousProgramMediaRef.current.name);
+    }
+    
+    // Atualizar referência
+    previousProgramMediaRef.current = programMedia;
+    
     if (programMedia?.type === 'video' && programVideoRef.current) {
       const video = programMedia.element as HTMLVideoElement;
+      // Desmutar e tocar o vídeo atual
+      video.muted = false;
+      video.play().catch(() => {});
       programVideoRef.current.srcObject = programMedia.stream;
       programVideoRef.current.play().catch(() => {});
     }
@@ -224,16 +346,55 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
   const handleTransitionGo = () => {
     setIsTransitioningLocal(true);
     
+    // Resetar flag de cleared quando enviar conteúdo para PROGRAM
+    setProgramCleared(false);
+    
+    // IMPORTANTE: Parar qualquer vídeo que esteja tocando no PROGRAM antes da transição
+    if (programVideoRef.current) {
+      programVideoRef.current.pause();
+      programVideoRef.current.srcObject = null;
+      programVideoRef.current.src = '';
+      console.log('[DualMonitors] Stopped previous program video ref');
+    }
+    
+    // Parar o elemento de vídeo original do MediaSourceService ANTES de limpar programMedia
+    if (programMedia?.type === 'video') {
+      const videoEl = programMedia.element as HTMLVideoElement;
+      videoEl.pause();
+      videoEl.muted = true;
+      videoEl.currentTime = 0;
+      console.log('[DualMonitors] Stopped program media video element:', programMedia.name);
+    }
+    
+    // Se tiver participante remoto no PREVIEW
+    if (previewParticipantId) {
+      console.log('[DualMonitors] Transferring remote participant to PROGRAM:', previewParticipantName);
+      // Transferir participante para PROGRAM
+      setProgramParticipantId(previewParticipantId);
+      setProgramParticipantName(previewParticipantName);
+      // Limpar outros conteúdos do PROGRAM
+      setProgramStream(null);
+      setProgramMedia(null);
+      // Limpar fonte ativa do MediaSourceService
+      mediaSourceService.clearActive();
+      // Limpar PREVIEW
+      setPreviewParticipantId(null);
+      setPreviewParticipantName('');
+    }
     // Se tiver stream de câmera no PREVIEW, transferir para PROGRAM
-    if (previewStream) {
+    else if (previewStream) {
       console.log('[DualMonitors] Transferring camera stream to PROGRAM');
       setProgramStream(previewStream);
       setProgramMedia(null); // Limpar mídia quando tiver câmera
+      setProgramParticipantId(null); // Limpar participante remoto
+      // Limpar fonte ativa do MediaSourceService (para parar o vídeo)
+      mediaSourceService.clearActive();
       setPreviewStream(null); // Limpar do preview
     } else if (previewMedia) {
       // Se tiver mídia (imagem/vídeo) no PREVIEW, limpar o stream de câmera do PROGRAM
       console.log('[DualMonitors] Transferring media to PROGRAM, clearing camera stream');
       setProgramStream(null); // Limpar câmera quando tiver mídia
+      setProgramParticipantId(null); // Limpar participante remoto
     }
     
     // Disparar evento de transição
@@ -313,7 +474,22 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           <BackdropFrame target="preview" />
           
           {/* CAMADA 2: Conteúdo (vídeo/câmera) - z-index: 15 */}
-          {previewStream ? (
+          {previewParticipantId ? (
+            /* Vídeo do participante remoto no PREVIEW */
+            <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 15, position: 'absolute' }}>
+              <video
+                ref={remotePreviewVideoRef}
+                className="w-full h-full object-contain"
+                autoPlay
+                muted
+                playsInline
+              />
+              {/* Label do participante */}
+              <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-black/70 text-white text-xs" style={{ zIndex: 20 }}>
+                👤 {previewParticipantName}
+              </div>
+            </div>
+          ) : previewStream ? (
             <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 15, position: 'absolute' }}>
               <video
                 ref={previewStreamRef}
@@ -351,6 +527,16 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
                 {previewMedia.name}
               </div>
             </div>
+          ) : isDailyConnected && participants.length > 0 ? (
+            /* Mostrar grid de participantes do Daily.co */
+            <div className="absolute inset-0" style={{ zIndex: 15, position: 'absolute' }}>
+              <ParticipantGrid 
+                layout={layout}
+                showNames={true}
+                showControls={true}
+                isProgram={false}
+              />
+            </div>
           ) : (
             <div className="absolute inset-0" style={{ zIndex: 15, position: 'absolute' }}>
               <VideoPreview cameraId={previewCamera} target="preview" />
@@ -378,6 +564,15 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
             editMode={bannerEditMode}
             onEditModeChange={(isEdit) => setBannerEditMode(isEdit)}
           />
+          
+          {/* Media Controls - PREVIEW */}
+          {previewMedia && previewMedia.type === 'video' && (
+            <MediaControls 
+              source={previewMedia} 
+              target="preview" 
+              videoRef={previewVideoRef}
+            />
+          )}
         </div>
       </div>
 
@@ -385,11 +580,11 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
       <div className="flex flex-col items-center justify-center px-2">
         <button
           onClick={handleTransitionGo}
-          disabled={!hasPreviewContent && !previewStream && !previewMedia && !isTransitioningLocal}
+          disabled={!hasPreviewContent && !previewStream && !previewMedia && !previewParticipantId && !isTransitioningLocal}
           className={`
             relative w-14 h-14 rounded-full flex items-center justify-center
             transition-all duration-300 transform
-            ${(hasPreviewContent || previewStream || previewMedia || isTransitioningLocal)
+            ${(hasPreviewContent || previewStream || previewMedia || previewParticipantId || isTransitioningLocal)
               ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-400 hover:to-green-500 hover:scale-110 shadow-lg shadow-green-500/50' 
               : 'bg-gray-700 cursor-not-allowed opacity-50'
             }
@@ -405,13 +600,13 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
         
         <span 
           className="mt-2 text-xs font-bold tracking-wider"
-          style={{ color: (hasPreviewContent || previewStream || previewMedia) ? '#22C55E' : '#6B7280' }}
+          style={{ color: (hasPreviewContent || previewStream || previewMedia || previewParticipantId) ? '#22C55E' : '#6B7280' }}
         >
           GO
         </span>
         
         {/* Indicador de conteúdo no PREVIEW */}
-        {(hasPreviewContent || previewStream || previewMedia) && (
+        {(hasPreviewContent || previewStream || previewMedia || previewParticipantId) && (
           <div 
             className="mt-2 w-2 h-2 rounded-full animate-pulse"
             style={{ background: '#22C55E' }}
@@ -466,11 +661,34 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           
           <div className="flex items-center gap-2">
             {/* Botão para limpar PROGRAM */}
-            {(programMedia || programStream) && (
+            {(programMedia || programStream || programParticipantId || !programCleared) && (
               <button
                 onClick={() => {
+                  // Parar qualquer vídeo que esteja tocando
+                  if (programVideoRef.current) {
+                    programVideoRef.current.pause();
+                    programVideoRef.current.srcObject = null;
+                    programVideoRef.current.src = '';
+                  }
+                  if (programStreamRef.current) {
+                    programStreamRef.current.srcObject = null;
+                  }
+                  if (remoteProgramVideoRef.current) {
+                    remoteProgramVideoRef.current.srcObject = null;
+                  }
+                  // Parar o elemento de vídeo original do MediaSourceService
+                  if (programMedia?.type === 'video') {
+                    const videoEl = programMedia.element as HTMLVideoElement;
+                    videoEl.pause();
+                    videoEl.muted = true;
+                    videoEl.currentTime = 0;
+                    console.log('[DualMonitors] Stopped program media video element on clear');
+                  }
                   setProgramMedia(null);
                   setProgramStream(null);
+                  setProgramParticipantId(null);
+                  setProgramParticipantName('');
+                  setProgramCleared(true); // Marcar que foi limpo manualmente
                   mediaSourceService.clearActive();
                 }}
                 className="p-2 rounded-lg transition-all duration-200 hover:bg-red-500/20"
@@ -524,7 +742,22 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           <BackdropFrame target="program" />
           
           {/* CAMADA 2: Conteúdo (vídeo/câmera) - z-index: 15 */}
-          {programStream ? (
+          {programParticipantId ? (
+            /* Vídeo do participante remoto no PROGRAM */
+            <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 15, position: 'absolute' }}>
+              <video
+                ref={remoteProgramVideoRef}
+                className="w-full h-full object-contain"
+                autoPlay
+                playsInline
+                style={{ background: 'transparent' }}
+              />
+              {/* Label do participante */}
+              <div className="absolute bottom-12 left-3 px-2 py-1 rounded bg-black/70 text-white text-xs" style={{ zIndex: 20 }}>
+                👤 {programParticipantName || 'Participante'}
+              </div>
+            </div>
+          ) : programStream ? (
             <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 15, position: 'absolute' }}>
               <video
                 ref={programStreamRef}
@@ -560,6 +793,25 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
               {/* Nome da mídia */}
               <div className="absolute bottom-12 left-3 px-2 py-1 rounded bg-black/70 text-white text-xs" style={{ zIndex: 20 }}>
                 {programMedia.name}
+              </div>
+            </div>
+          ) : !programCleared && isDailyConnected && participants.length > 0 ? (
+            /* Mostrar grid de participantes do Daily.co no PROGRAM (apenas se não foi limpo manualmente) */
+            <div className="absolute inset-0" style={{ zIndex: 15, position: 'absolute' }}>
+              <ParticipantGrid 
+                layout={layout}
+                showNames={true}
+                showControls={true}
+                isProgram={true}
+              />
+            </div>
+          ) : programCleared ? (
+            /* PROGRAM foi limpo manualmente - mostrar apenas backdrop */
+            <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 15, position: 'absolute' }}>
+              <div className="text-center text-gray-500">
+                <div className="text-4xl mb-2">📺</div>
+                <div className="text-sm">PROGRAM vazio</div>
+                <div className="text-xs mt-1">Envie conteúdo do PREVIEW</div>
               </div>
             </div>
           ) : (
@@ -658,6 +910,15 @@ const DualMonitors: React.FC<DualMonitorsProps> = ({
           
           {/* Banner Overlay - PROGRAM */}
           <BannerOverlay target="program" />
+          
+          {/* Media Controls - PROGRAM */}
+          {programMedia && programMedia.type === 'video' && (
+            <MediaControls 
+              source={programMedia} 
+              target="program" 
+              videoRef={programVideoRef}
+            />
+          )}
           
           {/* Transition Indicator */}
           {lastTransition !== 'none' && (

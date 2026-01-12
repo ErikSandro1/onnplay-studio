@@ -1,119 +1,125 @@
 import React, { useEffect, useRef } from 'react';
-import { useDailyContext } from '../contexts/DailyContext';
+import { Mic, MicOff, Video, VideoOff } from 'lucide-react';
 
 interface ParticipantVideoProps {
   participantId: string;
-  participantName: string;
+  name: string;
+  videoTrack: MediaStreamTrack | null;
+  audioTrack: MediaStreamTrack | null;
   isLocal?: boolean;
   isMuted?: boolean;
   isCameraOff?: boolean;
+  showControls?: boolean;
+  showName?: boolean;
   className?: string;
 }
 
-export const ParticipantVideo: React.FC<ParticipantVideoProps> = ({
+/**
+ * ParticipantVideo Component
+ * 
+ * Renderiza o vídeo de um participante do Daily.co com nome e indicadores.
+ */
+const ParticipantVideo: React.FC<ParticipantVideoProps> = ({
   participantId,
-  participantName,
+  name,
+  videoTrack,
+  audioTrack,
   isLocal = false,
   isMuted = false,
   isCameraOff = false,
+  showControls = true,
+  showName = true,
   className = '',
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const { getVideoTrack, getAudioTrack } = useDailyContext();
 
-  // Update video track
+  // Conectar o track de vídeo ao elemento video
   useEffect(() => {
-    const videoTrack = getVideoTrack(participantId);
-    
     if (videoRef.current && videoTrack) {
       const stream = new MediaStream([videoTrack]);
       videoRef.current.srcObject = stream;
       videoRef.current.play().catch(err => {
-        console.warn('Failed to play video:', err);
+        console.warn(`[ParticipantVideo] Autoplay blocked for ${name}:`, err);
       });
     } else if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-  }, [participantId, getVideoTrack]);
 
-  // Update audio track (only for remote participants)
-  useEffect(() => {
-    if (isLocal) return; // Don't play local audio (causes echo)
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    };
+  }, [videoTrack, name]);
 
-    const audioTrack = getAudioTrack(participantId);
-    
-    if (audioRef.current && audioTrack) {
-      const stream = new MediaStream([audioTrack]);
-      audioRef.current.srcObject = stream;
-      audioRef.current.play().catch(err => {
-        console.warn('Failed to play audio:', err);
-      });
-    } else if (audioRef.current) {
-      audioRef.current.srcObject = null;
-    }
-  }, [participantId, isLocal, getAudioTrack]);
+  // Gerar cor de fundo baseada no nome
+  const getAvatarColor = (name: string) => {
+    const colors = [
+      'bg-blue-600', 'bg-green-600', 'bg-purple-600', 
+      'bg-pink-600', 'bg-orange-600', 'bg-teal-600',
+      'bg-red-600', 'bg-indigo-600', 'bg-yellow-600'
+    ];
+    const index = name.charCodeAt(0) % colors.length;
+    return colors[index];
+  };
 
   return (
-    <div className={`relative w-full h-full ${className}`}>
-      {/* Video element - usando object-contain para não cortar */}
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted={isLocal} // Mute local video to prevent echo
-        className={`w-full h-full object-contain ${isCameraOff ? 'hidden' : ''}`}
-        style={{ transform: isLocal ? 'scaleX(-1)' : 'none' }} // Mirror local video
-      />
-
-      {/* Audio element (hidden, only for remote participants) */}
-      {!isLocal && (
-        <audio
-          ref={audioRef}
+    <div className={`relative w-full h-full bg-gray-900 rounded-lg overflow-hidden ${className}`}>
+      {/* Vídeo */}
+      {videoTrack && !isCameraOff ? (
+        <video
+          ref={videoRef}
           autoPlay
           playsInline
-          className="hidden"
+          muted={isLocal} // Mute local video to prevent echo
+          className="w-full h-full object-cover"
         />
-      )}
-
-      {/* Camera off placeholder */}
-      {isCameraOff && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
-          <div className="text-center">
-            <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
-              <span className="text-4xl font-bold text-white">
-                {participantName.charAt(0).toUpperCase()}
-              </span>
-            </div>
-            <p className="text-white text-lg font-medium">{participantName}</p>
-            <p className="text-gray-400 text-sm mt-1">Camera Off</p>
+      ) : (
+        /* Avatar quando câmera está desligada */
+        <div className="w-full h-full flex items-center justify-center">
+          <div className={`w-20 h-20 rounded-full ${getAvatarColor(name)} flex items-center justify-center`}>
+            <span className="text-3xl font-bold text-white">
+              {name.charAt(0).toUpperCase()}
+            </span>
           </div>
         </div>
       )}
 
-      {/* Participant info overlay */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3">
-        <div className="flex items-center justify-between">
+      {/* Nome do participante */}
+      {showName && (
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
           <div className="flex items-center gap-2">
-            <span className="text-white font-medium text-sm">
-              {participantName}
-              {isLocal && ' (You)'}
+            <span className="text-white text-sm font-medium truncate">
+              {name} {isLocal && '(Você)'}
             </span>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            {/* Muted indicator */}
-            {isMuted && (
-              <div className="w-6 h-6 rounded-full bg-red-500 flex items-center justify-center">
-                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                </svg>
+            {showControls && (
+              <div className="flex gap-1 ml-auto">
+                {isMuted ? (
+                  <MicOff className="w-4 h-4 text-red-500" />
+                ) : (
+                  <Mic className="w-4 h-4 text-green-500" />
+                )}
+                {isCameraOff && (
+                  <VideoOff className="w-4 h-4 text-red-500" />
+                )}
               </div>
             )}
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Indicador de local/você */}
+      {isLocal && (
+        <div className="absolute top-2 left-2 px-2 py-1 bg-blue-600 rounded text-xs text-white font-medium">
+          YOU
+        </div>
+      )}
+
+      {/* Borda verde quando está ao vivo */}
+      <div className="absolute inset-0 border-2 border-green-500 rounded-lg pointer-events-none opacity-50" />
     </div>
   );
 };
+
+export { ParticipantVideo };
+export default ParticipantVideo;

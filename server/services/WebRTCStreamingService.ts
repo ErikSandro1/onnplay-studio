@@ -189,7 +189,7 @@ export class WebRTCStreamingService {
     socket.emit('connected', { message: 'WebRTC streaming service ready' });
 
     // Get router RTP capabilities
-    socket.on('getRouterRtpCapabilities', async (callback) => {
+    socket.on('getRouterRtpCapabilities', async (data, callback) => { if (typeof data === 'function') { callback = data; data = undefined; }
       try {
         const worker = this.getNextWorker();
         const router = await worker.createRouter({
@@ -207,16 +207,20 @@ export class WebRTCStreamingService {
         stream.router = router;
         this.activeStreams.set(socket.id, stream);
 
-        callback({ rtpCapabilities: router.rtpCapabilities });
+        if (callback && typeof callback === 'function') {
+          callback({ rtpCapabilities: router.rtpCapabilities });
+        }
         console.log('[WebRTCStreamingService] Router RTP capabilities sent');
       } catch (error) {
         console.error('[WebRTCStreamingService] Error getting router capabilities:', error);
-        callback({ error: (error as Error).message });
+        if (callback && typeof callback === 'function') {
+          callback({ error: (error as Error).message });
+        }
       }
     });
 
     // Create WebRTC transport for sending media
-    socket.on('createProducerTransport', async (callback) => {
+    socket.on('createProducerTransport', async (data: any, callback?: any) => { if (typeof data === 'function') { callback = data; data = undefined; }
       try {
         const stream = this.activeStreams.get(socket.id);
         if (!stream?.router) {
@@ -230,22 +234,26 @@ export class WebRTCStreamingService {
 
         stream.webRtcTransport = transport;
 
-        callback({
-          id: transport.id,
-          iceParameters: transport.iceParameters,
-          iceCandidates: transport.iceCandidates,
-          dtlsParameters: transport.dtlsParameters,
-        });
+        if (callback && typeof callback === 'function') {
+          callback({
+            id: transport.id,
+            iceParameters: transport.iceParameters,
+            iceCandidates: transport.iceCandidates,
+            dtlsParameters: transport.dtlsParameters,
+          });
+        }
 
         console.log('[WebRTCStreamingService] Producer transport created');
       } catch (error) {
         console.error('[WebRTCStreamingService] Error creating producer transport:', error);
-        callback({ error: (error as Error).message });
+        if (callback && typeof callback === 'function') {
+          callback({ error: (error as Error).message });
+        }
       }
     });
 
     // Connect WebRTC transport
-    socket.on('connectProducerTransport', async ({ dtlsParameters }, callback) => {
+    socket.on('connectProducerTransport', async (data: any, callback?: any) => { if (typeof data === 'function') { callback = data; data = {}; } const { dtlsParameters } = data || {};
       try {
         const stream = this.activeStreams.get(socket.id);
         if (!stream?.webRtcTransport) {
@@ -253,16 +261,20 @@ export class WebRTCStreamingService {
         }
 
         await stream.webRtcTransport.connect({ dtlsParameters });
-        callback({ success: true });
+        if (callback && typeof callback === 'function') {
+          callback({ success: true });
+        }
         console.log('[WebRTCStreamingService] Producer transport connected');
       } catch (error) {
         console.error('[WebRTCStreamingService] Error connecting transport:', error);
-        callback({ error: (error as Error).message });
+        if (callback && typeof callback === 'function') {
+          callback({ error: (error as Error).message });
+        }
       }
     });
 
     // Produce media (video or audio)
-    socket.on('produce', async ({ kind, rtpParameters, appData }, callback) => {
+    socket.on('produce', async (data: any, callback?: any) => { if (typeof data === 'function') { callback = data; data = {}; } const { kind, rtpParameters, appData } = data || {};
       try {
         const stream = this.activeStreams.get(socket.id);
         if (!stream?.webRtcTransport) {
@@ -281,7 +293,9 @@ export class WebRTCStreamingService {
           stream.audioProducer = producer;
         }
 
-        callback({ id: producer.id });
+        if (callback && typeof callback === 'function') {
+          callback({ id: producer.id });
+        }
         console.log(`[WebRTCStreamingService] ${kind} producer created: ${producer.id}`);
 
         // If both video and audio are ready, start RTMP relay
@@ -290,12 +304,14 @@ export class WebRTCStreamingService {
         }
       } catch (error) {
         console.error('[WebRTCStreamingService] Error producing:', error);
-        callback({ error: (error as Error).message });
+        if (callback && typeof callback === 'function') {
+          callback({ error: (error as Error).message });
+        }
       }
     });
 
     // Start streaming to RTMP destinations
-    socket.on('startRelay', async ({ destinations, config }, callback) => {
+    socket.on('startRelay', async (data: any, callback?: any) => { if (typeof data === 'function') { callback = data; data = {}; } const { destinations, config } = data || {};
       try {
         const stream = this.activeStreams.get(socket.id);
         if (!stream) {
@@ -310,22 +326,30 @@ export class WebRTCStreamingService {
           await this.startRtmpRelay(socket.id);
         }
 
-        callback({ success: true });
+        if (callback && typeof callback === 'function') {
+          callback({ success: true });
+        }
         console.log('[WebRTCStreamingService] Relay configuration set');
       } catch (error) {
         console.error('[WebRTCStreamingService] Error starting relay:', error);
-        callback({ error: (error as Error).message });
+        if (callback && typeof callback === 'function') {
+          callback({ error: (error as Error).message });
+        }
       }
     });
 
     // Stop streaming
-    socket.on('stopRelay', async (callback) => {
+    socket.on('stopRelay', async (data: any, callback?: any) => { if (typeof data === 'function') { callback = data; data = undefined; }
       try {
         await this.stopStream(socket.id);
-        callback({ success: true });
+        if (callback && typeof callback === 'function') {
+          callback({ success: true });
+        }
       } catch (error) {
         console.error('[WebRTCStreamingService] Error stopping relay:', error);
-        callback({ error: (error as Error).message });
+        if (callback && typeof callback === 'function') {
+          callback({ error: (error as Error).message });
+        }
       }
     });
 

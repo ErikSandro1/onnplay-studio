@@ -19,6 +19,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import EmailVerified from "./pages/EmailVerified";
 import CheckoutSuccess from "./pages/CheckoutSuccess";
+import JoinRoom from "./pages/JoinRoom";
 import DiagnosticsPanel from "./components/DiagnosticsPanel";
 
 /**
@@ -51,6 +52,9 @@ function Router() {
       <Route path="/pricing" component={Pricing} />
       <Route path="/home" component={Landing} />
       <Route path="/checkout/success" component={CheckoutSuccess} />
+      
+      {/* Guest join route - Public */}
+      <Route path="/join" component={JoinRoom} />
       
       {/* Development route - No auth required for testing */}
       <Route path="/dev">

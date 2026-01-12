@@ -49,6 +49,11 @@ interface DailyContextValue {
   toggleVideo: () => void;
   toggleScreenShare: () => void;
 
+  // Remote participant control (via socket)
+  muteRemoteParticipant: (participantId: string) => void;
+  toggleRemoteCamera: (participantId: string) => void;
+  removeParticipant: (participantId: string) => void;
+
   // State
   isAudioEnabled: boolean;
   isVideoEnabled: boolean;
@@ -57,6 +62,9 @@ interface DailyContextValue {
   // Video tracks
   getVideoTrack: (participantId: string) => MediaStreamTrack | null;
   getAudioTrack: (participantId: string) => MediaStreamTrack | null;
+
+  // Call object reference for advanced control
+  callObject: any;
 }
 
 const DailyContext = createContext<DailyContextValue | null>(null);
@@ -291,6 +299,37 @@ export const DailyProvider: React.FC<DailyProviderProps> = ({ children }) => {
     return participantTracksRef.current.get(participantId)?.audio || null;
   }, []);
 
+  /**
+   * Mute a remote participant (sends command via socket)
+   */
+  const muteRemoteParticipant = useCallback((participantId: string) => {
+    console.log('[Daily] Sending mute command to participant:', participantId);
+    // Dispatch event for socket handler to pick up
+    window.dispatchEvent(new CustomEvent('daily:mute-participant', {
+      detail: { participantId }
+    }));
+  }, []);
+
+  /**
+   * Toggle remote participant camera (sends command via socket)
+   */
+  const toggleRemoteCamera = useCallback((participantId: string) => {
+    console.log('[Daily] Sending toggle camera command to participant:', participantId);
+    window.dispatchEvent(new CustomEvent('daily:toggle-camera-participant', {
+      detail: { participantId }
+    }));
+  }, []);
+
+  /**
+   * Remove a participant from the room
+   */
+  const removeParticipant = useCallback((participantId: string) => {
+    console.log('[Daily] Removing participant:', participantId);
+    window.dispatchEvent(new CustomEvent('daily:remove-participant', {
+      detail: { participantId }
+    }));
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -312,11 +351,15 @@ export const DailyProvider: React.FC<DailyProviderProps> = ({ children }) => {
     toggleAudio,
     toggleVideo,
     toggleScreenShare,
+    muteRemoteParticipant,
+    toggleRemoteCamera,
+    removeParticipant,
     isAudioEnabled,
     isVideoEnabled,
     isScreenSharing,
     getVideoTrack,
     getAudioTrack,
+    callObject: callObjectRef.current,
   };
 
   return <DailyContext.Provider value={value}>{children}</DailyContext.Provider>;

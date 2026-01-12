@@ -178,6 +178,34 @@ class RTMPStreamService {
   }
 
   /**
+   * Get active YouTube broadcast info (for chat auto-connect)
+   */
+  getActiveYouTubeBroadcast(): { broadcastId: string; accountId: string; liveChatId?: string } | null {
+    if (!this.isStreaming) return null;
+    
+    const ytDest = this.destinations.find(
+      d => d.platform === 'youtube' && d.enabled !== false
+    );
+    
+    if (!ytDest) return null;
+    
+    const broadcastId = (ytDest as any).broadcastId;
+    const accountId = (ytDest as any).accountId;
+    const liveChatId = (ytDest as any).liveChatId;
+    
+    if (!broadcastId || !accountId) return null;
+    
+    return { broadcastId, accountId, liveChatId };
+  }
+
+  /**
+   * Check if currently streaming
+   */
+  isCurrentlyStreaming(): boolean {
+    return this.isStreaming;
+  }
+
+  /**
    * Update streaming config (Legacy)
    * @deprecated Use updateConfig() instead (new version with detailed logs)
    */

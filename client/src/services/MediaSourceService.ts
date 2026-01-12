@@ -173,16 +173,44 @@ class MediaSourceService {
         canvas.height = 1080;
         const ctx = canvas.getContext('2d')!;
         
+        // Loop de renderização com timing preciso usando requestVideoFrameCallback ou requestAnimationFrame
+        let isRendering = false;
+        let animationId: number | null = null;
+        
         const renderFrame = () => {
+          if (!isRendering || !this.sources.has(id)) {
+            animationId = null;
+            return;
+          }
+          
           if (!video.paused && !video.ended) {
             this.drawVideoCentered(ctx, video, canvas.width, canvas.height);
           }
-          if (this.sources.has(id)) {
-            requestAnimationFrame(renderFrame);
+          
+          if ('requestVideoFrameCallback' in video) {
+            (video as any).requestVideoFrameCallback(renderFrame);
+          } else {
+            animationId = requestAnimationFrame(renderFrame);
           }
         };
         
-        video.onplay = () => renderFrame();
+        const startRenderLoop = () => {
+          if (isRendering) return;
+          isRendering = true;
+          renderFrame();
+        };
+        
+        const stopRenderLoop = () => {
+          isRendering = false;
+          if (animationId !== null) {
+            cancelAnimationFrame(animationId);
+            animationId = null;
+          }
+        };
+        
+        video.onplay = () => startRenderLoop();
+        video.onpause = () => stopRenderLoop();
+        
         const stream = canvas.captureStream(30);
         
         const source: MediaSource = {
@@ -294,18 +322,59 @@ class MediaSourceService {
         canvas.height = 1080;
         const ctx = canvas.getContext('2d')!;
         
-        // Iniciar loop de renderização
+        // Loop de renderização com timing preciso usando requestVideoFrameCallback ou requestAnimationFrame
+        // Isso evita drift e mantém sincronização perfeita com o vídeo fonte
+        let isRendering = false;
+        let animationId: number | null = null;
+        
         const renderFrame = () => {
+          if (!isRendering || !this.sources.has(id)) {
+            animationId = null;
+            return;
+          }
+          
           if (!video.paused && !video.ended) {
             this.drawVideoCentered(ctx, video, canvas.width, canvas.height);
           }
-          if (this.sources.has(id)) {
-            requestAnimationFrame(renderFrame);
+          
+          // Usar requestVideoFrameCallback se disponível (sincroniza com o frame do vídeo)
+          if ('requestVideoFrameCallback' in video) {
+            (video as any).requestVideoFrameCallback(renderFrame);
+          } else {
+            // Fallback para requestAnimationFrame
+            animationId = requestAnimationFrame(renderFrame);
+          }
+        };
+        
+        const startRenderLoop = () => {
+          if (isRendering) return;
+          isRendering = true;
+          console.log('[MediaSourceService] Starting render loop with', 
+            'requestVideoFrameCallback' in video ? 'requestVideoFrameCallback' : 'requestAnimationFrame');
+          renderFrame();
+        };
+        
+        const stopRenderLoop = () => {
+          isRendering = false;
+          if (animationId !== null) {
+            cancelAnimationFrame(animationId);
+            animationId = null;
           }
         };
         
         video.onplay = () => {
-          renderFrame();
+          console.log('[MediaSourceService] Video started playing, starting render loop');
+          startRenderLoop();
+        };
+        
+        video.onpause = () => {
+          console.log('[MediaSourceService] Video paused, stopping render loop');
+          stopRenderLoop();
+        };
+        
+        video.onended = () => {
+          console.log('[MediaSourceService] Video ended');
+          // Loop está habilitado, então vai reiniciar automaticamente
         };
         
         // Criar stream do canvas
@@ -515,7 +584,9 @@ class MediaSourceService {
           const videoEl = prevSource.element as HTMLVideoElement;
           videoEl.pause();
           videoEl.muted = true; // Mutar vídeo anterior
+          videoEl.currentTime = 0; // Resetar para o início
           prevSource.isPlaying = false;
+          console.log('[MediaSourceService] Stopped and muted previous video:', prevSource.name);
         }
       }
     }

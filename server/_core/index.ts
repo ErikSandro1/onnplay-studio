@@ -11,6 +11,7 @@ import { setupRestRoutes } from "./rest-routes";
 import { runMigrations } from "../db/migrate";
 import { rtmpStreamingService } from "../services/RTMPStreamingService";
 import { webRTCStreamingService } from "../services/WebRTCStreamingService";
+import { greenRoomService } from "../services/GreenRoomService";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -77,6 +78,10 @@ async function startServer() {
   } catch (error) {
     console.error('Failed to initialize WebRTC streaming:', error);
   }
+
+  // Initialize Green Room service for guest management
+  greenRoomService.initialize(server);
+  console.log('👥 Green Room service initialized');
 
   // Stream status endpoint
   app.get("/api/stream/status", (req, res) => {

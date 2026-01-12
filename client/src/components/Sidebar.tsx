@@ -60,6 +60,99 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
     };
   }, []);
 
+  // AUTO-DETECT: Buscar lives ativas das contas OAuth conectadas automaticamente
+  useEffect(() => {
+    const autoDetectLives = async () => {
+      if (isConnected) return; // Já conectado, não precisa detectar
+      
+      try {
+        console.log('[Chat] Auto-detecting active lives from OAuth accounts...');
+        
+        // 1. Buscar contas OAuth conectadas
+        const accountsRes = await fetch('/api/youtube/oauth/accounts');
+        if (!accountsRes.ok) return;
+        const accountsData = await accountsRes.json();
+        
+        if (!accountsData.accounts || accountsData.accounts.length === 0) {
+          console.log('[Chat] No OAuth accounts connected');
+          return;
+        }
+        
+        // 2. Para cada conta, buscar lives ativas
+        for (const account of accountsData.accounts) {
+          try {
+            const broadcastsRes = await fetch(`/api/youtube/oauth/active-broadcasts?accountId=${account.id}`);
+            if (!broadcastsRes.ok) continue;
+            const broadcastsData = await broadcastsRes.json();
+            
+            if (broadcastsData.broadcasts && broadcastsData.broadcasts.length > 0) {
+              // Encontrou uma live ativa!
+              const activeBroadcast = broadcastsData.broadcasts[0];
+              console.log('[Chat] Found active broadcast:', activeBroadcast);
+              
+              // Conectar ao chat automaticamente
+              if (activeBroadcast.liveChatId) {
+                setVideoId(activeBroadcast.id);
+                setActiveChatPlatform('youtube');
+                setIsConnected(true);
+                setError(null);
+                
+                // Iniciar polling com OAuth
+                const fetchOAuthChat = async () => {
+                  try {
+                    const chatRes = await fetch(`/api/youtube/oauth/chat/${activeBroadcast.liveChatId}?accountId=${account.id}`);
+                    if (chatRes.ok) {
+                      const chatData = await chatRes.json();
+                      if (chatData.messages && Array.isArray(chatData.messages)) {
+                        const formattedComments = chatData.messages.map((msg: any) => ({
+                          id: msg.id,
+                          authorDisplayName: msg.authorDetails?.displayName || 'Unknown',
+                          authorProfileImageUrl: msg.authorDetails?.profileImageUrl || '',
+                          textDisplay: msg.snippet?.displayMessage || msg.snippet?.textMessageDetails?.messageText || '',
+                          publishedAt: msg.snippet?.publishedAt || new Date().toISOString()
+                        }));
+                        setComments(prev => {
+                          const existingIds = new Set(prev.map(c => c.id));
+                          const newComments = formattedComments.filter((c: YouTubeComment) => !existingIds.has(c.id));
+                          return [...prev, ...newComments].slice(-50);
+                        });
+                      }
+                    }
+                  } catch (e) {
+                    console.error('[Chat] OAuth polling error:', e);
+                  }
+                };
+                
+                // Buscar mensagens imediatamente
+                await fetchOAuthChat();
+                
+                // Iniciar polling a cada 3 segundos
+                if (!pollingRef.current) {
+                  pollingRef.current = setInterval(fetchOAuthChat, 3000);
+                }
+                
+                console.log('[Chat] Auto-connected to YouTube chat!');
+                return; // Conectou, parar de buscar
+              }
+            }
+          } catch (e) {
+            console.error('[Chat] Error checking account broadcasts:', e);
+          }
+        }
+        
+        console.log('[Chat] No active broadcasts found');
+      } catch (e) {
+        console.error('[Chat] Auto-detect error:', e);
+      }
+    };
+    
+    // Executar auto-detecção imediatamente e a cada 10 segundos
+    autoDetectLives();
+    const autoDetectInterval = setInterval(autoDetectLives, 10000);
+    
+    return () => clearInterval(autoDetectInterval);
+  }, [isConnected]);
+
   // Auto-connect to chat when broadcast goes LIVE (not just created)
   useEffect(() => {
     const handleBroadcastLive = (event: CustomEvent) => {
@@ -129,6 +222,7 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
 
   const fetchComments = async () => {
     if (!videoId.trim()) return;
+    setIsLoading(true);
     try {
       const response = await fetch(`/api/youtube/comments/${videoId}`);
       if (!response.ok) throw new Error('Falha ao buscar comentários');
@@ -139,9 +233,35 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
           const newComments = data.comments.filter((c: YouTubeComment) => !existingIds.has(c.id));
           return [...prev, ...newComments].slice(-50);
         });
+        // Set connected and start polling
+        if (!isConnected) {
+          setIsConnected(true);
+          if (!pollingRef.current) {
+            pollingRef.current = setInterval(async () => {
+              try {
+                const res = await fetch(`/api/youtube/comments/${videoId}`);
+                if (res.ok) {
+                  const d = await res.json();
+                  if (d.comments && Array.isArray(d.comments)) {
+                    setComments(prev => {
+                      const existingIds = new Set(prev.map(c => c.id));
+                      const newComments = d.comments.filter((c: YouTubeComment) => !existingIds.has(c.id));
+                      return [...prev, ...newComments].slice(-50);
+                    });
+                  }
+                }
+              } catch (e) {
+                console.error('[Chat] Polling error:', e);
+              }
+            }, 5000);
+          }
+        }
       }
     } catch (err) {
       console.error('Error fetching comments:', err);
+      setError('Erro ao conectar ao chat');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -636,20 +756,75 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
               </span>
             </div>
 
+            {/* Quick Connect - Cole URL da Live */}
+            {activeChatPlatform === 'youtube' && !isConnected && (
+              <div className="px-3 py-2" style={{ borderBottom: '1px solid #1E2842' }}>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={videoId}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setVideoId(value);
+                      // Auto-extract video ID from URL
+                      const match = value.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/live\/)([a-zA-Z0-9_-]{11})/);
+                      if (match) {
+                        setVideoId(match[1]);
+                      }
+                    }}
+                    onKeyPress={(e) => e.key === 'Enter' && fetchComments()}
+                    placeholder="Cole URL ou ID da live"
+                    className="flex-1 px-2 py-1.5 bg-[#0A0E14] border border-[#1E2842] rounded text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
+                  />
+                  <button
+                    onClick={fetchComments}
+                    disabled={!videoId.trim() || isLoading}
+                    className="px-3 py-1.5 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                  >
+                    {isLoading ? <RefreshCw size={12} className="animate-spin" /> : <Link2 size={12} />}
+                    Conectar
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-600 mt-1">Ex: https://youtube.com/live/YBywIrxDuzY</p>
+              </div>
+            )}
+
+            {/* Disconnect button when connected */}
+            {activeChatPlatform === 'youtube' && isConnected && (
+              <div className="px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1px solid #1E2842' }}>
+                <span className="text-xs text-green-400">✓ Chat conectado</span>
+                <button
+                  onClick={() => {
+                    if (pollingRef.current) {
+                      clearInterval(pollingRef.current);
+                      pollingRef.current = null;
+                    }
+                    setIsConnected(false);
+                    setComments([]);
+                    setVideoId('');
+                  }}
+                  className="px-2 py-1 bg-red-600/20 text-red-400 rounded text-xs hover:bg-red-600/30 flex items-center gap-1"
+                >
+                  <Unlink size={12} />
+                  Desconectar
+                </button>
+              </div>
+            )}
+
             {/* Comments List */}
             <div className="flex-1 overflow-y-auto p-2">
               {comments.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center py-8">
                   <MessageSquare size={32} className="text-gray-600 mb-2" />
                   <p className="text-gray-500 text-sm">
-                    {activeChatPlatform === 'youtube' && 'Inicie uma live para ver o chat'}
+                    {activeChatPlatform === 'youtube' && (isConnected ? 'Aguardando mensagens...' : 'Cole o link da sua live acima')}
                     {activeChatPlatform === 'facebook' && 'Conecte o Facebook para ver o chat'}
                     {activeChatPlatform === 'instagram' && 'Conecte o Instagram para ver o chat'}
                     {activeChatPlatform === 'twitch' && 'Conecte a Twitch para ver o chat'}
                     {activeChatPlatform === 'tiktok' && 'Conecte o TikTok para ver o chat'}
                   </p>
                   <p className="text-gray-600 text-xs mt-1">
-                    O chat aparece automaticamente quando a live começar
+                    {activeChatPlatform === 'youtube' && !isConnected ? 'Ex: youtube.com/live/ABC123' : 'O chat aparece automaticamente'}
                   </p>
                 </div>
               ) : (

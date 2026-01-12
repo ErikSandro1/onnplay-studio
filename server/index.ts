@@ -16,6 +16,7 @@ import { StripeService } from "./services/StripeService";
 import { UsageLimitService } from "./services/UsageLimitService";
 import { BroadcastTrackingService } from "./services/BroadcastTrackingService";
 import { rtmpStreamingService } from "./services/RTMPStreamingService";
+import { greenRoomService } from "./services/GreenRoomService";
 import { createDatabase } from "./db/database";
 
 // Load environment variables
@@ -60,6 +61,10 @@ async function startServer() {
   // Initialize RTMP Streaming WebSocket server
   rtmpStreamingService.initialize(server);
   console.log('📺 RTMP Streaming service initialized');
+
+  // Initialize Green Room (Waiting Room) service
+  greenRoomService.initialize(server);
+  console.log('👥 Green Room service initialized');
 
   // API routes
   app.use("/api/auth", createAuthRoutes(authService));

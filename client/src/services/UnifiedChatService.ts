@@ -13,6 +13,7 @@
 import { twitchChatService, TwitchMessage } from './TwitchChatService';
 import { commentOverlayService } from './CommentOverlayService';
 import { liveDetectionService, LiveDetectionService } from './LiveDetectionService';
+import { rtmpStreamService } from './RTMPStreamService';
 import type { Comment } from '../types/comments';
 
 export interface UnifiedMessage {
@@ -246,10 +247,50 @@ class UnifiedChatService {
   async autoConnect(): Promise<void> {
     console.log('[UnifiedChat] Auto-connecting to chats...');
 
-    // Auto-connect YouTube
+    // FIRST: Check if there's an active stream in RTMPStreamService
+    // This is the most reliable way to detect an active broadcast
+    const activeBroadcast = rtmpStreamService.getActiveYouTubeBroadcast();
+    if (activeBroadcast) {
+      console.log('[UnifiedChat] 🎬 Found active streaming broadcast:', activeBroadcast.broadcastId);
+      
+      // Try to get liveChatId from the broadcast
+      if (activeBroadcast.liveChatId) {
+        await this.connectYouTubeOAuthChat(
+          activeBroadcast.accountId, 
+          activeBroadcast.broadcastId, 
+          activeBroadcast.liveChatId
+        );
+        return;
+      } else {
+        // Fetch liveChatId from server
+        try {
+          const response = await fetch(`/api/youtube/oauth/broadcast-info/${activeBroadcast.broadcastId}?accountId=${activeBroadcast.accountId}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.liveChatId) {
+              await this.connectYouTubeOAuthChat(
+                activeBroadcast.accountId,
+                activeBroadcast.broadcastId,
+                data.liveChatId
+              );
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn('[UnifiedChat] Could not fetch liveChatId, trying fallback...');
+        }
+        
+        // Fallback: connect using video ID
+        await this.connectYouTube(activeBroadcast.broadcastId);
+        return;
+      }
+    }
+
+    // FALLBACK: Try to auto-connect via YouTube API
     const ytAccounts = this.connectedAccounts.filter(a => a.platform === 'youtube');
     for (const account of ytAccounts) {
-      await this.autoConnectYouTube(account.id);
+      const connected = await this.autoConnectYouTube(account.id);
+      if (connected) return;
     }
 
     // Auto-connect Twitch
