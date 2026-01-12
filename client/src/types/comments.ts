@@ -80,7 +80,7 @@ export const DEFAULT_COMMENT_OVERLAY_CONFIG: CommentOverlayConfig = {
   dimension: 'regular',
   fontSize: 'medium',
   autoShow: false,
-  duration: 10, // Auto-hide after 10 seconds
+  duration: 0, // 0 = manual control (stays until removed by user)
   maxVisible: 1, // Show only 1 comment at a time (like StreamYard)
   theme: 'dark',
   brandColor: '#FF6B00', // OnnPlay orange

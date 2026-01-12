@@ -43,6 +43,7 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
   const [isLoading, setIsLoading] = useState(false);
   const [comments, setComments] = useState<YouTubeComment[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [pinnedCommentId, setPinnedCommentId] = useState<string | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -293,6 +294,15 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
   };
 
   const handleShowComment = (comment: YouTubeComment) => {
+    // Se o mesmo comentário já está pinado, remove
+    if (pinnedCommentId === comment.id) {
+      commentOverlayService.clearPinned();
+      setPinnedCommentId(null);
+      return;
+    }
+    
+    // Limpa o anterior e pina o novo
+    commentOverlayService.clearPinned();
     commentOverlayService.showComment({
       id: comment.id,
       author: comment.authorDisplayName,
@@ -301,6 +311,12 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
       platform: 'youtube',
       timestamp: new Date(comment.publishedAt),
     });
+    setPinnedCommentId(comment.id);
+  };
+
+  const handleRemovePinnedComment = () => {
+    commentOverlayService.clearPinned();
+    setPinnedCommentId(null);
   };
 
   const togglePanel = (panel: PanelType) => {
@@ -829,36 +845,68 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {comments.map((comment) => (
-                    <div
-                      key={comment.id}
-                      className="p-2 rounded-lg group hover:bg-[#1E2842] transition-colors"
-                      style={{ background: '#0A0E14' }}
-                    >
-                      <div className="flex items-start gap-2">
-                        <img
-                          src={comment.authorProfileImageUrl}
-                          alt=""
-                          className="w-6 h-6 rounded-full flex-shrink-0"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-cyan-400 truncate">
-                            {comment.authorDisplayName}
-                          </p>
-                          <p className="text-xs text-gray-300 break-words">
-                            {comment.textDisplay}
-                          </p>
+                  {comments.map((comment) => {
+                    const isPinned = pinnedCommentId === comment.id;
+                    return (
+                      <div
+                        key={comment.id}
+                        className={`p-2 rounded-lg group transition-colors cursor-pointer ${
+                          isPinned 
+                            ? 'bg-green-500/20 border-2 border-green-500/50 hover:bg-green-500/30' 
+                            : 'hover:bg-[#1E2842]'
+                        }`}
+                        style={{ background: isPinned ? undefined : '#0A0E14' }}
+                        onClick={() => handleShowComment(comment)}
+                      >
+                        {/* Indicador "NA TELA" quando pinado */}
+                        {isPinned && (
+                          <div className="flex items-center justify-between mb-2 pb-2 border-b border-green-500/30">
+                            <span className="text-[10px] font-bold text-green-400 uppercase tracking-wider flex items-center gap-1">
+                              <Monitor size={10} />
+                              NA TELA
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemovePinnedComment();
+                              }}
+                              className="p-1 rounded hover:bg-red-500/30 transition-colors"
+                              title="Remover da tela"
+                            >
+                              <X size={12} className="text-red-400" />
+                            </button>
+                          </div>
+                        )}
+                        <div className="flex items-start gap-2">
+                          <img
+                            src={comment.authorProfileImageUrl}
+                            alt=""
+                            className={`w-6 h-6 rounded-full flex-shrink-0 ${isPinned ? 'ring-2 ring-green-400' : ''}`}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-xs font-medium truncate ${isPinned ? 'text-green-400' : 'text-cyan-400'}`}>
+                              {comment.authorDisplayName}
+                            </p>
+                            <p className="text-xs text-gray-300 break-words">
+                              {comment.textDisplay}
+                            </p>
+                          </div>
+                          {!isPinned && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleShowComment(comment);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-[#2D3A5C] transition-all"
+                              title="Mostrar na transmissão"
+                            >
+                              <Eye size={14} className="text-green-400" />
+                            </button>
+                          )}
                         </div>
-                        <button
-                          onClick={() => handleShowComment(comment)}
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-[#2D3A5C] transition-all"
-                          title="Mostrar na transmissão"
-                        >
-                          <Eye size={14} className="text-green-400" />
-                        </button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   <div ref={messagesEndRef} />
                 </div>
               )}
