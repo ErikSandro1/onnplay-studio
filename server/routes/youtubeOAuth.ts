@@ -234,7 +234,24 @@ router.post('/oauth/go-live', async (req: Request, res: Response) => {
     const success = await youtubeOAuthService.waitAndGoLive(userId, accountId, broadcastId, 60000);
 
     if (success) {
-      res.json({ success: true, message: 'Broadcast is now LIVE!' });
+      // Get the liveChatId for this broadcast
+      let liveChatId = null;
+      try {
+        const broadcasts = await youtubeOAuthService.getAllBroadcasts(userId, accountId, 'active');
+        const broadcast = broadcasts.find(b => b.id === broadcastId);
+        liveChatId = broadcast?.liveChatId || broadcastId;
+        console.log('[YouTube OAuth] Broadcast LIVE with liveChatId:', liveChatId);
+      } catch (e) {
+        console.warn('[YouTube OAuth] Could not get liveChatId, using broadcastId as fallback');
+        liveChatId = broadcastId;
+      }
+      
+      res.json({ 
+        success: true, 
+        message: 'Broadcast is now LIVE!',
+        liveChatId: liveChatId,
+        broadcastId: broadcastId
+      });
     } else {
       res.status(500).json({ 
         error: 'Failed to go live', 

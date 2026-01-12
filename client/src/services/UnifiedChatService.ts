@@ -12,6 +12,7 @@
 
 import { twitchChatService, TwitchMessage } from './TwitchChatService';
 import { commentOverlayService } from './CommentOverlayService';
+import { liveDetectionService, LiveDetectionService } from './LiveDetectionService';
 import type { Comment } from '../types/comments';
 
 export interface UnifiedMessage {
@@ -107,6 +108,31 @@ class UnifiedChatService {
     // Subscribe to Twitch messages
     twitchChatService.onMessage((msg) => this.handleTwitchMessage(msg));
     twitchChatService.onConnection((connected) => this.updateConnection('twitch', connected));
+    
+    // Subscribe to live detection - auto-connect when live is detected
+    liveDetectionService.onLiveDetected((videoId, platform) => {
+      console.log('[UnifiedChat] Live detected:', platform, videoId);
+      if (platform === 'youtube') {
+        this.connectYouTube(videoId);
+      } else if (platform === 'twitch') {
+        this.connectTwitch(videoId);
+      }
+    });
+    
+    // Listen for broadcast:live event from RTMPStreamService
+    // This is the PRIMARY way to detect when a live starts
+    window.addEventListener('broadcast:live', ((event: CustomEvent) => {
+      console.log('[UnifiedChat] 🎬 Broadcast LIVE event received:', event.detail);
+      const { broadcastId, liveChatId, platform, accountId } = event.detail;
+      
+      if (platform === 'youtube' && liveChatId) {
+        console.log('[UnifiedChat] Auto-connecting to YouTube chat via broadcast event...');
+        this.connectYouTubeOAuthChat(accountId, broadcastId, liveChatId);
+      }
+    }) as EventListener);
+    
+    // Start polling for active lives (fallback)
+    liveDetectionService.startPolling(15000);
     
     // Load connected accounts on init
     this.loadConnectedAccounts();
