@@ -17,6 +17,7 @@ import { io, Socket } from 'socket.io-client';
 import { mediaSourceService, MediaSource } from './MediaSourceService';
 import { StreamBuffer } from './StreamBuffer';
 import { ChunkQueue } from './ChunkQueue';
+import { commentOverlayService } from './CommentOverlayService';
 
 export interface StreamDestination {
   id: string;
@@ -93,14 +94,16 @@ class RTMPStreamService {
   private backpressureActive = false;
   
   // Config - YouTube Professional Settings
-  // Starting with 480p for stability, can increase later
+  // Using 720p as default - good balance between quality and stability
+  // YouTube recommends 2,500-6,500 kbps for 720p
+  // REDUCED bitrate for more stable streaming
   private config = {
-    width: 854,
-    height: 480,
+    width: 1280,
+    height: 720,
     frameRate: 30,
-    videoBitrate: 2000000,  // 2 Mbps for 480p
+    videoBitrate: 2500000,  // 2.5 Mbps for 720p (lower end for stability)
     audioBitrate: 128000,
-    bufferSize: 64,  // KB (MED profile)
+    bufferSize: 64,  // KB - smaller buffer for lower latency
   };
 
   private stats: StreamStats = {
@@ -614,6 +617,17 @@ class RTMPStreamService {
         if (response.ok) {
           const data = await response.json();
           console.log('[RTMPStreamService] YouTube broadcast is now LIVE!', data);
+          
+          // Dispatch event for chat auto-connect
+          window.dispatchEvent(new CustomEvent('broadcast:live', {
+            detail: {
+              broadcastId: broadcastId,
+              liveChatId: data.liveChatId || broadcastId,
+              platform: 'youtube',
+              accountId: accountId
+            }
+          }));
+          console.log('[RTMPStreamService] Dispatched broadcast:live event for chat auto-connect');
         } else {
           const error = await response.json();
           console.error('[RTMPStreamService] Failed to transition YouTube broadcast:', error);
@@ -809,10 +823,15 @@ class RTMPStreamService {
       console.warn('[RTMPStreamService] MediaRecorder error occurred but continuing...');
     };
 
-    // Start recording with smaller timeslice for smoother buffer feeding
-    // 100ms feeds the buffer more frequently
-    this.mediaRecorder.start(100);
-    console.log('[RTMPStreamService] MediaRecorder started with', mimeType || 'default codec');
+    // Start recording with optimized timeslice
+    // 100ms provides more frequent chunks for smoother streaming:
+    // - Smaller chunks = more consistent frame delivery
+    // - Better real-time performance
+    // - Reduced buffering on viewer side
+    // Trade-off: more network overhead (acceptable with good connection)
+    const TIMESLICE_MS = 100;
+    this.mediaRecorder.start(TIMESLICE_MS);
+    console.log(`[RTMPStreamService] MediaRecorder started with ${mimeType || 'default codec'}, timeslice=${TIMESLICE_MS}ms`);
   }
 
   /**
@@ -948,6 +967,10 @@ class RTMPStreamService {
           this.captureCtx.textBaseline = 'middle';
           this.captureCtx.fillText('OnnPlay Studio', this.config.width / 2, this.config.height / 2);
         }
+        // ========== DRAW CHAT OVERLAY ==========
+        // Render pinned comments on top of the video
+        this.drawChatOverlay(this.captureCtx, this.config.width, this.config.height);
+        
       } catch (error) {
         console.error('[RTMPStreamService] Error drawing frame:', error);
       }
@@ -957,6 +980,173 @@ class RTMPStreamService {
 
     // Start with timestamp 0
     this.animationFrameId = requestAnimationFrame(drawFrame);
+  }
+
+  /**
+   * Draw chat overlay on the canvas
+   * Renders pinned comments in StreamYard style
+   */
+  private drawChatOverlay(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+    const pinnedComments = commentOverlayService.getPinnedComments();
+    if (pinnedComments.length === 0) return;
+
+    const config = commentOverlayService.getConfig();
+    const comment = pinnedComments[0]; // Show only the first pinned comment
+    if (!comment) return;
+
+    // Calculate position based on config
+    const padding = 20;
+    const boxWidth = Math.min(400, width * 0.35); // Max 35% of width
+    const boxHeight = 80;
+    
+    let x = padding;
+    let y = height - boxHeight - padding;
+
+    // Position based on config
+    switch (config.position) {
+      case 'top-left':
+        x = padding;
+        y = padding;
+        break;
+      case 'top-center':
+        x = (width - boxWidth) / 2;
+        y = padding;
+        break;
+      case 'top-right':
+        x = width - boxWidth - padding;
+        y = padding;
+        break;
+      case 'bottom-left':
+        x = padding;
+        y = height - boxHeight - padding;
+        break;
+      case 'bottom-center':
+        x = (width - boxWidth) / 2;
+        y = height - boxHeight - padding;
+        break;
+      case 'bottom-right':
+        x = width - boxWidth - padding;
+        y = height - boxHeight - padding;
+        break;
+    }
+
+    // Draw background with rounded corners
+    ctx.save();
+    
+    // Background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    this.roundRect(ctx, x, y, boxWidth, boxHeight, 12);
+    ctx.fill();
+
+    // Left accent bar (brand color)
+    ctx.fillStyle = config.brandColor || '#FF6B00';
+    ctx.fillRect(x, y, 4, boxHeight);
+
+    // Avatar circle
+    const avatarSize = 50;
+    const avatarX = x + 16;
+    const avatarY = y + (boxHeight - avatarSize) / 2;
+    
+    // Draw avatar placeholder (circle with initial)
+    ctx.fillStyle = this.getPlatformColor(comment.platform);
+    ctx.beginPath();
+    ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Avatar initial
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 22px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(
+      comment.author.name.charAt(0).toUpperCase(),
+      avatarX + avatarSize / 2,
+      avatarY + avatarSize / 2
+    );
+
+    // Author name
+    const textX = avatarX + avatarSize + 12;
+    const textMaxWidth = boxWidth - avatarSize - 50;
+    
+    ctx.fillStyle = config.brandColor || '#FF6B00';
+    ctx.font = 'bold 16px Arial';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    
+    // Truncate name if too long
+    let authorName = comment.author.name;
+    while (ctx.measureText(authorName).width > textMaxWidth && authorName.length > 3) {
+      authorName = authorName.slice(0, -1);
+    }
+    if (authorName !== comment.author.name) authorName += '...';
+    
+    ctx.fillText(authorName, textX, y + 14);
+
+    // Message
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '14px Arial';
+    ctx.textBaseline = 'top';
+    
+    // Word wrap message
+    const words = comment.message.split(' ');
+    let line = '';
+    let lineY = y + 36;
+    const lineHeight = 18;
+    const maxLines = 2;
+    let currentLine = 0;
+
+    for (const word of words) {
+      const testLine = line + word + ' ';
+      if (ctx.measureText(testLine).width > textMaxWidth) {
+        ctx.fillText(line.trim(), textX, lineY);
+        line = word + ' ';
+        lineY += lineHeight;
+        currentLine++;
+        if (currentLine >= maxLines) {
+          // Add ellipsis if more text
+          if (words.indexOf(word) < words.length - 1) {
+            ctx.fillText(line.trim() + '...', textX, lineY - lineHeight);
+          }
+          break;
+        }
+      } else {
+        line = testLine;
+      }
+    }
+    if (currentLine < maxLines && line.trim()) {
+      ctx.fillText(line.trim(), textX, lineY);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Helper to draw rounded rectangle
+   */
+  private roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  /**
+   * Get platform color for avatar background
+   */
+  private getPlatformColor(platform: string): string {
+    switch (platform) {
+      case 'youtube': return '#FF0000';
+      case 'twitch': return '#9146FF';
+      case 'facebook': return '#1877F2';
+      default: return '#FF6B00';
+    }
   }
 
   /**
