@@ -914,6 +914,16 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
 
             {/* Chat Footer */}
             <div className="px-3 py-2 space-y-2" style={{ borderTop: '1px solid #1E2842' }}>
+              {/* Botão Remover Comentário - sempre visível quando há comentário pinado */}
+              {pinnedCommentId && (
+                <button
+                  onClick={handleRemovePinnedComment}
+                  className="w-full px-3 py-2 rounded-lg text-xs font-medium transition-all bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 flex items-center justify-center gap-2"
+                >
+                  <X size={14} />
+                  Remover Comentário da Tela
+                </button>
+              )}
               <button
                 onClick={() => {
                   // Teste com comentário mock
