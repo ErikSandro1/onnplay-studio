@@ -79,6 +79,10 @@ class RTMPStreamService {
   private wakeLock: WakeLockSentinel | null = null;
   private audioContext: AudioContext | null = null;
   
+  // YouTube broadcast status monitoring
+  private broadcastStatusInterval: NodeJS.Timeout | null = null;
+  private broadcastStatusCheckEnabled = false;
+  
   // Audio Mixer - permite trocar fonte de áudio sem quebrar o MediaRecorder
   private streamAudioContext: AudioContext | null = null;
   private audioMixerDestination: MediaStreamAudioDestinationNode | null = null;
@@ -380,6 +384,9 @@ class RTMPStreamService {
 
     // Auto-transition YouTube broadcasts to LIVE after stream starts
     await this.transitionYouTubeBroadcastsToLive();
+    
+    // Start monitoring YouTube broadcast status
+    this.startBroadcastStatusMonitoring();
   }
 
   /**
@@ -1235,6 +1242,9 @@ class RTMPStreamService {
     
     // Stop keep-alive mechanisms
     this.stopKeepAlive();
+    
+    // Stop broadcast status monitoring
+    this.stopBroadcastStatusMonitoring();
 
     // Stop animation frame
     if (this.animationFrameId) {
@@ -1473,6 +1483,85 @@ class RTMPStreamService {
     if (this.isStreaming) {
       console.warn('[RTMPStreamService] ⚠️ Stream is currently active. Restart the stream for changes to take effect.');
     }
+  }
+
+  /**
+   * Start monitoring YouTube broadcast status
+   * Checks every 10 seconds if the broadcast is still live
+   */
+  private startBroadcastStatusMonitoring(): void {
+    if (this.broadcastStatusCheckEnabled) {
+      console.log('[RTMPStreamService] Broadcast status monitoring already enabled');
+      return;
+    }
+
+    const ytBroadcast = this.getActiveYouTubeBroadcast();
+    if (!ytBroadcast) {
+      console.log('[RTMPStreamService] No YouTube broadcast to monitor');
+      return;
+    }
+
+    console.log('[RTMPStreamService] 🔍 Starting broadcast status monitoring for:', ytBroadcast.broadcastId);
+    this.broadcastStatusCheckEnabled = true;
+
+    // Check status every 10 seconds
+    this.broadcastStatusInterval = setInterval(async () => {
+      if (!this.isStreaming || !this.broadcastStatusCheckEnabled) {
+        this.stopBroadcastStatusMonitoring();
+        return;
+      }
+
+      try {
+        const broadcast = this.getActiveYouTubeBroadcast();
+        if (!broadcast) {
+          console.log('[RTMPStreamService] No active broadcast to check');
+          return;
+        }
+
+        const response = await fetch(
+          `/api/youtube/oauth/check-broadcast-status/${broadcast.broadcastId}?accountId=${broadcast.accountId}`
+        );
+
+        if (!response.ok) {
+          console.warn('[RTMPStreamService] Failed to check broadcast status');
+          return;
+        }
+
+        const result = await response.json();
+        console.log('[RTMPStreamService] Broadcast status:', result.status, '- isLive:', result.isLive, '- isEnded:', result.isEnded);
+
+        if (result.isEnded) {
+          console.warn('[RTMPStreamService] ⚠️ YouTube broadcast has been ended externally!');
+          
+          // Emit event for notification
+          window.dispatchEvent(new CustomEvent('broadcast:ended', {
+            detail: {
+              broadcastId: broadcast.broadcastId,
+              status: result.status,
+              message: 'A live foi encerrada no YouTube'
+            }
+          }));
+
+          // Stop the stream
+          this.stopBroadcastStatusMonitoring();
+          await this.stopStreaming();
+        }
+      } catch (error) {
+        console.error('[RTMPStreamService] Error checking broadcast status:', error);
+      }
+    }, 10000); // Check every 10 seconds
+  }
+
+  /**
+   * Stop monitoring YouTube broadcast status
+   */
+  private stopBroadcastStatusMonitoring(): void {
+    if (this.broadcastStatusInterval) {
+      clearInterval(this.broadcastStatusInterval);
+      this.broadcastStatusInterval = null;
+    }
+    this.broadcastStatusCheckEnabled = false;
+    console.log('[RTMPStreamService] Broadcast status monitoring stopped');
   }
 }
 

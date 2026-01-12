@@ -437,6 +437,34 @@ router.get('/oauth/broadcast-info/:broadcastId', async (req: Request, res: Respo
 });
 
 /**
+ * GET /api/youtube/oauth/check-broadcast-status/:broadcastId
+ * Check if a broadcast is still live or has been ended
+ */
+router.get('/oauth/check-broadcast-status/:broadcastId', async (req: Request, res: Response) => {
+  try {
+    const { broadcastId } = req.params;
+    const { accountId } = req.query;
+    const userId = req.query.userId as string || 'default-user';
+
+    if (!accountId) {
+      return res.status(400).json({ error: 'Account ID is required' });
+    }
+
+    console.log('[YouTube OAuth] Checking broadcast status:', broadcastId);
+
+    const result = await youtubeOAuthService.checkBroadcastStatus(userId, accountId as string, broadcastId);
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('[YouTube OAuth] Error checking broadcast status:', error);
+    res.status(500).json({
+      error: 'Failed to check broadcast status',
+      message: error.message,
+    });
+  }
+});
+
+/**
  * POST /api/youtube/oauth/upload-thumbnail
  * Upload thumbnail for a broadcast
  */

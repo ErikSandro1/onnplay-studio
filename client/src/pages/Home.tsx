@@ -181,14 +181,27 @@ const HomeContent: React.FC = () => {
       setIsLive(false);
     };
     
+    const handleBroadcastEnded = (event: CustomEvent) => {
+      const { message } = event.detail;
+      toast.error(message || 'A live foi encerrada externamente!', {
+        duration: 15000,
+        icon: '🔴',
+        description: 'A transmissão foi interrompida porque a live foi encerrada no YouTube.',
+      });
+      // Parar o streaming local
+      setIsLive(false);
+    };
+    
     window.addEventListener('stream:error', handleStreamError as EventListener);
     window.addEventListener('stream:disconnected', handleStreamDisconnected as EventListener);
     window.addEventListener('stream:youtube-ended', handleYouTubeEnded as EventListener);
+    window.addEventListener('broadcast:ended', handleBroadcastEnded as EventListener);
     
     return () => {
       window.removeEventListener('stream:error', handleStreamError as EventListener);
       window.removeEventListener('stream:disconnected', handleStreamDisconnected as EventListener);
       window.removeEventListener('stream:youtube-ended', handleYouTubeEnded as EventListener);
+      window.removeEventListener('broadcast:ended', handleBroadcastEnded as EventListener);
     };
   }, []);
 

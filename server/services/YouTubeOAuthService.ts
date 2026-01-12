@@ -878,6 +878,50 @@ export class YouTubeOAuthService {
   }
 
   /**
+   * Check if a broadcast is still live or has been ended
+   * Returns the lifecycle status: 'live', 'complete', 'revoked', 'testStarting', 'testing', 'liveStarting', etc.
+   */
+  async checkBroadcastStatus(userId: string, accountId: string, broadcastId: string): Promise<{ status: string; isLive: boolean; isEnded: boolean }> {
+    const accounts = connectedAccounts.get(userId) || [];
+    const account = accounts.find(a => a.id === accountId);
+
+    if (!account) {
+      throw new Error('YouTube account not found');
+    }
+
+    const accessToken = await this.refreshAccessToken(account);
+
+    const response = await fetch(
+      `https://www.googleapis.com/youtube/v3/liveBroadcasts?part=status&id=${broadcastId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('[YouTubeOAuth] Failed to check broadcast status:', error);
+      throw new Error(`Failed to check broadcast status: ${error}`);
+    }
+
+    const data = await response.json();
+    const lifeCycleStatus = data.items?.[0]?.status?.lifeCycleStatus || 'unknown';
+    
+    const isLive = lifeCycleStatus === 'live';
+    const isEnded = ['complete', 'revoked'].includes(lifeCycleStatus);
+    
+    console.log('[YouTubeOAuth] Broadcast status check:', broadcastId, '- Status:', lifeCycleStatus, '- isLive:', isLive, '- isEnded:', isEnded);
+    
+    return {
+      status: lifeCycleStatus,
+      isLive,
+      isEnded
+    };
+  }
+
+  /**
    * Get all broadcasts (including upcoming and completed)
    */
   async getAllBroadcasts(userId: string, accountId: string, status?: 'all' | 'active' | 'upcoming' | 'completed'): Promise<YouTubeLiveBroadcast[]> {
