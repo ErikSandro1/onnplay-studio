@@ -384,4 +384,56 @@ router.get('/oauth/all-broadcasts', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/youtube/oauth/broadcast-info/:broadcastId
+ * Get broadcast info including liveChatId
+ */
+router.get('/oauth/broadcast-info/:broadcastId', async (req: Request, res: Response) => {
+  try {
+    const { broadcastId } = req.params;
+    const { accountId } = req.query;
+    const userId = req.query.userId as string || 'default-user';
+
+    if (!accountId) {
+      return res.status(400).json({ error: 'Account ID is required' });
+    }
+
+    console.log('[YouTube OAuth] Getting broadcast info for:', broadcastId);
+
+    // Try to get from active broadcasts
+    const broadcasts = await youtubeOAuthService.getAllBroadcasts(userId, accountId as string, 'active');
+    const broadcast = broadcasts.find(b => b.id === broadcastId);
+
+    if (broadcast) {
+      res.json({
+        id: broadcast.id,
+        title: broadcast.title,
+        liveChatId: broadcast.liveChatId,
+        watchUrl: broadcast.watchUrl,
+      });
+    } else {
+      // Broadcast not found in active, try all
+      const allBroadcasts = await youtubeOAuthService.getAllBroadcasts(userId, accountId as string, 'all');
+      const foundBroadcast = allBroadcasts.find(b => b.id === broadcastId);
+      
+      if (foundBroadcast) {
+        res.json({
+          id: foundBroadcast.id,
+          title: foundBroadcast.title,
+          liveChatId: foundBroadcast.liveChatId,
+          watchUrl: foundBroadcast.watchUrl,
+        });
+      } else {
+        res.status(404).json({ error: 'Broadcast not found' });
+      }
+    }
+  } catch (error: any) {
+    console.error('[YouTube OAuth] Error getting broadcast info:', error);
+    res.status(500).json({
+      error: 'Failed to get broadcast info',
+      message: error.message,
+    });
+  }
+});
+
 export default router;
