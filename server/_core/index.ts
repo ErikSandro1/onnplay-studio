@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import fileUpload from "express-fileupload";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
@@ -58,6 +59,13 @@ async function startServer() {
 
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
+  
+  // Configure file upload middleware
+  app.use(fileUpload({
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+    abortOnLimit: true,
+    createParentPath: true,
+  }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   // OAuth callback under /api/oauth/callback

@@ -9,7 +9,7 @@
  * - Indicador NO AR
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, Youtube, Twitch, Facebook, Instagram, Settings, Loader2, Check, AlertCircle, ExternalLink, Clock, Calendar, X, Radio, Tv, Camera, Mic, Image, Layout } from 'lucide-react';
+import { Plus, Trash2, Youtube, Twitch, Facebook, Instagram, Settings, Loader2, Check, AlertCircle, ExternalLink, Clock, Calendar, X, Radio, Tv, Camera, Mic, Image, Layout, Copy } from 'lucide-react';
 import { rtmpStreamService } from '../services/RTMPStreamService';
 
 interface ConnectedAccount {
@@ -360,6 +360,14 @@ export default function DestinationsManager({ onBroadcastReady, onStartStreaming
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
 
+  // Salvar broadcasts no localStorage quando mudar
+  useEffect(() => {
+    if (broadcasts.length > 0) {
+      localStorage.setItem('onnplay_broadcasts', JSON.stringify(broadcasts));
+      console.log('[DestinationsManager] Saved broadcasts to localStorage:', broadcasts.length);
+    }
+  }, [broadcasts]);
+
   // Determinar status geral
   const getOverallStatus = (): 'off' | 'standby' | 'ready' | 'live' => {
     if (isStreaming) return 'live';
@@ -368,9 +376,21 @@ export default function DestinationsManager({ onBroadcastReady, onStartStreaming
     return 'off';
   };
 
-  // Load connected accounts on mount
+  // Load connected accounts and broadcasts on mount
   useEffect(() => {
     loadAccounts();
+    
+    // Carregar broadcasts salvos do localStorage
+    const savedBroadcasts = localStorage.getItem('onnplay_broadcasts');
+    if (savedBroadcasts) {
+      try {
+        const parsed = JSON.parse(savedBroadcasts);
+        setBroadcasts(parsed);
+        console.log('[DestinationsManager] Loaded saved broadcasts:', parsed.length);
+      } catch (e) {
+        console.error('[DestinationsManager] Error loading saved broadcasts:', e);
+      }
+    }
     
     // Check for OAuth callback
     const urlParams = new URLSearchParams(window.location.search);
@@ -585,7 +605,16 @@ export default function DestinationsManager({ onBroadcastReady, onStartStreaming
         }
       }
     }
-    setBroadcasts(prev => prev.filter(b => b.id !== broadcastId));
+    setBroadcasts(prev => {
+      const newBroadcasts = prev.filter(b => b.id !== broadcastId);
+      // Atualizar localStorage
+      if (newBroadcasts.length > 0) {
+        localStorage.setItem('onnplay_broadcasts', JSON.stringify(newBroadcasts));
+      } else {
+        localStorage.removeItem('onnplay_broadcasts');
+      }
+      return newBroadcasts;
+    });
   };
 
   const getAccountBroadcast = (accountId: string) => {
@@ -937,7 +966,39 @@ export default function DestinationsManager({ onBroadcastReady, onStartStreaming
                       </span>
                     )}
                   </div>
-                  <span className="text-xs text-gray-500">{config.name}</span>
+                  {broadcast ? (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs text-orange-400 font-medium truncate" title={broadcast.title}>
+                        🎥 {broadcast.title}
+                      </span>
+                      {broadcast.watchUrl && (
+                        <div className="flex items-center gap-1">
+                          <a 
+                            href={broadcast.watchUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-400 hover:text-blue-300 truncate max-w-[180px]"
+                            title={broadcast.watchUrl}
+                          >
+                            {broadcast.watchUrl}
+                          </a>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(broadcast.watchUrl || '');
+                              alert('Link copiado!');
+                            }}
+                            className="p-0.5 hover:bg-gray-700 rounded"
+                            title="Copiar link"
+                          >
+                            <Copy size={10} className="text-gray-400" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-gray-500">{config.name}</span>
+                  )}
                 </div>
                 
                 {/* Actions */}
