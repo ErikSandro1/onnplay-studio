@@ -739,6 +739,11 @@ class RTMPStreamService {
       this.socket.on('error', (data: { message: string }) => {
         console.error('[RTMPStreamService] Server error:', data.message);
         this.updateStatus('error', data.message);
+        
+        // Emitir evento global para notificação visual
+        window.dispatchEvent(new CustomEvent('stream:error', {
+          detail: { message: data.message }
+        }));
       });
 
       this.socket.on('disconnect', (reason: string) => {
@@ -747,11 +752,26 @@ class RTMPStreamService {
         if (this.isStreaming) {
           console.warn('[RTMPStreamService] ⚠️ Disconnected while streaming, attempting reconnect...');
           
+          // Emitir evento global para notificação visual
+          window.dispatchEvent(new CustomEvent('stream:disconnected', {
+            detail: { reason, isReconnecting: reason !== 'io client disconnect' }
+          }));
+          
           // Don't update status to error immediately, try to reconnect
           if (reason !== 'io client disconnect') {
             this.attemptReconnect();
           }
         }
+      });
+      
+      // Evento quando o YouTube encerra a live
+      this.socket.on('youtube-live-ended', (data: { broadcastId: string, reason?: string }) => {
+        console.log('[RTMPStreamService] YouTube live ended:', data);
+        
+        // Emitir evento global para notificação visual
+        window.dispatchEvent(new CustomEvent('stream:youtube-ended', {
+          detail: data
+        }));
       });
 
       this.socket.on('connect_error', (error: Error) => {

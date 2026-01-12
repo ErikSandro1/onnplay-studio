@@ -118,6 +118,80 @@ const HomeContent: React.FC = () => {
     ? dailyContext.participants 
     : mockParticipants;
 
+  // Check URL params for redirects (after OAuth callback)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const youtubeConnected = params.get('youtube_connected');
+    const openDestinations = params.get('open_destinations');
+    const channel = params.get('channel');
+    
+    if (youtubeConnected === 'true') {
+      // Mostrar toast de sucesso
+      toast.success(`Canal ${channel || 'YouTube'} conectado com sucesso!`);
+      
+      // Limpar parâmetros da URL
+      window.history.replaceState({}, '', window.location.pathname);
+      
+      // Abrir destinos automaticamente
+      if (openDestinations === 'true') {
+        setTimeout(() => {
+          setActiveTool('destinations');
+        }, 500);
+      }
+    }
+    
+    // Verificar erro do YouTube
+    const youtubeError = params.get('youtube_error');
+    if (youtubeError) {
+      toast.error(`Erro ao conectar YouTube: ${youtubeError}`);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  // Listen for stream disconnection/error events
+  useEffect(() => {
+    const handleStreamError = (event: CustomEvent) => {
+      toast.error(`Erro no streaming: ${event.detail.message}`, {
+        duration: 10000,
+        icon: '❌',
+      });
+    };
+    
+    const handleStreamDisconnected = (event: CustomEvent) => {
+      const { reason, isReconnecting } = event.detail;
+      if (isReconnecting) {
+        toast.loading('Conexão perdida. Reconectando...', {
+          duration: 5000,
+          icon: '🔄',
+        });
+      } else {
+        toast.error('Transmissão desconectada!', {
+          duration: 10000,
+          icon: '⚠️',
+        });
+      }
+    };
+    
+    const handleYouTubeEnded = (event: CustomEvent) => {
+      toast.error('A live do YouTube foi encerrada!', {
+        duration: 15000,
+        icon: '📺',
+      });
+      // Parar o streaming local
+      setIsLive(false);
+    };
+    
+    window.addEventListener('stream:error', handleStreamError as EventListener);
+    window.addEventListener('stream:disconnected', handleStreamDisconnected as EventListener);
+    window.addEventListener('stream:youtube-ended', handleYouTubeEnded as EventListener);
+    
+    return () => {
+      window.removeEventListener('stream:error', handleStreamError as EventListener);
+      window.removeEventListener('stream:disconnected', handleStreamDisconnected as EventListener);
+      window.removeEventListener('stream:youtube-ended', handleYouTubeEnded as EventListener);
+    };
+  }, []);
+
   // Initialize services
   useEffect(() => {
     console.log('🚀 OnnPlay Studio - Services initialized');
@@ -178,15 +252,36 @@ const HomeContent: React.FC = () => {
     };
   }, [isLive, isRecording]);
 
-  // Update viewers (mock)
+  // Update viewers (real from YouTube API)
   useEffect(() => {
-    if (isLive) {
-      setViewers(Math.floor(Math.random() * 200) + 50);
-      setBitrate('6000 Kbps');
-    } else {
+    if (!isLive) {
       setViewers(0);
-      setBitrate('0 Kbps');
+      return;
     }
+
+    // Função para buscar viewers reais
+    const fetchViewers = async () => {
+      try {
+        const destinations = rtmpStreamService.getDestinations();
+        const youtubeDestination = destinations.find(d => d.platform === 'youtube' && d.enabled && d.broadcastId);
+        
+        if (youtubeDestination?.broadcastId) {
+          const response = await fetch(`/api/youtube/viewers/${youtubeDestination.broadcastId}`);
+          const data = await response.json();
+          if (data.viewers !== undefined) {
+            setViewers(data.viewers);
+          }
+        }
+      } catch (error) {
+        console.error('[Home] Error fetching viewers:', error);
+      }
+    };
+
+    // Buscar imediatamente e depois a cada 10 segundos
+    fetchViewers();
+    const interval = setInterval(fetchViewers, 10000);
+
+    return () => clearInterval(interval);
   }, [isLive]);
 
   // Connect to Green Room socket to track waiting guests count

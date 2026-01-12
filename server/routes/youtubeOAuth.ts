@@ -72,8 +72,8 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
 
     console.log('[YouTube OAuth] Account connected:', account.channelTitle);
 
-    // Redirect back to app with success
-    res.redirect(`/?youtube_connected=true&channel=${encodeURIComponent(account.channelTitle)}`);
+    // Redirect back to app with success - vai direto para destinos
+    res.redirect(`/?youtube_connected=true&channel=${encodeURIComponent(account.channelTitle)}&open_destinations=true`);
   } catch (error: any) {
     console.error('[YouTube OAuth] Callback error:', error);
     res.redirect('/?youtube_error=' + encodeURIComponent(error.message || 'OAuth failed'));
@@ -431,6 +431,74 @@ router.get('/oauth/broadcast-info/:broadcastId', async (req: Request, res: Respo
     console.error('[YouTube OAuth] Error getting broadcast info:', error);
     res.status(500).json({
       error: 'Failed to get broadcast info',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/youtube/oauth/upload-thumbnail
+ * Upload thumbnail for a broadcast
+ */
+router.post('/oauth/upload-thumbnail', async (req: Request, res: Response) => {
+  try {
+    const userId = req.query.userId as string || 'default-user';
+    
+    // Verificar se tem arquivo
+    if (!req.files || !('thumbnail' in req.files)) {
+      return res.status(400).json({ error: 'No thumbnail file provided' });
+    }
+    
+    const file = (req.files as any).thumbnail;
+    const accountId = req.body.accountId;
+    const broadcastId = req.body.broadcastId;
+    
+    if (!accountId || !broadcastId) {
+      return res.status(400).json({ error: 'Account ID and Broadcast ID are required' });
+    }
+    
+    await youtubeOAuthService.uploadThumbnail(
+      userId,
+      accountId,
+      broadcastId,
+      file.data,
+      file.mimetype
+    );
+    
+    res.json({ success: true, message: 'Thumbnail uploaded successfully' });
+  } catch (error: any) {
+    console.error('[YouTube OAuth] Error uploading thumbnail:', error);
+    res.status(500).json({
+      error: 'Failed to upload thumbnail',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * DELETE /api/youtube/oauth/broadcast/:broadcastId
+ * Delete/cancel a broadcast
+ */
+router.delete('/oauth/broadcast/:broadcastId', async (req: Request, res: Response) => {
+  try {
+    const { broadcastId } = req.params;
+    const { accountId } = req.query;
+    const userId = req.query.userId as string || 'default-user';
+
+    if (!accountId) {
+      return res.status(400).json({ error: 'Account ID is required' });
+    }
+
+    await youtubeOAuthService.deleteBroadcast(userId, accountId as string, broadcastId);
+
+    res.json({
+      success: true,
+      message: 'Broadcast deleted successfully',
+    });
+  } catch (error: any) {
+    console.error('[YouTube OAuth] Error deleting broadcast:', error);
+    res.status(500).json({
+      error: 'Failed to delete broadcast',
       message: error.message,
     });
   }

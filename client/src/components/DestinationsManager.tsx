@@ -220,11 +220,43 @@ const LiveCreatedModal = ({
             </div>
 
             {broadcast.scheduledStartTime && (
-              <div className="flex items-center gap-2 text-yellow-400 bg-yellow-900/30 rounded-lg p-3">
+              <div className="flex items-center gap-2 text-yellow-400 bg-yellow-900/30 rounded-lg p-3 mb-3">
                 <Calendar size={16} />
                 <span className="text-sm">
                   Agendada para: {broadcast.scheduledStartTime.toLocaleString('pt-BR')}
                 </span>
+              </div>
+            )}
+
+            {/* Link da Live */}
+            {broadcast.watchUrl && (
+              <div className="bg-gray-700/50 rounded-lg p-3">
+                <p className="text-xs text-gray-400 mb-2">Link da Live (compartilhe!):</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={broadcast.watchUrl}
+                    className="flex-1 bg-gray-800 text-white text-sm px-3 py-2 rounded border border-gray-600 focus:outline-none"
+                  />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(broadcast.watchUrl || '');
+                      // Toast de sucesso seria bom aqui
+                    }}
+                    className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors"
+                  >
+                    Copiar
+                  </button>
+                  <a
+                    href={broadcast.watchUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded transition-colors"
+                  >
+                    <ExternalLink size={16} />
+                  </a>
+                </div>
               </div>
             )}
           </div>
@@ -255,20 +287,14 @@ const LiveCreatedModal = ({
             </div>
           </div>
 
-          {/* Botões */}
-          <div className="flex gap-3 pt-2">
+          {/* Botão */}
+          <div className="pt-2">
             <button
               onClick={onClose}
-              className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
+              className="w-full py-3 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
             >
-              Preparar Live
-            </button>
-            <button
-              onClick={onStartNow}
-              className="flex-1 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-            >
-              <Radio size={18} />
-              Ir ao Ar Agora
+              <Check size={18} />
+              Entendido - Preparar Live
             </button>
           </div>
         </div>
@@ -331,6 +357,8 @@ export default function DestinationsManager({ onBroadcastReady, onStartStreaming
   const [privacyStatus, setPrivacyStatus] = useState<'public' | 'private' | 'unlisted'>('public');
   const [scheduledTime, setScheduledTime] = useState('');
   const [useSchedule, setUseSchedule] = useState(false);
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
 
   // Determinar status geral
   const getOverallStatus = (): 'off' | 'standby' | 'ready' | 'live' => {
@@ -453,6 +481,29 @@ export default function DestinationsManager({ onBroadcastReady, onStartStreaming
 
       const data = await response.json();
       
+      // Upload thumbnail se fornecido
+      if (thumbnailFile && data.broadcast.id) {
+        try {
+          const formData = new FormData();
+          formData.append('thumbnail', thumbnailFile);
+          formData.append('accountId', account.id);
+          formData.append('broadcastId', data.broadcast.id);
+          
+          const thumbResponse = await fetch('/api/youtube/oauth/upload-thumbnail?userId=default-user', {
+            method: 'POST',
+            body: formData,
+          });
+          
+          if (thumbResponse.ok) {
+            console.log('[DestinationsManager] Thumbnail uploaded successfully');
+          } else {
+            console.warn('[DestinationsManager] Failed to upload thumbnail');
+          }
+        } catch (thumbErr) {
+          console.error('[DestinationsManager] Thumbnail upload error:', thumbErr);
+        }
+      }
+      
       const newBroadcast: ActiveBroadcast = {
         id: data.broadcast.id,
         accountId: account.id,
@@ -513,10 +564,26 @@ export default function DestinationsManager({ onBroadcastReady, onStartStreaming
     }
   };
 
-  const removeBroadcast = (broadcastId: string) => {
+  const removeBroadcast = async (broadcastId: string) => {
     const broadcast = broadcasts.find(b => b.id === broadcastId);
     if (broadcast) {
+      // Remover do RTMPStreamService
       rtmpStreamService.removeDestination(broadcast.accountId);
+      
+      // Deletar no YouTube (se não estiver ao vivo)
+      if (broadcast.status !== 'live') {
+        try {
+          const response = await fetch(
+            `/api/youtube/oauth/broadcast/${broadcastId}?accountId=${broadcast.accountId}&userId=default-user`,
+            { method: 'DELETE' }
+          );
+          if (response.ok) {
+            console.log('[DestinationsManager] Broadcast deleted from YouTube:', broadcastId);
+          }
+        } catch (err) {
+          console.error('[DestinationsManager] Error deleting broadcast from YouTube:', err);
+        }
+      }
     }
     setBroadcasts(prev => prev.filter(b => b.id !== broadcastId));
   };
@@ -726,6 +793,53 @@ export default function DestinationsManager({ onBroadcastReady, onStartStreaming
             rows={2}
             className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-orange-500 resize-none"
           />
+        </div>
+        
+        {/* Thumbnail */}
+        <div>
+          <label className="text-xs text-gray-400 mb-1 block">Miniatura (opcional)</label>
+          <div className="flex items-center gap-3">
+            {thumbnailPreview ? (
+              <div className="relative">
+                <img 
+                  src={thumbnailPreview} 
+                  alt="Thumbnail" 
+                  className="w-24 h-14 object-cover rounded border border-gray-600"
+                />
+                <button
+                  onClick={() => {
+                    setThumbnailFile(null);
+                    setThumbnailPreview(null);
+                  }}
+                  className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center text-white text-xs"
+                >
+                  ×
+                </button>
+              </div>
+            ) : (
+              <label className="flex items-center gap-2 px-3 py-2 bg-gray-900 border border-gray-700 border-dashed rounded-lg cursor-pointer hover:border-orange-500 transition-colors">
+                <Image size={16} className="text-gray-400" />
+                <span className="text-sm text-gray-400">Carregar imagem</span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setThumbnailFile(file);
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        setThumbnailPreview(ev.target?.result as string);
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+              </label>
+            )}
+            <span className="text-xs text-gray-500">1280x720 recomendado</span>
+          </div>
         </div>
         
         <div className="grid grid-cols-2 gap-3">

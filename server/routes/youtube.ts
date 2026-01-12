@@ -240,4 +240,55 @@ router.get('/status/:videoId', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/youtube/viewers/:videoId
+ * Get real-time viewer count for a YouTube live stream
+ */
+router.get('/viewers/:videoId', async (req: Request, res: Response) => {
+  const { videoId } = req.params;
+
+  if (!videoId) {
+    return res.status(400).json({ error: 'Video ID is required' });
+  }
+
+  if (!YOUTUBE_API_KEY) {
+    return res.json({
+      viewers: 0,
+      source: 'mock',
+    });
+  }
+
+  try {
+    const response = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails,statistics&id=${videoId}&key=${YOUTUBE_API_KEY}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`YouTube API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (data.items && data.items.length > 0) {
+      const liveDetails = data.items[0].liveStreamingDetails;
+      const statistics = data.items[0].statistics;
+      
+      // concurrentViewers é o número de espectadores ao vivo
+      const viewers = liveDetails?.concurrentViewers 
+        ? parseInt(liveDetails.concurrentViewers) 
+        : (statistics?.viewCount ? parseInt(statistics.viewCount) : 0);
+      
+      return res.json({
+        viewers,
+        isLive: !!liveDetails?.actualStartTime && !liveDetails?.actualEndTime,
+      });
+    }
+
+    return res.json({ viewers: 0, isLive: false });
+  } catch (error) {
+    console.error('Error getting viewer count:', error);
+    return res.status(500).json({ error: 'Failed to get viewer count' });
+  }
+});
+
 export default router;

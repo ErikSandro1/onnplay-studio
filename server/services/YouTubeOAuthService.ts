@@ -801,6 +801,82 @@ export class YouTubeOAuthService {
   }
 
   /**
+   * Upload thumbnail for a broadcast
+   */
+  async uploadThumbnail(userId: string, accountId: string, broadcastId: string, imageBuffer: Buffer, mimeType: string): Promise<boolean> {
+    const accounts = connectedAccounts.get(userId) || [];
+    const account = accounts.find(a => a.id === accountId);
+
+    if (!account) {
+      throw new Error('YouTube account not found');
+    }
+
+    const accessToken = await this.refreshAccessToken(account);
+
+    console.log('[YouTubeOAuth] Uploading thumbnail for broadcast:', broadcastId);
+
+    const response = await fetch(
+      `https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${broadcastId}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': mimeType,
+        },
+        body: imageBuffer,
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('[YouTubeOAuth] Failed to upload thumbnail:', error);
+      throw new Error(`Failed to upload thumbnail: ${error}`);
+    }
+
+    console.log('[YouTubeOAuth] Thumbnail uploaded successfully');
+    return true;
+  }
+
+  /**
+   * Delete a broadcast (cancel/remove a scheduled or ready broadcast)
+   */
+  async deleteBroadcast(userId: string, accountId: string, broadcastId: string): Promise<boolean> {
+    const accounts = connectedAccounts.get(userId) || [];
+    const account = accounts.find(a => a.id === accountId);
+
+    if (!account) {
+      throw new Error('YouTube account not found');
+    }
+
+    const accessToken = await this.refreshAccessToken(account);
+
+    console.log('[YouTubeOAuth] Deleting broadcast:', broadcastId);
+
+    const response = await fetch(
+      `https://www.googleapis.com/youtube/v3/liveBroadcasts?id=${broadcastId}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('[YouTubeOAuth] Failed to delete broadcast:', error);
+      throw new Error(`Failed to delete broadcast: ${error}`);
+    }
+
+    console.log('[YouTubeOAuth] Broadcast deleted successfully:', broadcastId);
+    
+    // Remove from active broadcasts if present
+    activeBroadcasts.delete(broadcastId);
+    
+    return true;
+  }
+
+  /**
    * Get all broadcasts (including upcoming and completed)
    */
   async getAllBroadcasts(userId: string, accountId: string, status?: 'all' | 'active' | 'upcoming' | 'completed'): Promise<YouTubeLiveBroadcast[]> {
